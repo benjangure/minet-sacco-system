@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Minet SACCO</string>
+    <string name="title_activity_main">Minet SACCO</string>
+    <string name="package_name">com.minetsacco.memberportal</string>
+    <string name="custom_url_scheme">com.minetsacco.memberportal</string>
+</resources>

@@ -1,0 +1,22 @@
+CREATE TABLE deposit_requests (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    member_id BIGINT NOT NULL,
+    account_id BIGINT NOT NULL,
+    claimed_amount DECIMAL(19, 2) NOT NULL,
+    confirmed_amount DECIMAL(19, 2),
+    description VARCHAR(500),
+    receipt_file_path VARCHAR(500),
+    receipt_file_name VARCHAR(255),
+    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    approved_by_user_id BIGINT,
+    approval_notes VARCHAR(500),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    approved_at DATETIME NULL DEFAULT NULL,
+    rejected_at DATETIME NULL DEFAULT NULL,
+    FOREIGN KEY (member_id) REFERENCES members(id),
+    FOREIGN KEY (account_id) REFERENCES accounts(id),
+    FOREIGN KEY (approved_by_user_id) REFERENCES users(id),
+    INDEX idx_status (status),
+    INDEX idx_member_id (member_id),
+    INDEX idx_created_at (created_at)
+);

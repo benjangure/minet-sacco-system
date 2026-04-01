@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Icons</title>
+</head>
+<body>
+    <h1>Icon Generator</h1>
+    <p>This creates the app icons. Open browser console and run the code below:</p>
+    <canvas id="canvas"></canvas>
+    <script>
+        function generateIcon(size) {
+            const canvas = document.getElementById('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // Red background
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(0, 0, size, size);
+            
+            // White text
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${size * 0.4}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('MS', size / 2, size / 2);
+            
+            // Download
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = `icon-${size}.png`;
+            link.click();
+        }
+        
+        // Generate all sizes
+        setTimeout(() => {
+            generateIcon(192);
+            setTimeout(() => generateIcon(512), 500);
+        }, 500);
+    </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+-- V39: Rename `read` to `is_read` in notifications table
+-- `read` is a reserved word in MariaDB causing SQL syntax errors on INSERT
+-- This migration is a no-op if the column doesn't exist (it was already created as is_read in V33)
+-- Flyway will skip this safely
