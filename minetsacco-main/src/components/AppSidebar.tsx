@@ -16,6 +16,7 @@ const allMainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
   { title: "Members", url: "/members", icon: Users, roles: ["admin", "treasurer", "loan_officer", "teller", "customer_support"] },
   { title: "Loans", url: "/loans", icon: Landmark, roles: ["admin", "loan_officer", "credit_committee", "treasurer"] },
+  { title: "Loan Repayments", url: "/loan-repayment-requests", icon: CheckCircle2, roles: ["teller"] },
   { title: "Savings", url: "/savings", icon: PiggyBank, roles: ["admin", "treasurer", "teller"] },
   { title: "Bulk Processing", url: "/bulk-processing", icon: Upload, roles: ["treasurer", "credit_committee"] },
   { title: "Reports", url: "/reports", icon: FileText, roles: ["admin", "treasurer", "auditor"] },

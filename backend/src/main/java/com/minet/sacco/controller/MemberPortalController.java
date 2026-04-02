@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.io.File;
 import org.springframework.beans.factory.annotation.Value;
 
 @RestController
@@ -647,8 +648,305 @@ public class MemberPortalController {
     }
 
     /**
-     * Member submits a deposit request with receipt
+     * Member submits a bank transfer repayment request with proof document
      */
+    @PostMapping(value = "/request-loan-repayment", consumes = "multipart/form-data")
+    public ResponseEntity<?> requestLoanRepayment(
+            @RequestParam Long loanId,
+            @RequestParam BigDecimal amount,
+            @RequestParam String paymentMethod,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) MultipartFile proofFile) {
+        try {
+            Member member = getCurrentMember();
+            Optional<Loan> loanOpt = loanRepository.findById(loanId);
+            
+            if (!loanOpt.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            Loan loan = loanOpt.get();
+            
+            // Verify member owns this loan
+            if (!loan.getMember().getId().equals(member.getId())) {
+                return ResponseEntity.status(403).body("Unauthorized");
+            }
+            
+            // Validate amount
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                return ResponseEntity.badRequest().body("Amount must be greater than zero");
+            }
+            
+            if (amount.compareTo(loan.getOutstandingBalance()) > 0) {
+                return ResponseEntity.badRequest().body("Amount exceeds outstanding balance");
+            }
+            
+            // Validate payment method
+            if (!"BANK_TRANSFER".equals(paymentMethod)) {
+                return ResponseEntity.badRequest().body("Invalid payment method for this endpoint");
+            }
+            
+            // Validate proof file
+            if (proofFile == null || proofFile.isEmpty()) {
+                return ResponseEntity.badRequest().body("Proof of payment file is required");
+            }
+            
+            // Save proof file
+            String filePath = null;
+            try {
+                String fileName = System.currentTimeMillis() + "_" + proofFile.getOriginalFilename();
+                // Use project root directory for uploads
+                String uploadDir = System.getProperty("user.dir") + File.separator + "uploads" + File.separator + "loan-repayments";
+                java.nio.file.Path uploadPath = java.nio.file.Paths.get(uploadDir);
+                
+                // Create directory if it doesn't exist
+                if (!java.nio.file.Files.exists(uploadPath)) {
+                    java.nio.file.Files.createDirectories(uploadPath);
+                }
+                
+                filePath = uploadDir + File.separator + fileName;
+                java.io.File destFile = new java.io.File(filePath);
+                proofFile.transferTo(destFile);
+                System.out.println("File uploaded successfully to: " + filePath);
+            } catch (Exception e) {
+                System.err.println("File upload error: " + e.getMessage());
+                e.printStackTrace();
+                return ResponseEntity.badRequest().body(new ApiResponse(false, "Error uploading file: " + e.getMessage(), null));
+            }
+            
+            // Create repayment request
+            com.minet.sacco.entity.LoanRepaymentRequest repaymentRequest = new com.minet.sacco.entity.LoanRepaymentRequest();
+            repaymentRequest.setLoan(loan);
+            repaymentRequest.setMember(member);
+            repaymentRequest.setAmount(amount);
+            repaymentRequest.setPaymentMethod(paymentMethod);
+            repaymentRequest.setDescription(description != null ? description : "Loan repayment");
+            repaymentRequest.setProofFilePath(filePath);
+            repaymentRequest.setProofFileName(proofFile.getOriginalFilename());
+            repaymentRequest.setStatus(com.minet.sacco.entity.LoanRepaymentRequest.Status.PENDING);
+            repaymentRequest.setCreatedAt(java.time.LocalDateTime.now());
+            
+            loanRepaymentRequestRepository.save(repaymentRequest);
+            
+            // Send notification to tellers
+            try {
+                List<com.minet.sacco.entity.User> tellers = userRepository.findByRole(com.minet.sacco.entity.User.Role.TELLER);
+                for (com.minet.sacco.entity.User teller : tellers) {
+                    com.minet.sacco.entity.Notification notification = new com.minet.sacco.entity.Notification();
+                    notification.setUser(teller);
+                    notification.setType("LOAN_REPAYMENT_REQUEST");
+                    notification.setMessage("Member " + member.getFirstName() + " " + member.getLastName() + 
+                        " submitted a bank transfer repayment request for " + formatCurrency(amount));
+                    notification.setCategory("LOAN_REPAYMENT");
+                    notification.setLoanId(loan.getId());
+                    notification.setMemberId(member.getId());
+                    notification.setRead(false);
+                    notification.setCreatedAt(java.time.LocalDateTime.now());
+                    notificationRepository.save(notification);
+                }
+            } catch (Exception e) {
+                System.err.println("Error sending notification: " + e.getMessage());
+            }
+            
+            // Log audit trail
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            User currentUser = userRepository.findByUsername(authentication.getName()).orElse(null);
+            auditService.logAction(
+                currentUser,
+                "LOAN_REPAYMENT_REQUEST_SUBMITTED",
+                "LoanRepaymentRequest",
+                repaymentRequest.getId(),
+                null,
+                "Bank transfer repayment request submitted for loan " + loan.getId(),
+                "SUCCESS"
+            );
+            
+            return ResponseEntity.ok(new ApiResponse(true, "Repayment request submitted successfully", repaymentRequest.getId()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(new ApiResponse(false, "Error: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Get pending loan repayment requests for member
+     */
+    @GetMapping("/loan-repayment-requests")
+    public ResponseEntity<?> getLoanRepaymentRequests() {
+        try {
+            Member member = getCurrentMember();
+            List<com.minet.sacco.entity.LoanRepaymentRequest> requests = loanRepaymentRequestRepository.findByMemberId(member.getId());
+            return ResponseEntity.ok(requests);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Download proof file for loan repayment request
+     */
+    @GetMapping("/loan-repayment-requests/{requestId}/proof/download")
+    public ResponseEntity<?> downloadRepaymentProof(@PathVariable Long requestId) {
+        try {
+            Member member = getCurrentMember();
+            Optional<com.minet.sacco.entity.LoanRepaymentRequest> requestOpt = loanRepaymentRequestRepository.findByIdAndMemberId(requestId, member.getId());
+            
+            if (!requestOpt.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            com.minet.sacco.entity.LoanRepaymentRequest repaymentRequest = requestOpt.get();
+            java.io.File file = new java.io.File(repaymentRequest.getProofFilePath());
+            
+            if (!file.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + repaymentRequest.getProofFileName() + "\"")
+                    .body(new org.springframework.core.io.FileSystemResource(file));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get rejection details for a rejected repayment request
+     */
+    @GetMapping("/loan-repayment-requests/{requestId}/rejection-details")
+    public ResponseEntity<?> getRejectionDetails(@PathVariable Long requestId) {
+        try {
+            Member member = getCurrentMember();
+            Optional<com.minet.sacco.entity.LoanRepaymentRequest> requestOpt = loanRepaymentRequestRepository.findByIdAndMemberId(requestId, member.getId());
+            
+            if (!requestOpt.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            com.minet.sacco.entity.LoanRepaymentRequest repaymentRequest = requestOpt.get();
+            
+            // Verify request is rejected
+            if (!repaymentRequest.getStatus().equals(com.minet.sacco.entity.LoanRepaymentRequest.Status.REJECTED)) {
+                return ResponseEntity.badRequest().body("Request is not rejected");
+            }
+            
+            java.util.Map<String, Object> details = new java.util.HashMap<>();
+            details.put("requestId", repaymentRequest.getId());
+            details.put("loanId", repaymentRequest.getLoan().getId());
+            details.put("loanNumber", repaymentRequest.getLoan().getLoanNumber());
+            details.put("requestedAmount", repaymentRequest.getAmount());
+            details.put("rejectionReason", repaymentRequest.getRejectionReason());
+            details.put("rejectedBy", repaymentRequest.getApprovedBy());
+            details.put("rejectedAt", repaymentRequest.getApprovedAt());
+            details.put("outstandingBalance", repaymentRequest.getLoan().getOutstandingBalance());
+            details.put("canResubmit", true);
+            
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Resubmit a rejected repayment request with new proof
+     */
+    @PostMapping(value = "/loan-repayment-requests/{requestId}/resubmit", consumes = "multipart/form-data")
+    public ResponseEntity<?> resubmitRejectedRepayment(
+            @PathVariable Long requestId,
+            @RequestParam BigDecimal amount,
+            @RequestParam(required = false) String description,
+            @RequestParam MultipartFile proofFile) {
+        try {
+            Member member = getCurrentMember();
+            Optional<com.minet.sacco.entity.LoanRepaymentRequest> requestOpt = loanRepaymentRequestRepository.findByIdAndMemberId(requestId, member.getId());
+            
+            if (!requestOpt.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            com.minet.sacco.entity.LoanRepaymentRequest originalRequest = requestOpt.get();
+            
+            // Verify request is rejected
+            if (!originalRequest.getStatus().equals(com.minet.sacco.entity.LoanRepaymentRequest.Status.REJECTED)) {
+                return ResponseEntity.badRequest().body("Request is not rejected");
+            }
+            
+            Loan loan = originalRequest.getLoan();
+            
+            // Validate amount
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                return ResponseEntity.badRequest().body("Amount must be greater than zero");
+            }
+            
+            if (amount.compareTo(loan.getOutstandingBalance()) > 0) {
+                return ResponseEntity.badRequest().body("Amount exceeds outstanding balance");
+            }
+            
+            // Validate proof file
+            if (proofFile == null || proofFile.isEmpty()) {
+                return ResponseEntity.badRequest().body("Proof of payment file is required");
+            }
+            
+            // Save new proof file
+            String fileName = System.currentTimeMillis() + "_" + proofFile.getOriginalFilename();
+            String filePath = "uploads/loan-repayments/" + fileName;
+            java.nio.file.Files.createDirectories(java.nio.file.Paths.get("uploads/loan-repayments"));
+            proofFile.transferTo(new java.io.File(filePath));
+            
+            // Create new repayment request (don't modify original)
+            com.minet.sacco.entity.LoanRepaymentRequest newRequest = new com.minet.sacco.entity.LoanRepaymentRequest();
+            newRequest.setLoan(loan);
+            newRequest.setMember(member);
+            newRequest.setAmount(amount);
+            newRequest.setPaymentMethod("BANK_TRANSFER");
+            newRequest.setDescription(description != null ? description : "Loan repayment (resubmitted)");
+            newRequest.setProofFilePath(filePath);
+            newRequest.setProofFileName(proofFile.getOriginalFilename());
+            newRequest.setStatus(com.minet.sacco.entity.LoanRepaymentRequest.Status.PENDING);
+            newRequest.setCreatedAt(java.time.LocalDateTime.now());
+            
+            loanRepaymentRequestRepository.save(newRequest);
+            
+            // Send notification to tellers
+            try {
+                List<com.minet.sacco.entity.User> tellers = userRepository.findByRole(com.minet.sacco.entity.User.Role.TELLER);
+                for (com.minet.sacco.entity.User teller : tellers) {
+                    com.minet.sacco.entity.Notification notification = new com.minet.sacco.entity.Notification();
+                    notification.setUser(teller);
+                    notification.setType("LOAN_REPAYMENT_REQUEST");
+                    notification.setMessage("Member " + member.getFirstName() + " " + member.getLastName() + 
+                        " resubmitted a bank transfer repayment request for KES " + 
+                        String.format("%,.2f", amount) + " (previously rejected)");
+                    notification.setCategory("LOAN_REPAYMENT");
+                    notification.setLoanId(loan.getId());
+                    notification.setMemberId(member.getId());
+                    notification.setRead(false);
+                    notification.setCreatedAt(java.time.LocalDateTime.now());
+                    notificationRepository.save(notification);
+                }
+            } catch (Exception e) {
+                System.err.println("Error sending resubmission notification: " + e.getMessage());
+            }
+            
+            // Log audit trail
+            Authentication authentication2 = SecurityContextHolder.getContext().getAuthentication();
+            User currentUser2 = userRepository.findByUsername(authentication2.getName()).orElse(null);
+            auditService.logAction(
+                currentUser2,
+                "LOAN_REPAYMENT_REQUEST_RESUBMITTED",
+                "LoanRepaymentRequest",
+                newRequest.getId(),
+                null,
+                "Bank transfer repayment request resubmitted for loan " + loan.getId() + 
+                " (original request " + originalRequest.getId() + " was rejected)",
+                "SUCCESS"
+            );
+            
+            return ResponseEntity.ok(new ApiResponse(true, "Repayment request resubmitted successfully", newRequest.getId()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
     @PostMapping(value = "/deposit-requests", consumes = "multipart/form-data")
     public ResponseEntity<?> submitDepositRequest(@ModelAttribute com.minet.sacco.dto.DepositRequestFormDTO formData,
                                                    @RequestParam(required = false) MultipartFile receiptFile) {
@@ -1177,9 +1475,11 @@ public class MemberPortalController {
     @Autowired
     private LoanRepaymentRepository loanRepaymentRepository;
 
-    /**
-     * Member downloads their account statement
-     */
+    @Autowired
+    private LoanRepaymentRequestRepository loanRepaymentRequestRepository;
+
+    @Autowired
+    private com.minet.sacco.service.AuditService auditService;
     @GetMapping("/account-statement")
     public ResponseEntity<?> getAccountStatement(
             @RequestParam(required = false) String startDate,
@@ -1497,5 +1797,12 @@ public class MemberPortalController {
         
         document.close();
         return baos.toByteArray();
+    }
+
+    /**
+     * Helper method to format currency for notifications
+     */
+    private String formatCurrency(BigDecimal amount) {
+        return "KES " + String.format("%,.2f", amount);
     }
 }

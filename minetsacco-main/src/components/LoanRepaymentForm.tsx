@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { API_BASE_URL } from '@/config/api';
 
@@ -33,8 +33,9 @@ export default function LoanRepaymentForm({
   const [loans, setLoans] = useState<Loan[]>([]);
   const [selectedLoanId, setSelectedLoanId] = useState('');
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentMethod, setPaymentMethod] = useState('SAVINGS_DEDUCTION');
   const [description, setDescription] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const { toast } = useToast();
@@ -78,6 +79,16 @@ export default function LoanRepaymentForm({
       return;
     }
 
+    // Validate file for bank transfer
+    if (paymentMethod === 'BANK_TRANSFER' && !proofFile) {
+      toast({
+        title: 'Error',
+        description: 'Please upload proof of payment for bank transfer',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     const selectedLoan = loans.find(l => l.id === parseInt(selectedLoanId));
     if (!selectedLoan) {
       toast({
@@ -109,26 +120,47 @@ export default function LoanRepaymentForm({
 
     setProcessing(true);
     try {
-      await api.post(
-        '/member/repay-loan',
-        {
-          loanId: parseInt(selectedLoanId),
-          amount: repaymentAmount,
-          paymentMethod,
-          description: description || 'Loan repayment'
-        }
-      );
+      if (paymentMethod === 'BANK_TRANSFER') {
+        // For bank transfer, create a repayment request with file
+        const formData = new FormData();
+        formData.append('loanId', selectedLoanId);
+        formData.append('amount', repaymentAmount.toString());
+        formData.append('paymentMethod', paymentMethod);
+        formData.append('description', description || 'Loan repayment');
+        formData.append('proofFile', proofFile!);
 
-      toast({
-        title: 'Success',
-        description: 'Loan repayment processed successfully'
-      });
+        await api.post('/member/request-loan-repayment', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        toast({
+          title: 'Success',
+          description: 'Repayment request submitted. Teller will verify and approve.'
+        });
+      } else {
+        // For savings deduction, process immediately
+        await api.post(
+          '/member/repay-loan',
+          {
+            loanId: parseInt(selectedLoanId),
+            amount: repaymentAmount,
+            paymentMethod,
+            description: description || 'Loan repayment'
+          }
+        );
+
+        toast({
+          title: 'Success',
+          description: 'Loan repayment processed successfully'
+        });
+      }
 
       // Reset form
       setSelectedLoanId('');
       setAmount('');
-      setPaymentMethod('CASH');
+      setPaymentMethod('SAVINGS_DEDUCTION');
       setDescription('');
+      setProofFile(null);
       onOpenChange(false);
       onRepaymentSuccess?.();
     } catch (err: any) {
@@ -238,16 +270,14 @@ export default function LoanRepaymentForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="CASH">Cash</SelectItem>
-                  <SelectItem value="MPESA">M-Pesa</SelectItem>
-                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
                   <SelectItem value="SAVINGS_DEDUCTION">Savings Deduction</SelectItem>
+                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
                 {paymentMethod === 'SAVINGS_DEDUCTION' 
-                  ? 'Amount will be deducted from your savings account' 
-                  : 'External payment - savings account not affected'}
+                  ? 'Amount will be deducted from your savings account immediately' 
+                  : 'Upload proof of payment - teller will verify and approve'}
               </p>
             </div>
 
@@ -263,11 +293,50 @@ export default function LoanRepaymentForm({
               />
             </div>
 
+            {/* File Upload for Bank Transfer */}
+            {paymentMethod === 'BANK_TRANSFER' && (
+              <div className="space-y-2">
+                <Label htmlFor="proof">Upload Proof of Payment *</Label>
+                <div className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition"
+                  onClick={() => document.getElementById('file-input')?.click()}>
+                  <Upload className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm font-medium">
+                    {proofFile ? proofFile.name : 'Click to upload or drag and drop'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    PDF, JPG, PNG (Max 5MB)
+                  </p>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 5 * 1024 * 1024) {
+                          toast({
+                            title: 'Error',
+                            description: 'File size must be less than 5MB',
+                            variant: 'destructive'
+                          });
+                        } else {
+                          setProofFile(file);
+                        }
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Info Alert */}
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                Your repayment will be processed immediately. The outstanding balance will be updated accordingly.
+                {paymentMethod === 'SAVINGS_DEDUCTION' 
+                  ? 'Your repayment will be processed immediately from your savings account.'
+                  : 'Your repayment request will be submitted for teller verification. Once approved, the outstanding balance will be updated.'}
               </AlertDescription>
             </Alert>
 

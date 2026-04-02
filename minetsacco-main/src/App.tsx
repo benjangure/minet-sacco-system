@@ -32,6 +32,8 @@ import MemberAccountStatement from "./pages/MemberAccountStatement";
 import MemberLoanBalances from "./pages/MemberLoanBalances";
 import MemberLoanApplication from "./pages/MemberLoanApplication";
 import { AuditTrail } from "./pages/AuditTrail";
+import LoanRepaymentRequests from "./pages/LoanRepaymentRequests";
+import MemberLoanRepaymentStatus from "./pages/MemberLoanRepaymentStatus";
 
 
 const queryClient = new QueryClient();
@@ -70,6 +72,7 @@ const AppRoutes = () => (
     <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />
     <Route path="/members" element={<ProtectedRoute><AppLayout><Members /></AppLayout></ProtectedRoute>} />
     <Route path="/loans" element={<ProtectedRoute><AppLayout><Loans /></AppLayout></ProtectedRoute>} />
+    <Route path="/loan-repayment-requests" element={<ProtectedRoute><AppLayout><LoanRepaymentRequests /></AppLayout></ProtectedRoute>} />
     <Route path="/savings" element={<ProtectedRoute><AppLayout><Savings /></AppLayout></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><AppLayout><Reports /></AppLayout></ProtectedRoute>} />
     <Route path="/bulk-processing" element={<ProtectedRoute><AppLayout><BulkProcessing /></AppLayout></ProtectedRoute>} />
@@ -116,6 +119,14 @@ const AppRoutes = () => (
       element={
         <ProtectedRoute requiredRole="MEMBER">
           <MemberLoanApplication />
+        </ProtectedRoute>
+      } 
+    />
+    <Route 
+      path="/member/loan-repayment-status/:requestId" 
+      element={
+        <ProtectedRoute requiredRole="MEMBER">
+          <MemberLoanRepaymentStatus />
         </ProtectedRoute>
       } 
     />
