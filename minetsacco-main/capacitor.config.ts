@@ -8,8 +8,7 @@ const config: CapacitorConfig = {
     cleartext: true,
     androidScheme: 'http',
     allowNavigation: [
-      '192.168.0.195',
-      '192.168.0.195:8080'
+      '*' // Allow navigation to any domain for flexibility
     ]
   },
   plugins: {

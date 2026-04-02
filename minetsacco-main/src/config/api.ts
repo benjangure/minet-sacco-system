@@ -1,55 +1,81 @@
+/**
+ * API Configuration
+ * This file manages the backend API URL for different environments
+ */
+
 import axios from 'axios';
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+// Default backend URL - change this based on your network
+const DEFAULT_BACKEND_URL = 'http://192.168.0.195:8080';
 
-// Create axios instance with interceptors
+// Get backend URL from localStorage or use default
+export const getBackendUrl = (): string => {
+  const stored = localStorage.getItem('backendUrl');
+  return stored || DEFAULT_BACKEND_URL;
+};
+
+// Set backend URL in localStorage
+export const setBackendUrl = (url: string): void => {
+  localStorage.setItem('backendUrl', url);
+  // Reload page to apply new URL
+  window.location.reload();
+};
+
+// Get API base URL (for fetch calls)
+export const getApiBaseUrl = (): string => {
+  return `${getBackendUrl()}/api`;
+};
+
+// Export API_BASE_URL for backward compatibility
+export const API_BASE_URL = getApiBaseUrl();
+
+// Create axios instance with dynamic base URL
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor - attaches fresh token to EVERY request
-api.interceptors.request.use(
-  (config) => {
-    // Try to get token from multiple sources for compatibility
-    let token = localStorage.getItem('token');
-    
-    if (!token) {
-      // Fallback to session storage
-      const session = localStorage.getItem('session');
-      if (session) {
-        try {
-          const parsedSession = JSON.parse(session);
-          token = parsedSession.token;
-        } catch (e) {
-          console.error('Failed to parse session:', e);
-        }
-      }
-    }
-    
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Response interceptor - catches 401s globally
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid - clear storage and redirect to login
-      localStorage.removeItem('token');
-      localStorage.removeItem('session');
-      localStorage.removeItem('user');
-      window.location.href = '/member/login';
-    }
-    return Promise.reject(error);
+// Add token to requests
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  return config;
+});
 
+// Export default axios instance
 export default api;
+
+// Get full API endpoint
+export const getApiUrl = (endpoint: string): string => {
+  return `${getApiBaseUrl()}${endpoint}`;
+};
+
+// Common API endpoints
+export const API_ENDPOINTS = {
+  // Auth
+  LOGIN: '/auth/login',
+  LOGOUT: '/auth/logout',
+  REFRESH_TOKEN: '/auth/refresh-token',
+  
+  // Member Portal
+  MEMBER_DASHBOARD: '/member/dashboard',
+  MEMBER_PROFILE: '/member/profile',
+  MEMBER_LOANS: '/member/loans',
+  MEMBER_ACCOUNTS: '/member/accounts',
+  MEMBER_TRANSACTIONS: '/member/transactions',
+  
+  // Loan Repayment
+  REQUEST_LOAN_REPAYMENT: '/member/request-loan-repayment',
+  LOAN_REPAYMENT_REQUESTS: '/member/loan-repayment-requests',
+  LOAN_REPAYMENT_REJECTION_DETAILS: '/member/loan-repayment-requests/{requestId}/rejection-details',
+  LOAN_REPAYMENT_RESUBMIT: '/member/loan-repayment-requests/{requestId}/resubmit',
+  
+  // Notifications
+  NOTIFICATIONS: '/member/notifications',
+  NOTIFICATIONS_UNREAD: '/member/notifications/unread',
+  NOTIFICATIONS_UNREAD_COUNT: '/member/notifications/unread-count',
+};

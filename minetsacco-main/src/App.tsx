@@ -34,6 +34,7 @@ import MemberLoanApplication from "./pages/MemberLoanApplication";
 import { AuditTrail } from "./pages/AuditTrail";
 import LoanRepaymentRequests from "./pages/LoanRepaymentRequests";
 import MemberLoanRepaymentStatus from "./pages/MemberLoanRepaymentStatus";
+import MemberSettings from "./pages/MemberSettings";
 
 
 const queryClient = new QueryClient();
@@ -57,8 +58,8 @@ function RootRoute() {
     return <Navigate to="/dashboard" replace />;
   }
   
-  // If not logged in, show staff login
-  return <Login />;
+  // Default to member portal for mobile app
+  return <Navigate to="/member" replace />;
 }
 
 const AppRoutes = () => (
@@ -127,6 +128,14 @@ const AppRoutes = () => (
       element={
         <ProtectedRoute requiredRole="MEMBER">
           <MemberLoanRepaymentStatus />
+        </ProtectedRoute>
+      } 
+    />
+    <Route 
+      path="/member/settings" 
+      element={
+        <ProtectedRoute requiredRole="MEMBER">
+          <MemberSettings />
         </ProtectedRoute>
       } 
     />
