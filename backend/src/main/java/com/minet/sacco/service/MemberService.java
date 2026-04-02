@@ -223,14 +223,6 @@ public class MemberService {
         sharesAccount.setBalance(BigDecimal.ZERO);
         sharesAccount.setCreatedAt(LocalDateTime.now());
         accountRepository.save(sharesAccount);
-        
-        // Create Contributions Account
-        Account contributionsAccount = new Account();
-        contributionsAccount.setMember(member);
-        contributionsAccount.setAccountType(Account.AccountType.CONTRIBUTIONS);
-        contributionsAccount.setBalance(BigDecimal.ZERO);
-        contributionsAccount.setCreatedAt(LocalDateTime.now());
-        accountRepository.save(contributionsAccount);
     }
 
     public Member updateMember(Member member) {

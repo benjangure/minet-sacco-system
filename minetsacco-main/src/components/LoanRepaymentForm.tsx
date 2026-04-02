@@ -241,8 +241,14 @@ export default function LoanRepaymentForm({
                   <SelectItem value="CASH">Cash</SelectItem>
                   <SelectItem value="MPESA">M-Pesa</SelectItem>
                   <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                  <SelectItem value="SAVINGS_DEDUCTION">Savings Deduction</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                {paymentMethod === 'SAVINGS_DEDUCTION' 
+                  ? 'Amount will be deducted from your savings account' 
+                  : 'External payment - savings account not affected'}
+              </p>
             </div>
 
             {/* Description */}

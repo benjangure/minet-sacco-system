@@ -36,6 +36,12 @@ public class LoanEligibilityValidator {
         private long activeLoans;
         private long defaultedLoans;
         private BigDecimal totalOutstanding;
+        private BigDecimal maxEligibleAmount;
+        private BigDecimal netEligibleAmount;
+        private BigDecimal baseSavings;
+        private BigDecimal totalDisbursed;
+        private BigDecimal trueSavings;
+        private BigDecimal grossEligibility;
 
         public EligibilityResult() {
             this.errors = new ArrayList<>();
@@ -70,11 +76,30 @@ public class LoanEligibilityValidator {
 
         public BigDecimal getTotalOutstanding() { return totalOutstanding; }
         public void setTotalOutstanding(BigDecimal totalOutstanding) { this.totalOutstanding = totalOutstanding; }
+
+        public BigDecimal getMaxEligibleAmount() { return maxEligibleAmount; }
+        public void setMaxEligibleAmount(BigDecimal maxEligibleAmount) { this.maxEligibleAmount = maxEligibleAmount; }
+
+        public BigDecimal getNetEligibleAmount() { return netEligibleAmount; }
+        public void setNetEligibleAmount(BigDecimal netEligibleAmount) { this.netEligibleAmount = netEligibleAmount; }
+
+        public BigDecimal getBaseSavings() { return baseSavings; }
+        public void setBaseSavings(BigDecimal baseSavings) { this.baseSavings = baseSavings; }
+
+        public BigDecimal getTotalDisbursed() { return totalDisbursed; }
+        public void setTotalDisbursed(BigDecimal totalDisbursed) { this.totalDisbursed = totalDisbursed; }
+
+        public BigDecimal getTrueSavings() { return trueSavings; }
+        public void setTrueSavings(BigDecimal trueSavings) { this.trueSavings = trueSavings; }
+
+        public BigDecimal getGrossEligibility() { return grossEligibility; }
+        public void setGrossEligibility(BigDecimal grossEligibility) { this.grossEligibility = grossEligibility; }
     }
 
     /**
      * Validate member eligibility for loan application
      * IMPORTANT: Only SAVINGS count for eligibility (not shares)
+     * Uses formula: True Savings = Current Savings - Total Disbursed Loans
      * Frozen pledges from guarantorships reduce available savings
      */
     public EligibilityResult validateMemberEligibility(Member member, BigDecimal loanAmount) {
@@ -121,11 +146,34 @@ public class LoanEligibilityValidator {
         result.setSavingsBalance(savingsBalance);
         result.setSharesBalance(sharesBalance);
         result.setTotalBalance(totalBalance);
+        result.setBaseSavings(savingsBalance);
 
         // Get member's loan history from database
         List<Loan> memberLoans = loanRepository.findByMemberId(member.getId());
+        
+        // CRITICAL: Calculate total disbursed (original loan amounts, not outstanding)
+        // Only count loans with active statuses: DISBURSED, APPROVED, PARTIALLY_REPAID
+        BigDecimal totalDisbursed = memberLoans.stream()
+                .filter(loan -> loan.getStatus() == Loan.Status.DISBURSED || 
+                               loan.getStatus() == Loan.Status.APPROVED ||
+                               loan.getStatus() == Loan.Status.REPAID)
+                .map(Loan::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        // Calculate true savings (current savings minus disbursed loans)
+        BigDecimal trueSavings = savingsBalance.subtract(totalDisbursed);
+        if (trueSavings.compareTo(BigDecimal.ZERO) < 0) {
+            trueSavings = BigDecimal.ZERO;
+        }
+        
+        result.setTotalDisbursed(totalDisbursed);
+        result.setTrueSavings(trueSavings);
+        
+        // Calculate total outstanding (only active loans)
         BigDecimal totalOutstanding = memberLoans.stream()
-                .filter(loan -> loan.getStatus() == Loan.Status.DISBURSED || loan.getStatus() == Loan.Status.APPROVED)
+                .filter(loan -> loan.getStatus() == Loan.Status.DISBURSED || 
+                               loan.getStatus() == Loan.Status.APPROVED ||
+                               loan.getStatus() == Loan.Status.REPAID)
                 .map(Loan::getOutstandingBalance)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -134,7 +182,9 @@ public class LoanEligibilityValidator {
                 .count();
 
         long activeLoans = memberLoans.stream()
-                .filter(loan -> loan.getStatus() == Loan.Status.DISBURSED || loan.getStatus() == Loan.Status.APPROVED)
+                .filter(loan -> loan.getStatus() == Loan.Status.DISBURSED || 
+                               loan.getStatus() == Loan.Status.APPROVED ||
+                               loan.getStatus() == Loan.Status.REPAID)
                 .count();
 
         result.setTotalOutstanding(totalOutstanding);
@@ -157,27 +207,27 @@ public class LoanEligibilityValidator {
             }
         }
 
-        // Check 3: Minimum savings requirement (after subtracting frozen pledges)
-        if (availableBalance.compareTo(rules.getMinMemberSavings()) < 0) {
-            result.getErrors().add("Member available balance (KES " + availableBalance + ") below minimum (KES " + rules.getMinMemberSavings() + ")");
+        // Check 3: Minimum savings requirement (use TRUE savings, not current)
+        if (trueSavings.compareTo(rules.getMinMemberSavings()) < 0) {
+            result.getErrors().add("Member true savings (KES " + trueSavings + ") below minimum (KES " + rules.getMinMemberSavings() + ")");
             result.setEligible(false);
         }
 
-        // Check 4: Available balance should be at least X% of loan amount
+        // Check 4: True savings should be at least X% of loan amount
         BigDecimal requiredBalance = loanAmount.multiply(rules.getMinSavingsToLoanRatio());
-        if (availableBalance.compareTo(requiredBalance) < 0) {
-            result.getErrors().add("Member available balance (KES " + availableBalance + ") should be at least " + 
+        if (trueSavings.compareTo(requiredBalance) < 0) {
+            result.getErrors().add("Member true savings (KES " + trueSavings + ") should be at least " + 
                 rules.getMinSavingsToLoanRatio().multiply(new BigDecimal("100")) + 
                 "% of loan amount (KES " + requiredBalance + ")");
             result.setEligible(false);
         }
 
-        // Check 5: Outstanding balance should not exceed X% of total savings
-        BigDecimal maxAllowedOutstanding = totalBalance.multiply(rules.getMaxOutstandingToSavingsRatio());
+        // Check 5: Outstanding balance should not exceed X% of true savings
+        BigDecimal maxAllowedOutstanding = trueSavings.multiply(rules.getMaxOutstandingToSavingsRatio());
         if (totalOutstanding.compareTo(maxAllowedOutstanding) > 0) {
             result.getWarnings().add("Member's outstanding balance (KES " + totalOutstanding + ") exceeds " + 
                 rules.getMaxOutstandingToSavingsRatio().multiply(new BigDecimal("100")) + 
-                "% of total savings (KES " + maxAllowedOutstanding + ")");
+                "% of true savings (KES " + maxAllowedOutstanding + ")");
         }
 
         // Check 6: Maximum active loans limit
@@ -185,12 +235,23 @@ public class LoanEligibilityValidator {
             result.getWarnings().add("Member already has " + activeLoans + " active loans (max recommended: " + rules.getMaxActiveLoans() + ")");
         }
 
-        // Check 7: CRITICAL - Loan amount cannot exceed X times savings (Kenyan SACCO requirement, default 3x)
-        BigDecimal maxEligibleAmount = savingsBalance.multiply(rules.getMaxLoanToSavingsMultiplier() != null ? rules.getMaxLoanToSavingsMultiplier() : new BigDecimal("3.0"));
-        if (loanAmount.compareTo(maxEligibleAmount) > 0) {
-            result.getErrors().add("Loan amount (KES " + loanAmount + ") exceeds maximum eligible amount (" + 
-                (rules.getMaxLoanToSavingsMultiplier() != null ? rules.getMaxLoanToSavingsMultiplier() : new BigDecimal("3.0")) + 
-                "x savings = KES " + maxEligibleAmount + ")");
+        // Check 7: CRITICAL - Loan amount cannot exceed X times TRUE savings minus outstanding loans
+        // Formula: Gross Eligibility = True Savings × Multiplier
+        //          Net Eligibility = Gross Eligibility - Outstanding Balance
+        BigDecimal multiplier = rules.getMaxLoanToSavingsMultiplier() != null ? rules.getMaxLoanToSavingsMultiplier() : new BigDecimal("3.0");
+        BigDecimal grossEligibility = trueSavings.multiply(multiplier);
+        BigDecimal netEligibleAmount = grossEligibility.subtract(totalOutstanding);
+        
+        if (netEligibleAmount.compareTo(BigDecimal.ZERO) < 0) {
+            netEligibleAmount = BigDecimal.ZERO;
+        }
+        
+        result.setGrossEligibility(grossEligibility);
+        result.setMaxEligibleAmount(grossEligibility);
+        result.setNetEligibleAmount(netEligibleAmount);
+        
+        if (loanAmount.compareTo(netEligibleAmount) > 0) {
+            result.getErrors().add("Loan amount (KES " + loanAmount + ") exceeds remaining eligible amount (KES " + netEligibleAmount + "). Gross eligibility: KES " + grossEligibility + ", Outstanding loans: KES " + totalOutstanding);
             result.setEligible(false);
         }
 

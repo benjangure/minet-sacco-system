@@ -279,53 +279,42 @@ public class MemberPortalController {
         try {
             Member member = getCurrentMember();
             
-            // Get member's account balances
-            BigDecimal savingsBalance = BigDecimal.ZERO;
-            BigDecimal sharesBalance = BigDecimal.ZERO;
-            
-            Optional<Account> savingsAccount = accountRepository.findByMemberIdAndAccountType(
-                member.getId(), Account.AccountType.SAVINGS
-            );
-            if (savingsAccount.isPresent()) {
-                savingsBalance = savingsAccount.get().getBalance();
-            }
-            
-            Optional<Account> sharesAccount = accountRepository.findByMemberIdAndAccountType(
-                member.getId(), Account.AccountType.SHARES
-            );
-            if (sharesAccount.isPresent()) {
-                sharesBalance = sharesAccount.get().getBalance();
-            }
-            
-            // For eligibility, only SAVINGS count (not shares)
-            BigDecimal totalBalance = savingsBalance;
-            
-            // Get active loans
-            List<Loan> activeLoans = loanRepository.findByMemberIdAndStatus(
-                member.getId(), Loan.Status.DISBURSED
-            );
-            BigDecimal totalOutstanding = activeLoans.stream()
-                .map(Loan::getOutstandingBalance)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-            
-            // Check member eligibility
+            // Get eligibility result with all calculations
             com.minet.sacco.service.LoanEligibilityValidator.EligibilityResult eligibilityResult = 
                 loanService.checkMemberEligibility(member, BigDecimal.ZERO);
             
-            // Calculate max eligible amount using configurable multiplier (default 3x savings)
-            LoanEligibilityRules rules = loanEligibilityRulesService.getRules();
-            BigDecimal multiplier = rules.getMaxLoanToSavingsMultiplier() != null ? 
-                rules.getMaxLoanToSavingsMultiplier() : new BigDecimal("3.0");
-            BigDecimal maxEligibleAmount = savingsBalance.multiply(multiplier);
+            // Determine what to show based on loan status
+            BigDecimal displayAmount;
+            String displayLabel;
+            
+            if (eligibilityResult.getTotalOutstanding().compareTo(BigDecimal.ZERO) > 0) {
+                // Has outstanding loans: show REMAINING eligible
+                displayAmount = eligibilityResult.getNetEligibleAmount();
+                displayLabel = "Remaining Eligible";
+            } else {
+                // No outstanding loans: show MAX eligible
+                displayAmount = eligibilityResult.getMaxEligibleAmount();
+                displayLabel = "Eligible Amount";
+            }
             
             java.util.Map<String, Object> eligibilityData = new java.util.HashMap<>();
             eligibilityData.put("eligible", eligibilityResult.isEligible());
-            eligibilityData.put("maxEligibleAmount", maxEligibleAmount);
-            eligibilityData.put("savingsBalance", savingsBalance);
-            eligibilityData.put("sharesBalance", sharesBalance);
-            eligibilityData.put("totalBalance", totalBalance);
-            eligibilityData.put("activeLoans", activeLoans.size());
-            eligibilityData.put("totalOutstanding", totalOutstanding);
+            eligibilityData.put("displayAmount", displayAmount);
+            eligibilityData.put("displayLabel", displayLabel);
+            
+            // Breakdown fields for display
+            eligibilityData.put("baseSavings", eligibilityResult.getBaseSavings());
+            eligibilityData.put("totalDisbursed", eligibilityResult.getTotalDisbursed());
+            eligibilityData.put("trueSavings", eligibilityResult.getTrueSavings());
+            eligibilityData.put("grossEligibility", eligibilityResult.getGrossEligibility());
+            eligibilityData.put("totalOutstanding", eligibilityResult.getTotalOutstanding());
+            eligibilityData.put("netEligibleAmount", eligibilityResult.getNetEligibleAmount());
+            
+            // Legacy fields for backward compatibility
+            eligibilityData.put("currentSavings", eligibilityResult.getSavingsBalance());
+            eligibilityData.put("sharesBalance", eligibilityResult.getSharesBalance());
+            eligibilityData.put("activeLoans", eligibilityResult.getActiveLoans());
+            
             eligibilityData.put("errors", eligibilityResult.getErrors());
             eligibilityData.put("warnings", eligibilityResult.getWarnings());
             
@@ -570,6 +559,9 @@ public class MemberPortalController {
 
     /**
      * Member makes a loan repayment
+     * Payment method determines if savings is debited:
+     * - SAVINGS_DEDUCTION: Debit savings account
+     * - M-PESA, BANK_TRANSFER, CASH: No savings debit (external payment)
      */
     @PostMapping("/repay-loan")
     public ResponseEntity<?> repayLoan(@RequestBody LoanRepaymentDTO repaymentDTO) {
@@ -597,23 +589,56 @@ public class MemberPortalController {
                 return ResponseEntity.badRequest().body("Amount exceeds outstanding balance");
             }
             
-            // Create repayment transaction
+            // Create repayment record
             LoanRepayment repayment = new LoanRepayment();
             repayment.setLoan(loan);
             repayment.setAmount(repaymentDTO.getAmount());
             repayment.setRepaymentDate(java.time.LocalDateTime.now());
             repayment.setPaymentMethod(repaymentDTO.getPaymentMethod());
             repayment.setDescription(repaymentDTO.getDescription());
+            loanRepaymentRepository.save(repayment);
             
             // Update loan outstanding balance
             loan.setOutstandingBalance(loan.getOutstandingBalance().subtract(repaymentDTO.getAmount()));
             
-            // If fully repaid, update status
-            if (loan.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0) {
+            // Check if fully repaid
+            boolean isFullyRepaid = loan.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0;
+            if (isFullyRepaid) {
                 loan.setStatus(Loan.Status.REPAID);
             }
             
             loanRepository.save(loan);
+            
+            // Create transaction record for audit trail
+            Transaction transaction = new Transaction();
+            transaction.setAccount(accountRepository.findByMemberIdAndAccountType(
+                member.getId(), Account.AccountType.SAVINGS).orElse(null));
+            transaction.setTransactionType(Transaction.TransactionType.LOAN_REPAYMENT);
+            transaction.setAmount(repaymentDTO.getAmount());
+            transaction.setDescription("Loan repayment - " + repaymentDTO.getDescription());
+            transaction.setTransactionDate(java.time.LocalDateTime.now());
+            transactionRepository.save(transaction);
+            
+            // If payment method is SAVINGS_DEDUCTION, debit the savings account
+            if ("SAVINGS_DEDUCTION".equals(repaymentDTO.getPaymentMethod())) {
+                Optional<Account> savingsAccount = accountRepository.findByMemberIdAndAccountType(
+                    member.getId(), Account.AccountType.SAVINGS);
+                
+                if (savingsAccount.isPresent()) {
+                    Account account = savingsAccount.get();
+                    account.setBalance(account.getBalance().subtract(repaymentDTO.getAmount()));
+                    accountRepository.save(account);
+                }
+            }
+            
+            // If fully repaid, release guarantor pledges
+            if (isFullyRepaid) {
+                List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
+                for (Guarantor guarantor : guarantors) {
+                    guarantor.setStatus(Guarantor.Status.RELEASED);
+                    guarantorRepository.save(guarantor);
+                }
+            }
             
             return ResponseEntity.ok("Loan repayment processed successfully");
         } catch (Exception e) {
@@ -660,6 +685,11 @@ public class MemberPortalController {
             // Verify member owns this account
             if (!account.getMember().getId().equals(member.getId())) {
                 return ResponseEntity.status(403).body(ApiResponse.error("Unauthorized"));
+            }
+            
+            // Prevent deposits to SHARES account
+            if (account.getAccountType() == Account.AccountType.SHARES) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("Deposits to SHARES account are not allowed. This SACCO does not accept share contributions."));
             }
             
             // Parse and validate amount

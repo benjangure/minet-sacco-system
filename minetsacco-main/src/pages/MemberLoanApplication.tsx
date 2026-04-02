@@ -183,10 +183,10 @@ export default function MemberLoanApplication() {
     }
 
     // Check if amount exceeds eligibility
-    if (eligibility && loanAmount > eligibility.maxEligibleAmount) {
+    if (eligibility && loanAmount > eligibility.displayAmount) {
       toast({ 
         title: 'Error', 
-        description: `Amount exceeds your maximum eligible amount of ${formatCurrency(eligibility.maxEligibleAmount)}`, 
+        description: `Amount exceeds your ${eligibility.displayLabel.toLowerCase()} of ${formatCurrency(eligibility.displayAmount)}`, 
         variant: 'destructive' 
       });
       return;
@@ -252,24 +252,62 @@ export default function MemberLoanApplication() {
             </span>
           </div>
           
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <p className="text-sm text-gray-600">Max Eligible Amount</p>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(eligibility.maxEligibleAmount || 0)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Total Balance</p>
-              <p className="text-xl font-semibold">{formatCurrency((eligibility.savingsBalance || 0) + (eligibility.sharesBalance || 0))}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Savings</p>
-              <p className="text-lg font-semibold">{formatCurrency(eligibility.savingsBalance || 0)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Shares</p>
-              <p className="text-lg font-semibold">{formatCurrency(eligibility.sharesBalance || 0)}</p>
-            </div>
+          {/* Main eligibility display */}
+          <div className="bg-white rounded p-4 border border-gray-200">
+            <p className="text-sm text-gray-600 mb-1">{eligibility.displayLabel}</p>
+            <p className="text-3xl font-bold text-green-600">{formatCurrency(eligibility.displayAmount || 0)}</p>
           </div>
+
+          {/* Breakdown when member has active loans */}
+          {eligibility.totalOutstanding > 0 && (
+            <div className="bg-white rounded p-4 border border-gray-200 space-y-3">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Eligibility Breakdown</p>
+              
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Base Savings:</span>
+                <span className="font-medium">{formatCurrency(eligibility.baseSavings || 0)}</span>
+              </div>
+              
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Active Loan Deduction:</span>
+                <span className="font-medium text-red-600">−{formatCurrency(eligibility.totalDisbursed || 0)}</span>
+              </div>
+              
+              <div className="border-t pt-2 flex justify-between text-sm font-semibold">
+                <span className="text-gray-700">True Savings:</span>
+                <span>{formatCurrency(eligibility.trueSavings || 0)}</span>
+              </div>
+              
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Gross Eligibility (3×):</span>
+                <span className="font-medium">{formatCurrency(eligibility.grossEligibility || 0)}</span>
+              </div>
+              
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Outstanding Balance:</span>
+                <span className="font-medium text-red-600">{formatCurrency(eligibility.totalOutstanding || 0)}</span>
+              </div>
+              
+              <div className="border-t pt-2 flex justify-between text-sm font-semibold text-green-700">
+                <span>Remaining Eligible:</span>
+                <span>{formatCurrency(eligibility.netEligibleAmount || 0)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Simple display when no active loans */}
+          {eligibility.totalOutstanding === 0 && (
+            <div className="bg-white rounded p-4 border border-gray-200 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Current Savings:</span>
+                <span className="font-medium">{formatCurrency(eligibility.currentSavings || 0)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Shares:</span>
+                <span className="font-medium">{formatCurrency(eligibility.sharesBalance || 0)}</span>
+              </div>
+            </div>
+          )}
 
           {eligibility.errors && eligibility.errors.length > 0 && (
             <div className="bg-red-100 border border-red-300 rounded p-3">

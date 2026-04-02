@@ -13,9 +13,12 @@ The system handles member registration, savings management, loan applications, a
 - **Lack of Financial Transparency** → Real-time dashboards and comprehensive reports
 - **Disconnected Channels** → Unified platform for staff and members
 - **Data Security Concerns** → JWT-based authentication with role-based permissions
-- **Audit Trail Gaps** → Complete audit logging of all transactions
+- **Audit Trail Gaps** → Complete audit logging of all transactions for SASRA compliance
 - **Mobile Accessibility** → Native Android APK for member access on-the-go
 - **Bulk Operations** → Excel-based bulk processing for monthly contributions and member registration
+- **Incorrect Loan Eligibility** → Formula-based calculation accounting for active loans
+- **Incomplete Repayment Process** → Transaction recording, conditional savings debit, guarantor pledge release
+- **Improper Account Restrictions** → Shares account properly restricted from deposits
 
 ## 3. System Architecture
 
@@ -313,22 +316,26 @@ The system handles member registration, savings management, loan applications, a
 
 ## 9. Key Features Summary
 
-✓ Multi-role user management with JWT authentication
+✓ Multi-role user management with JWT authentication (5 staff roles + member role)
 ✓ Comprehensive member lifecycle management
 ✓ Flexible loan product configuration with eligibility rules
-✓ Multi-stage loan approval workflow
-✓ Guarantor validation and capacity tracking
+✓ Multi-stage loan approval workflow (LOAN_OFFICER → CREDIT_COMMITTEE → TREASURER)
+✓ Guarantor validation and capacity tracking with pledge freezing
 ✓ Real-time account balance management
 ✓ Bulk Excel processing for members and contributions
-✓ Complete audit trail logging
-✓ Mobile-first member portal via Android APK
-✓ Responsive web dashboard for staff
-✓ Comprehensive financial reporting
-✓ SASRA compliance features
+✓ Complete audit trail logging for SASRA compliance
+✓ Mobile-first member portal via Android APK with splash screen and logo
+✓ Responsive web dashboard for staff with role-based access
+✓ Comprehensive financial reporting (statements, P&L, cashbook)
+✓ SASRA compliance features and audit trail
 ✓ Notification system for approvals and updates
 ✓ Document management and KYC tracking
 ✓ Profit & loss reporting
 ✓ Transaction history and reconciliation
+✓ Loan eligibility calculation accounting for active loans
+✓ Conditional savings debit on repayment (payment method dependent)
+✓ Automatic guarantor pledge release on full loan repayment
+✓ Shares account properly restricted from deposits
 
 ## 10. Performance & Scalability
 

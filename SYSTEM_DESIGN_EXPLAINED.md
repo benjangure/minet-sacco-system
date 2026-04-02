@@ -508,3 +508,90 @@ Audit Logging
 - Unique constraints on critical fields
 - Check constraints for valid values
 
+
+
+## 8. Recent Fixes & Enhancements (April 2026)
+
+### Loan Eligibility Calculation Fix
+
+**Problem:** Members could apply for multiple loans and the system incorrectly calculated eligibility by treating loan disbursements as new savings, inflating the eligible amount.
+
+**Solution:** Formula-based approach using True Savings calculation:
+```
+True Savings = Current Savings - Total Disbursed Loans
+Remaining Eligibility = (True Savings × 3) - Outstanding Loans
+```
+
+**Key Implementation Details:**
+- Only counts loans with active statuses (DISBURSED, APPROVED, REPAID)
+- Always subtracts original loan amount, never outstanding balance
+- Handles partially repaid loans correctly
+- Displays breakdown to members showing all components
+
+**Files Modified:**
+- `LoanEligibilityValidator.java` - Core calculation logic
+- `MemberPortalController.java` - API endpoint
+- `MemberLoanApplication.tsx` - Frontend display
+
+### Loan Repayment Process Enhancement
+
+**Problem:** Repayments weren't creating transaction records, not updating savings conditionally, and not releasing guarantor pledges.
+
+**Solution:** Complete repayment workflow with 4 components:
+
+1. **Transaction Recording** - Every repayment creates LOAN_REPAYMENT transaction for audit trail
+2. **Conditional Savings Debit** - Only SAVINGS_DEDUCTION payment method debits savings; external payments (M-Pesa, Bank Transfer, Cash) don't touch savings
+3. **Guarantor Pledge Release** - When loan fully repaid, all guarantor pledges automatically released
+4. **Loan Status Progression** - DISBURSED → PARTIALLY_REPAID → REPAID
+
+**Payment Method Logic:**
+```
+SAVINGS_DEDUCTION → Debit savings + Create LOAN_REPAYMENT transaction
+M-PESA → No savings debit + Create LOAN_REPAYMENT transaction
+BANK_TRANSFER → No savings debit + Create LOAN_REPAYMENT transaction
+CASH → No savings debit + Create LOAN_REPAYMENT transaction
+```
+
+**Files Modified:**
+- `MemberPortalController.java` - Repayment logic
+- `LoanRepaymentForm.tsx` - Payment method selection
+
+### Shares Account Restriction
+
+**Problem:** Members could submit deposit requests to SHARES account, which should not accept contributions.
+
+**Solution:** Added validation to reject deposits to SHARES account with clear error message.
+
+**Files Modified:**
+- `MemberPortalController.java` - Deposit validation
+
+### APK Icon & Splash Screen
+
+**Problem:** APK displayed generic "M" icon instead of Minet SACCO logo.
+
+**Solution:** 
+- Replaced vector icon with actual logo PNG in all Android densities
+- Created custom splash screen with white background, logo, and "Welcome to Minet SACCO" text
+- Splash displays for 4 seconds on app startup
+
+**Files Modified:**
+- `ic_launcher_foreground.xml` - Logo reference
+- `splash_screen.xml` - Splash screen layout
+- `capacitor.config.ts` - Splash configuration
+
+### Member Portal Routing
+
+**Problem:** Staff couldn't access staff login after routing changes.
+
+**Solution:** Intelligent root route that checks user role:
+- Staff logged in → `/dashboard`
+- Member logged in → `/member/dashboard`
+- Not logged in → Staff login page
+
+**Files Modified:**
+- `App.tsx` - Root routing logic
+
+---
+
+**Last Updated:** April 2, 2026  
+**Version:** 1.0.0

@@ -43,6 +43,22 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RootRoute() {
+  const { session, loading, user } = useAuth();
+  if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
+  
+  // If logged in, redirect based on role
+  if (session) {
+    if (user?.role === 'MEMBER') {
+      return <Navigate to="/member/dashboard" replace />;
+    }
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  // If not logged in, show staff login
+  return <Login />;
+}
+
 const AppRoutes = () => (
   <Routes>
     {/* Admin/Staff Routes */}
@@ -50,7 +66,7 @@ const AppRoutes = () => (
     <Route path="/admin" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
     <Route path="/reset-password" element={<ResetPassword />} />
-    <Route path="/" element={<PublicRoute><Login /></PublicRoute>} />
+    <Route path="/" element={<RootRoute />} />
     <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />
     <Route path="/members" element={<ProtectedRoute><AppLayout><Members /></AppLayout></ProtectedRoute>} />
     <Route path="/loans" element={<ProtectedRoute><AppLayout><Loans /></AppLayout></ProtectedRoute>} />

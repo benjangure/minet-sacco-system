@@ -10,7 +10,6 @@ import MemberLayout from '@/components/MemberLayout';
 import GuarantorApprovalDialog from '@/components/GuarantorApprovalDialog';
 import LoanRepaymentForm from '@/components/LoanRepaymentForm';
 import DepositRequestForm from '@/components/DepositRequestForm';
-import InstallPrompt from '@/components/InstallPrompt';
 import MpesaTransaction from '@/components/MpesaTransaction';
 import MemberNotificationsView from '@/components/MemberNotificationsView';
 import MemberReportsView from '@/components/MemberReportsView';
@@ -307,7 +306,6 @@ export default function MemberDashboard() {
 
   return (
     <MemberLayout memberName={dashboard?.firstName || 'Member'} onLogout={handleLogout} unreadNotifications={unreadNotifications}>
-      <InstallPrompt />
       <div className="space-y-4 max-w-7xl mx-auto">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold text-foreground">Welcome, {dashboard?.firstName}!</h1>
