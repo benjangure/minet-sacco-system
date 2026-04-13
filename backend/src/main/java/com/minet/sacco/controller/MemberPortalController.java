@@ -8,6 +8,7 @@ import com.minet.sacco.service.GuarantorValidationService;
 import com.minet.sacco.service.LoanService;
 import com.minet.sacco.service.UserService;
 import com.minet.sacco.service.NotificationService;
+import com.minet.sacco.service.GuarantorTrackingService;
 import com.minet.sacco.service.DepositRequestService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -267,6 +268,9 @@ public class MemberPortalController {
     private NotificationService notificationService;
 
     @Autowired
+    private GuarantorTrackingService guarantorTrackingService;
+
+    @Autowired
     private com.minet.sacco.service.LoanEligibilityRulesService loanEligibilityRulesService;
 
     @Autowired
@@ -315,6 +319,9 @@ public class MemberPortalController {
             eligibilityData.put("currentSavings", eligibilityResult.getSavingsBalance());
             eligibilityData.put("sharesBalance", eligibilityResult.getSharesBalance());
             eligibilityData.put("activeLoans", eligibilityResult.getActiveLoans());
+            
+            // Add member ID for self-guarantee functionality
+            eligibilityData.put("memberId", member.getId());
             
             eligibilityData.put("errors", eligibilityResult.getErrors());
             eligibilityData.put("warnings", eligibilityResult.getWarnings());
@@ -392,18 +399,7 @@ public class MemberPortalController {
             // Apply for loan
             Loan loan = loanService.applyForLoan(request, user);
             
-            // Send notifications to guarantors
-            if (request.getGuarantorIds() != null && !request.getGuarantorIds().isEmpty()) {
-                for (Long guarantorMemberId : request.getGuarantorIds()) {
-                    Optional<User> guarantorUserOpt = userService.getUserByMemberId(guarantorMemberId);
-                    if (guarantorUserOpt.isPresent()) {
-                        String message = "Member " + member.getMemberNumber() + " (" + member.getFirstName() + " " + 
-                            member.getLastName() + ") has selected you as a guarantor for a loan of KES " + 
-                            loan.getAmount() + ". Please review and approve or reject.";
-                        notificationService.notifyUser(guarantorUserOpt.get().getId(), message, "GUARANTOR_REQUEST");
-                    }
-                }
-            }
+            // Notifications are sent by LoanService.applyForLoan() for non-self guarantors
             
             return ResponseEntity.ok(ApiResponse.success("Loan application submitted successfully", loan));
         } catch (Exception e) {
@@ -506,7 +502,8 @@ public class MemberPortalController {
      * Check if member is eligible to be a guarantor
      */
     @GetMapping("/guarantor-eligibility/{guarantorId}/{loanAmount}")
-    public ResponseEntity<?> checkGuarantorEligibility(@PathVariable Long guarantorId, @PathVariable BigDecimal loanAmount) {
+    public ResponseEntity<?> checkGuarantorEligibility(@PathVariable Long guarantorId, @PathVariable BigDecimal loanAmount,
+            @RequestParam(required = false) BigDecimal guaranteeAmount) {
         try {
             Optional<Member> memberOpt = memberRepository.findById(guarantorId);
             if (!memberOpt.isPresent()) {
@@ -535,9 +532,12 @@ public class MemberPortalController {
             // Calculate available capacity
             BigDecimal availableCapacity = savingsBalance.subtract(currentPledges);
             
-            // Validate eligibility for this specific loan
+            // Use guaranteeAmount if provided (for partial guarantees), otherwise use full loanAmount
+            BigDecimal amountToValidate = guaranteeAmount != null ? guaranteeAmount : loanAmount;
+            
+            // Validate eligibility for this specific guarantee amount
             com.minet.sacco.service.GuarantorValidationService.GuarantorValidationResult result = 
-                guarantorValidationService.validateGuarantor(guarantor, loanAmount, null);
+                guarantorValidationService.validateGuarantorWithGuaranteeAmount(guarantor, loanAmount, amountToValidate, null);
             
             // Build response with all details
             java.util.Map<String, Object> response = new java.util.HashMap<>();
@@ -550,7 +550,8 @@ public class MemberPortalController {
             response.put("availableCapacity", availableCapacity);
             response.put("activeGuarantorships", activeGuarantorships);
             response.put("loanAmount", loanAmount);
-            response.put("canGuarantee", availableCapacity.compareTo(loanAmount) >= 0 && result.isEligible());
+            response.put("guaranteeAmount", amountToValidate);
+            response.put("canGuarantee", availableCapacity.compareTo(amountToValidate) >= 0 && result.isEligible());
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -594,8 +595,8 @@ public class MemberPortalController {
             LoanRepayment repayment = new LoanRepayment();
             repayment.setLoan(loan);
             repayment.setAmount(repaymentDTO.getAmount());
-            repayment.setRepaymentDate(java.time.LocalDateTime.now());
-            repayment.setPaymentMethod(repaymentDTO.getPaymentMethod());
+            repayment.setPaymentDate(java.time.LocalDateTime.now());
+            repayment.setPaymentMethod(LoanRepayment.PaymentMethod.valueOf(repaymentDTO.getPaymentMethod()));
             repayment.setDescription(repaymentDTO.getDescription());
             loanRepaymentRepository.save(repayment);
             
@@ -632,13 +633,12 @@ public class MemberPortalController {
                 }
             }
             
-            // If fully repaid, release guarantor pledges
+            // Track pledge reduction for guarantors (proportional to repayment)
+            guarantorTrackingService.trackPledgeReduction(loan, repaymentDTO.getAmount());
+            
+            // If fully repaid, release all guarantor pledges
             if (isFullyRepaid) {
-                List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
-                for (Guarantor guarantor : guarantors) {
-                    guarantor.setStatus(Guarantor.Status.RELEASED);
-                    guarantorRepository.save(guarantor);
-                }
+                guarantorTrackingService.releaseAllPledges(loan);
             }
             
             return ResponseEntity.ok("Loan repayment processed successfully");
@@ -1650,7 +1650,7 @@ public class MemberPortalController {
             document.add(loanTable);
             
             // Repayments
-            List<LoanRepayment> repayments = loanRepaymentRepository.findByLoanId(loan.getId());
+            List<LoanRepayment> repayments = loanRepaymentRepository.findByLoanIdOrderByPaymentDateDesc(loan.getId());
             if (!repayments.isEmpty()) {
                 document.add(new com.itextpdf.layout.element.Paragraph("Repayments:").setFontSize(10));
                 com.itextpdf.layout.element.Table repaymentTable = new com.itextpdf.layout.element.Table(
@@ -1660,11 +1660,11 @@ public class MemberPortalController {
                 repaymentTable.addHeaderCell("Method");
                 
                 for (LoanRepayment repayment : repayments) {
-                    if (repayment.getRepaymentDate().toLocalDate().isAfter(start.minusDays(1)) && 
-                        repayment.getRepaymentDate().toLocalDate().isBefore(end.plusDays(1))) {
-                        repaymentTable.addCell(repayment.getRepaymentDate().toLocalDate().toString());
+                    if (repayment.getPaymentDate().toLocalDate().isAfter(start.minusDays(1)) && 
+                        repayment.getPaymentDate().toLocalDate().isBefore(end.plusDays(1))) {
+                        repaymentTable.addCell(repayment.getPaymentDate().toLocalDate().toString());
                         repaymentTable.addCell("KES " + repayment.getAmount());
-                        repaymentTable.addCell(repayment.getPaymentMethod());
+                        repaymentTable.addCell(repayment.getPaymentMethod().toString());
                     }
                 }
                 document.add(repaymentTable);

@@ -4,9 +4,22 @@
  */
 
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
 
-// Default backend URL - change this based on your network
-const DEFAULT_BACKEND_URL = 'http://192.168.0.195:8080';
+// Determine backend URL based on platform
+const getDefaultBackendUrl = (): string => {
+  const isNative = Capacitor.isNativePlatform();
+  
+  if (isNative) {
+    // For APK: use laptop IP (can be changed in settings)
+    return 'http://192.168.0.50:8080';
+  } else {
+    // For web: use localhost
+    return 'http://localhost:8080';
+  }
+};
+
+const DEFAULT_BACKEND_URL = getDefaultBackendUrl();
 
 // Get backend URL from localStorage or use default
 export const getBackendUrl = (): string => {
@@ -14,11 +27,11 @@ export const getBackendUrl = (): string => {
   return stored || DEFAULT_BACKEND_URL;
 };
 
-// Set backend URL in localStorage
+// Set backend URL in localStorage (without reload - axios instance will pick it up)
 export const setBackendUrl = (url: string): void => {
   localStorage.setItem('backendUrl', url);
-  // Reload page to apply new URL
-  window.location.reload();
+  // Update axios instance base URL
+  api.defaults.baseURL = `${url}/api`;
 };
 
 // Get API base URL (for fetch calls)

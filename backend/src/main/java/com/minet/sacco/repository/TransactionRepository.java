@@ -132,4 +132,20 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
                                                 @Param("endDate") LocalDateTime endDate);
 
     List<Transaction> findByAccountMemberIdOrderByTransactionDateDesc(Long memberId);
+
+    @Query("SELECT t FROM Transaction t WHERE t.account.member.id = :memberId " +
+           "AND t.transactionDate >= :startDate AND t.transactionDate <= :endDate " +
+           "ORDER BY t.transactionDate DESC")
+    List<Transaction> findByMemberIdAndDateRange(@Param("memberId") Long memberId,
+                                                  @Param("startDate") LocalDateTime startDate,
+                                                  @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT t FROM Transaction t WHERE t.account.member.id = :memberId " +
+           "AND t.transactionType = :transactionType " +
+           "AND t.transactionDate >= :startDate AND t.transactionDate <= :endDate " +
+           "ORDER BY t.transactionDate DESC")
+    List<Transaction> findByMemberIdAndTypeAndDateRange(@Param("memberId") Long memberId,
+                                                         @Param("transactionType") Transaction.TransactionType transactionType,
+                                                         @Param("startDate") LocalDateTime startDate,
+                                                         @Param("endDate") LocalDateTime endDate);
 }

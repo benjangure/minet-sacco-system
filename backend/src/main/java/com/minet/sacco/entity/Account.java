@@ -25,6 +25,9 @@ public class Account {
     @DecimalMin(value = "0.00")
     private BigDecimal balance = BigDecimal.ZERO;
 
+    @DecimalMin(value = "0.00")
+    private BigDecimal frozenSavings = BigDecimal.ZERO;  // Amount frozen for self-guarantee loans
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -51,6 +54,9 @@ public class Account {
 
     public BigDecimal getBalance() { return balance; }
     public void setBalance(BigDecimal balance) { this.balance = balance; }
+
+    public BigDecimal getFrozenSavings() { return frozenSavings; }
+    public void setFrozenSavings(BigDecimal frozenSavings) { this.frozenSavings = frozenSavings; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

@@ -182,6 +182,8 @@ export default function MemberDashboard() {
   const [mpesaDepositOpen, setMpesaDepositOpen] = useState(false);
   const [mpesaWithdrawOpen, setMpesaWithdrawOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [eligibility, setEligibility] = useState<any>(null);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -200,6 +202,7 @@ export default function MemberDashboard() {
   useEffect(() => {
     fetchDashboard();
     fetchUnreadNotifications();
+    fetchEligibility();
   }, []);
 
   const fetchDashboard = async () => {
@@ -244,6 +247,21 @@ export default function MemberDashboard() {
       setUnreadNotifications(response.data?.data || 0);
     } catch (error) {
       console.error('Error fetching unread notifications:', error);
+    }
+  };
+
+  const fetchEligibility = async () => {
+    setEligibilityLoading(true);
+    try {
+      const response = await api.get('/member/eligibility');
+      if (response.data && response.data.data) {
+        setEligibility(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching eligibility:', error);
+      setEligibility(null);
+    } finally {
+      setEligibilityLoading(false);
     }
   };
 
@@ -400,6 +418,17 @@ export default function MemberDashboard() {
                   </CardContent>
                 </Card>
               </div>
+            </div>
+
+            {/* Quick link to Apply for Loan */}
+            <div className="flex justify-center">
+              <Button 
+                size="lg"
+                onClick={() => navigate('/member/apply-loan')}
+                className="gap-2"
+              >
+                <span>Apply for Loan</span>
+              </Button>
             </div>
 
             {dashboard?.recentTransactions && dashboard.recentTransactions.length > 0 && (

@@ -115,6 +115,9 @@ public class LoanDisbursementService {
         // Update guarantor status to ACTIVE
         updateGuarantorStatusToActive(updatedLoan);
 
+        // Freeze self-guarantor savings
+        freezeSelfGuarantorSavings(updatedLoan);
+
         // Log audit event
         String loanDetails = "Loan #" + updatedLoan.getLoanNumber() + " - Member: " + updatedLoan.getMember().getFirstName() + " " + 
                             updatedLoan.getMember().getLastName() + " - Amount: KES " + updatedLoan.getAmount();
@@ -124,13 +127,19 @@ public class LoanDisbursementService {
     }
 
     /**
-     * Update all guarantors for a loan to ACTIVE status
+     * Update all guarantors for a loan to ACTIVE status and freeze their pledge amount
      */
     @Transactional
     public void updateGuarantorStatusToActive(Loan loan) {
         java.util.List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
         for (Guarantor guarantor : guarantors) {
             guarantor.setStatus(Guarantor.Status.ACTIVE);
+            // Freeze the guarantor's pledge amount equal to their guarantee amount
+            // If guarantee_amount is not set, use the loan amount (for backward compatibility)
+            BigDecimal pledgeAmount = guarantor.getGuaranteeAmount() != null && guarantor.getGuaranteeAmount().compareTo(BigDecimal.ZERO) > 0
+                    ? guarantor.getGuaranteeAmount()
+                    : loan.getAmount();
+            guarantor.setPledgeAmount(pledgeAmount);
             guarantorRepository.save(guarantor);
         }
     }
@@ -148,6 +157,44 @@ public class LoanDisbursementService {
                 guarantor.setStatus(Guarantor.Status.REJECTED);
             }
             guarantorRepository.save(guarantor);
+        }
+    }
+
+    /**
+     * Freeze savings for self-guarantors
+     * When a loan is disbursed, self-guarantor savings are frozen equal to their guarantee amount
+     */
+    @Transactional
+    public void freezeSelfGuarantorSavings(Loan loan) {
+        java.util.List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
+        
+        for (Guarantor guarantor : guarantors) {
+            // Only freeze for self-guarantors
+            if (!guarantor.isSelfGuarantee()) {
+                continue;
+            }
+            
+            // Get self-guarantor's savings account
+            Account savingsAccount = accountRepository
+                    .findByMemberIdAndAccountType(guarantor.getMember().getId(), Account.AccountType.SAVINGS)
+                    .orElse(null);
+            
+            if (savingsAccount == null) {
+                continue;
+            }
+            
+            // Freeze the guarantee amount
+            BigDecimal freezeAmount = guarantor.getGuaranteeAmount() != null && 
+                                     guarantor.getGuaranteeAmount().compareTo(BigDecimal.ZERO) > 0
+                    ? guarantor.getGuaranteeAmount()
+                    : loan.getAmount();
+            
+            // Add to frozen savings
+            BigDecimal currentFrozen = savingsAccount.getFrozenSavings() != null ? 
+                    savingsAccount.getFrozenSavings() : BigDecimal.ZERO;
+            savingsAccount.setFrozenSavings(currentFrozen.add(freezeAmount));
+            savingsAccount.setUpdatedAt(LocalDateTime.now());
+            accountRepository.save(savingsAccount);
         }
     }
 }

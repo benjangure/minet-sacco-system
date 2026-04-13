@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS support_tickets (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    member_id BIGINT NOT NULL,
+    created_by BIGINT NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    description LONGTEXT NOT NULL,
+    status VARCHAR(50) DEFAULT 'OPEN',
+    priority VARCHAR(50) DEFAULT 'MEDIUM',
+    resolution LONGTEXT,
+    resolved_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NULL,
+    FOREIGN KEY (member_id) REFERENCES members(id),
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (resolved_by) REFERENCES users(id),
+    INDEX idx_member_id (member_id),
+    INDEX idx_created_by (created_by),
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at)
+);

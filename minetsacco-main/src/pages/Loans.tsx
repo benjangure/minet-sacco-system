@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, Eye, CheckCircle, XCircle, DollarSign, AlertCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import GuarantorDetailsModal from "@/components/GuarantorDetailsModal";
 
 import { API_BASE_URL } from "@/config/api";
 
@@ -94,11 +96,15 @@ interface Member {
 }
 
 const Loans = () => {
+  const [searchParams] = useSearchParams();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [products, setProducts] = useState<LoanProduct[]>([]);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(() => {
+    // Initialize from query parameter if present, otherwise default to "all"
+    return searchParams.get("status") || "all";
+  });
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewLoan, setViewLoan] = useState<Loan | null>(null);
@@ -114,6 +120,9 @@ const Loans = () => {
   const [preCheck, setPreCheck] = useState<any>(null);
   const [preCheckLoading, setPreCheckLoading] = useState(false);
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
+  const [guarantorModalOpen, setGuarantorModalOpen] = useState(false);
+  const [selectedLoanGuarantors, setSelectedLoanGuarantors] = useState<any[]>([]);
+  const [selectedLoanForGuarantors, setSelectedLoanForGuarantors] = useState<Loan | null>(null);
   const { toast } = useToast();
   const { session, role } = useAuth();
 
@@ -185,7 +194,16 @@ const Loans = () => {
         }
       }).catch(() => {});
     }
-  }, [session, statusFilter]);
+  }, [session]);
+
+  const handleApplyStatusFilter = () => {
+    fetchLoans();
+  };
+
+  const handleClearFilters = () => {
+    setStatusFilter("all");
+    setSearch("");
+  };
 
   const [form, setForm] = useState({ 
     memberId: "", 
@@ -344,18 +362,9 @@ const Loans = () => {
   };
 
   const handleEyeIconClick = (loan: Loan) => {
-    if (canApproveLoans) {
-      // Credit Committee: Show eligibility dialog
-      validateEligibilityBeforeApproval(loan);
-    } else if (canDisburseLoans) {
-      // Treasurer: Show simple loan details
-      setSelectedLoanForDetails(loan);
-      setLoanDetailsOpen(true);
-    } else {
-      // Others: Show simple loan details
-      setSelectedLoanForDetails(loan);
-      setLoanDetailsOpen(true);
-    }
+    // Allow viewing any loan regardless of status
+    setSelectedLoanForDetails(loan);
+    setLoanDetailsOpen(true);
   };
 
   const handleAction = async () => {
@@ -418,6 +427,24 @@ const Loans = () => {
     `${loan.member?.firstName} ${loan.member?.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
     loan.member?.memberNumber?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleViewGuarantors = async (loan: Loan) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
+        headers: { "Authorization": `Bearer ${session?.token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedLoanGuarantors(data.data || []);
+        setSelectedLoanForGuarantors(loan);
+        setGuarantorModalOpen(true);
+      } else {
+        toast({ title: "Error", description: "Failed to load guarantors", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to load guarantors", variant: "destructive" });
+    }
+  };
 
   return (
     <div>
@@ -779,15 +806,19 @@ const Loans = () => {
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="UNDER_REVIEW">Under Review</SelectItem>
+                <SelectItem value="PENDING_GUARANTOR_APPROVAL">Pending Guarantor Approval</SelectItem>
+                <SelectItem value="PENDING_LOAN_OFFICER_REVIEW">Pending Loan Officer Review</SelectItem>
+                <SelectItem value="PENDING_CREDIT_COMMITTEE">Pending Credit Committee</SelectItem>
+                <SelectItem value="PENDING_TREASURER">Pending Treasurer</SelectItem>
                 <SelectItem value="APPROVED">Approved</SelectItem>
                 <SelectItem value="REJECTED">Rejected</SelectItem>
                 <SelectItem value="DISBURSED">Disbursed</SelectItem>
-                <SelectItem value="ACTIVE">Active</SelectItem>
-                <SelectItem value="FULLY_PAID">Fully Paid</SelectItem>
+                <SelectItem value="REPAID">Repaid</SelectItem>
                 <SelectItem value="DEFAULTED">Defaulted</SelectItem>
               </SelectContent>
             </Select>
+            <Button onClick={handleApplyStatusFilter} size="sm">Apply Filter</Button>
+            <Button onClick={handleClearFilters} variant="outline" size="sm">Clear</Button>
           </div>
         </CardContent>
       </Card>
@@ -844,6 +875,21 @@ const Loans = () => {
                         type="button"
                       >
                         <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleViewGuarantors(loan);
+                        }} 
+                        title="View Guarantors"
+                        type="button"
+                        className="text-blue-600"
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Guarantors
                       </Button>
                       {loan.status === "PENDING" && canApproveLoans && (
                         <>
@@ -958,11 +1004,88 @@ const Loans = () => {
                 </div>
               </Card>
 
+              {/* Repayment Progress Tracker - For Active/Disbursed Loans */}
+              {(selectedLoanForDetails.status === "ACTIVE" || selectedLoanForDetails.status === "DISBURSED") && (
+                <Card className="p-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+                  <p className="font-semibold text-xs mb-2">Repayment Progress</p>
+                  <div className="space-y-2">
+                    {/* Progress Bar */}
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-xs text-gray-600">Repayment Status</span>
+                        <span className="text-xs font-medium">
+                          {selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance
+                            ? `${Math.round(((selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.amount) * 100)}%`
+                            : "0%"}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-green-500 h-2 rounded-full transition-all"
+                          style={{
+                            width: selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance
+                              ? `${Math.min(((selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.amount) * 100, 100)}%`
+                              : "0%"
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Repayment Details Grid */}
+                    <div className="grid grid-cols-3 gap-1 text-xs">
+                      <div className="bg-white rounded p-1.5 border border-blue-100">
+                        <p className="text-gray-600 text-xs">Disbursed</p>
+                        <p className="font-bold text-blue-600">KES {selectedLoanForDetails.amount?.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-white rounded p-1.5 border border-green-100">
+                        <p className="text-gray-600 text-xs">Repaid</p>
+                        <p className="font-bold text-green-600">
+                          KES {selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance
+                            ? (selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance).toLocaleString()
+                            : "0"}
+                        </p>
+                      </div>
+                      <div className="bg-white rounded p-1.5 border border-red-100">
+                        <p className="text-gray-600 text-xs">Outstanding</p>
+                        <p className="font-bold text-red-600">KES {selectedLoanForDetails.outstandingBalance?.toLocaleString() || "0"}</p>
+                      </div>
+                    </div>
+
+                    {/* Eligibility Recovery Info */}
+                    <div className="bg-white rounded p-2 border border-purple-100 text-xs">
+                      <p className="text-gray-600 mb-1">💡 Eligibility Impact</p>
+                      <p className="text-gray-700">
+                        As you repay this loan, your borrowing capacity increases. Each payment reduces your frozen savings and increases your available eligibility.
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
               {/* Purpose */}
               {selectedLoanForDetails.purpose && (
                 <Card className="p-2">
                   <p className="text-xs text-gray-600 font-semibold">Purpose</p>
                   <p className="text-xs">{selectedLoanForDetails.purpose}</p>
+                </Card>
+              )}
+
+              {/* Member Eligibility Status */}
+              {selectedLoanForDetails.memberEligibilityStatus && (
+                <Card className={`p-2 ${selectedLoanForDetails.memberEligibilityStatus === "ELIGIBLE" ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+                  <p className="font-semibold text-xs mb-2">
+                    {selectedLoanForDetails.memberEligibilityStatus === "ELIGIBLE" ? "✅ Member Eligible" : "❌ Member Not Eligible"}
+                  </p>
+                  {selectedLoanForDetails.memberEligibilityErrors && (
+                    <div className="text-xs space-y-1">
+                      <p className="font-medium text-gray-700">Issues:</p>
+                      {selectedLoanForDetails.memberEligibilityErrors.split(";").map((error: string, idx: number) => (
+                        <p key={idx} className={selectedLoanForDetails.memberEligibilityStatus === "ELIGIBLE" ? "text-green-700" : "text-red-700"}>
+                          • {error.trim()}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </Card>
               )}
 
@@ -992,9 +1115,12 @@ const Loans = () => {
                         : selectedLoanForDetails.guarantor3EligibilityErrors;
                       const isEligible = eligibilityStatus === "ELIGIBLE";
                       const hasStatus = !!eligibilityStatus;
+                      const guaranteeAmount = guarantor.guaranteeAmount || selectedLoanForDetails.amount;
+                      const isPartialGuarantee = guarantor.guaranteeAmount && guarantor.guaranteeAmount < selectedLoanForDetails.amount;
+                      
                       return (
                         <div key={idx} className={`text-xs p-2 rounded border ${hasStatus ? (isEligible ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200") : "bg-gray-50 border-gray-200"}`}>
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between mb-1">
                             <div>
                               <p className="font-medium">{guarantor.member?.firstName} {guarantor.member?.lastName}</p>
                               <p className="text-gray-500">{guarantor.member?.memberNumber}</p>
@@ -1008,6 +1134,20 @@ const Loans = () => {
                               <span className="text-gray-400 text-xs">Pending review</span>
                             )}
                           </div>
+                          
+                          {/* Guarantee Amount */}
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-gray-600">Guarantee Amount:</span>
+                            <span className="font-semibold">KES {guaranteeAmount?.toLocaleString()}</span>
+                          </div>
+                          
+                          {/* Partial Guarantee Badge */}
+                          {isPartialGuarantee && (
+                            <div className="mb-1 inline-block bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">
+                              Partial Guarantee ({Math.round((guarantor.guaranteeAmount / selectedLoanForDetails.amount) * 100)}%)
+                            </div>
+                          )}
+                          
                           {eligibilityErrors && (
                             <p className="text-red-600 mt-1">• {eligibilityErrors}</p>
                           )}
@@ -1457,6 +1597,16 @@ const Loans = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Guarantor Details Modal */}
+      {selectedLoanForGuarantors && (
+        <GuarantorDetailsModal
+          isOpen={guarantorModalOpen}
+          onClose={() => setGuarantorModalOpen(false)}
+          guarantors={selectedLoanGuarantors}
+          loanAmount={selectedLoanForGuarantors.amount}
+        />
+      )}
     </div>
   );
 };

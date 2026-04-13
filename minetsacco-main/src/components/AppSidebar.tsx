@@ -16,8 +16,11 @@ const allMainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
   { title: "Members", url: "/members", icon: Users, roles: ["admin", "treasurer", "loan_officer", "teller", "customer_support"] },
   { title: "Loans", url: "/loans", icon: Landmark, roles: ["admin", "loan_officer", "credit_committee", "treasurer"] },
-  { title: "Loan Repayments", url: "/loan-repayment-requests", icon: CheckCircle2, roles: ["teller"] },
+  { title: "Loan Repayments", url: "/loan-repayment-recording", icon: CheckCircle2, roles: ["teller", "treasurer"] },
   { title: "Savings", url: "/savings", icon: PiggyBank, roles: ["admin", "treasurer", "teller"] },
+  { title: "Member Transactions", url: "/member-transaction-history", icon: FileText, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor"] },
+  { title: "Teller Member Context", url: "/teller-member-context", icon: Users, roles: ["teller"] },
+  { title: "Customer Support", url: "/customer-support-portal", icon: FileText, roles: ["customer_support"] },
   { title: "Bulk Processing", url: "/bulk-processing", icon: Upload, roles: ["treasurer", "credit_committee"] },
   { title: "Reports", url: "/reports", icon: FileText, roles: ["admin", "treasurer", "auditor"] },
 ];
@@ -35,6 +38,7 @@ const allAdminItems = [
   { title: "Fund Configuration", url: "/admin/fund-configuration", icon: Settings, roles: ["admin"] },
   { title: "Loan Eligibility Rules", url: "/admin/loan-eligibility-rules", icon: Settings, roles: ["admin"] },
   { title: "Audit Trail", url: "/admin/audit-trail", icon: BarChart3, roles: ["admin", "auditor"] },
+  { title: "Audit Reports", url: "/audit-reports", icon: BarChart3, roles: ["admin", "auditor"] },
   { title: "Settings", url: "/settings", icon: Settings, roles: ["admin"] },
   { title: "User Guide", url: "/guide", icon: HelpCircle, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
 ];

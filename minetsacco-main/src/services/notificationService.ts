@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+import { getApiBaseUrl } from '../config/api';
 
 export interface Notification {
   id: number;
@@ -26,9 +26,13 @@ const getAuthHeaders = () => {
   };
 };
 
+const getApiBaseUrlDynamic = (): string => {
+  return getApiBaseUrl();
+};
+
 export const notificationService = {
   getNotifications: async () => {
-    const response = await fetch(`${API_BASE_URL}/member/notifications`, {
+    const response = await fetch(`${getApiBaseUrlDynamic()}/member/notifications`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
@@ -38,7 +42,7 @@ export const notificationService = {
   },
 
   getUnreadNotifications: async () => {
-    const response = await fetch(`${API_BASE_URL}/member/notifications/unread`, {
+    const response = await fetch(`${getApiBaseUrlDynamic()}/member/notifications/unread`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
@@ -48,7 +52,7 @@ export const notificationService = {
   },
 
   getUnreadCount: async () => {
-    const response = await fetch(`${API_BASE_URL}/member/notifications/unread-count`, {
+    const response = await fetch(`${getApiBaseUrlDynamic()}/member/notifications/unread-count`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
@@ -58,7 +62,7 @@ export const notificationService = {
   },
 
   markAsRead: async (notificationId: number) => {
-    const response = await fetch(`${API_BASE_URL}/member/notifications/${notificationId}/read`, {
+    const response = await fetch(`${getApiBaseUrlDynamic()}/member/notifications/${notificationId}/read`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({}),
@@ -68,7 +72,7 @@ export const notificationService = {
   },
 
   markAllAsRead: async () => {
-    const response = await fetch(`${API_BASE_URL}/member/notifications/read-all`, {
+    const response = await fetch(`${getApiBaseUrlDynamic()}/member/notifications/read-all`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({}),
@@ -78,7 +82,7 @@ export const notificationService = {
   },
 
   deleteNotification: async (notificationId: number) => {
-    const response = await fetch(`${API_BASE_URL}/member/notifications/${notificationId}`, {
+    const response = await fetch(`${getApiBaseUrlDynamic()}/member/notifications/${notificationId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });

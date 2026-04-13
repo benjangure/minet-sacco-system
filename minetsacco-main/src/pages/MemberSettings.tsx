@@ -1,127 +1,204 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle, CheckCircle, Settings } from 'lucide-react';
 import { getBackendUrl, setBackendUrl } from '@/config/api';
-import { ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import MemberLayout from '@/components/MemberLayout';
 
 export default function MemberSettings() {
+  const [backendUrl, setBackendUrlLocal] = useState('');
+  const [tempUrl, setTempUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const navigate = useNavigate();
-  const [backendUrl, setLocalBackendUrl] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    setLocalBackendUrl(getBackendUrl());
+    const currentUrl = getBackendUrl();
+    setBackendUrlLocal(currentUrl);
+    setTempUrl(currentUrl);
   }, []);
 
-  const handleSave = () => {
-    if (!backendUrl.trim()) {
-      setMessage('Backend URL cannot be empty');
-      return;
-    }
-
-    if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
-      setMessage('URL must start with http:// or https://');
-      return;
-    }
-
-    setIsSaving(true);
+  const validateUrl = (url: string): boolean => {
     try {
-      setBackendUrl(backendUrl);
-      setMessage('Backend URL updated successfully. Reloading...');
-    } catch (error) {
-      setMessage('Error updating backend URL');
-    } finally {
-      setIsSaving(false);
+      new URL(url);
+      return url.startsWith('http://') || url.startsWith('https://');
+    } catch {
+      return false;
     }
+  };
+
+  const testConnection = async () => {
+    if (!validateUrl(tempUrl)) {
+      setMessage({ type: 'error', text: 'Invalid URL format. Use http://IP:PORT or https://domain' });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${tempUrl}/api/auth/member/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'test', password: 'test' })
+      });
+
+      // We expect a 400 or 401 error (bad credentials), which means the server is reachable
+      if (response.status === 400 || response.status === 401 || response.status === 403) {
+        setMessage({ type: 'success', text: 'Backend is reachable!' });
+      } else if (response.ok) {
+        setMessage({ type: 'success', text: 'Backend is reachable!' });
+      } else {
+        setMessage({ type: 'error', text: `Server responded with status ${response.status}` });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Cannot reach backend. Check URL and network connection.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = () => {
+    if (!validateUrl(tempUrl)) {
+      setMessage({ type: 'error', text: 'Invalid URL format. Use http://IP:PORT or https://domain' });
+      return;
+    }
+
+    setBackendUrl(tempUrl);
+    setBackendUrlLocal(tempUrl);
+    setMessage({ type: 'success', text: 'Backend URL updated successfully!' });
+    
+    // Clear message after 2 seconds
+    setTimeout(() => setMessage(null), 2000);
   };
 
   const handleReset = () => {
-    setLocalBackendUrl('http://192.168.0.195:8080');
-    setMessage('');
+    setTempUrl(backendUrl);
+    setMessage(null);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-md mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => navigate('/member/dashboard')}
-            className="p-2 hover:bg-gray-200 rounded-lg"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-2xl font-bold">Settings</h1>
+    <MemberLayout memberName="Member" onLogout={() => {
+      localStorage.removeItem('token');
+      navigate('/member');
+    }}>
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
+            <Settings className="h-8 w-8" />
+            Settings
+          </h1>
+          <p className="text-muted-foreground">Configure your app settings</p>
         </div>
 
-        {/* Backend URL Configuration */}
         <Card>
           <CardHeader>
             <CardTitle>Backend Configuration</CardTitle>
             <CardDescription>
-              Configure the backend server URL for your network
+              Change the backend server URL. This is useful when testing on different networks.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Backend URL</label>
+          <CardContent className="space-y-6">
+            {/* Current URL Display */}
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Current Backend URL</Label>
+              <div className="p-3 bg-muted rounded-lg font-mono text-sm break-all">
+                {backendUrl}
+              </div>
+            </div>
+
+            {/* URL Input */}
+            <div className="space-y-2">
+              <Label htmlFor="backend-url">New Backend URL</Label>
               <Input
+                id="backend-url"
                 type="text"
-                value={backendUrl}
-                onChange={(e) => setLocalBackendUrl(e.target.value)}
-                placeholder="http://192.168.0.195:8080"
-                className="w-full"
+                value={tempUrl}
+                onChange={(e) => setTempUrl(e.target.value)}
+                placeholder="http://192.168.0.50:8080"
+                className="font-mono text-sm"
               />
-              <p className="text-xs text-gray-500 mt-2">
-                Enter the backend server URL. Format: http://IP_ADDRESS:PORT
+              <p className="text-xs text-muted-foreground">
+                Format: http://IP:PORT or https://domain
               </p>
             </div>
 
-            {message && (
-              <div className={`p-3 rounded text-sm ${
-                message.includes('Error') || message.includes('cannot')
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-green-100 text-green-700'
-              }`}>
-                {message}
+            {/* Examples */}
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Common Examples</Label>
+              <div className="space-y-2">
+                <div className="p-2 bg-muted rounded text-xs font-mono">
+                  http://192.168.0.50:8080
+                </div>
+                <div className="p-2 bg-muted rounded text-xs font-mono">
+                  http://192.168.1.1:8080
+                </div>
+                <div className="p-2 bg-muted rounded text-xs font-mono">
+                  https://api.minetsacco.com
+                </div>
               </div>
+            </div>
+
+            {/* Messages */}
+            {message && (
+              <Alert variant={message.type === 'error' ? 'destructive' : 'default'}>
+                {message.type === 'error' ? (
+                  <AlertCircle className="h-4 w-4" />
+                ) : (
+                  <CheckCircle className="h-4 w-4" />
+                )}
+                <AlertDescription>{message.text}</AlertDescription>
+              </Alert>
             )}
 
-            <div className="flex gap-2">
+            {/* Buttons */}
+            <div className="flex gap-3">
               <Button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </Button>
-              <Button
-                onClick={handleReset}
+                onClick={testConnection}
+                disabled={loading}
                 variant="outline"
                 className="flex-1"
               >
-                Reset to Default
+                {loading ? 'Testing...' : 'Test Connection'}
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={loading || tempUrl === backendUrl}
+                className="flex-1"
+              >
+                Save Changes
+              </Button>
+              <Button
+                onClick={handleReset}
+                disabled={tempUrl === backendUrl}
+                variant="ghost"
+              >
+                Reset
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Instructions */}
-        <Card className="mt-4">
+        {/* Info Card */}
+        <Card className="bg-blue-50 border-blue-200">
           <CardHeader>
-            <CardTitle className="text-base">How to Find Your Backend URL</CardTitle>
+            <CardTitle className="text-base text-blue-900">How to Find Your Backend URL</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm space-y-2">
-            <p>1. Find your computer's IP address on the network</p>
-            <p>2. Ensure your phone is on the same WiFi network</p>
-            <p>3. Enter the URL: <code className="bg-gray-100 px-2 py-1 rounded">http://YOUR_IP:8080</code></p>
-            <p>4. Example: <code className="bg-gray-100 px-2 py-1 rounded">http://192.168.1.100:8080</code></p>
+          <CardContent className="text-sm text-blue-800 space-y-2">
+            <p>
+              <strong>On your laptop:</strong> Run <code className="bg-white px-2 py-1 rounded">ipconfig</code> in PowerShell and look for "IPv4 Address" under your WiFi adapter.
+            </p>
+            <p>
+              <strong>Example:</strong> If your laptop IP is 192.168.0.50, use <code className="bg-white px-2 py-1 rounded">http://192.168.0.50:8080</code>
+            </p>
+            <p>
+              <strong>Production:</strong> When deployed, use your production domain like <code className="bg-white px-2 py-1 rounded">https://api.minetsacco.com</code>
+            </p>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </MemberLayout>
   );
 }

@@ -31,6 +31,121 @@ public class GuarantorValidationService {
     private LoanEligibilityRulesService rulesService;
 
     /**
+     * Validate a single guarantor for a loan application with custom guarantee amount.
+     * @param guarantor The guarantor member
+     * @param guaranteeAmount The amount this guarantor is pledging (not the full loan)
+     */
+    public GuarantorValidationResult validateGuarantorWithCustomAmount(Member guarantor, BigDecimal guaranteeAmount) {
+        return validateGuarantorWithCustomAmount(guarantor, guaranteeAmount, null);
+    }
+
+    /**
+     * Validate a single guarantor for a loan application with custom guarantee amount.
+     * @param guarantor The guarantor member
+     * @param guaranteeAmount The amount this guarantor is pledging (not the full loan)
+     * @param excludeLoanId optional loan ID to exclude from pledge sum (for re-validation of existing applications)
+     */
+    public GuarantorValidationResult validateGuarantorWithCustomAmount(Member guarantor, BigDecimal guaranteeAmount, Long excludeLoanId) {
+        log.debug("=== GUARANTOR VALIDATION START (Custom Amount) ===");
+        log.debug("Guarantor: {} {}, ID: {}", guarantor.getFirstName(), guarantor.getLastName(), guarantor.getId());
+        log.debug("Guarantee amount: {}", guaranteeAmount);
+        
+        LoanEligibilityRules rules = rulesService.getRules();
+        if (rules == null) {
+            log.error("ERROR: Rules object is NULL!");
+            throw new RuntimeException("Loan eligibility rules not configured");
+        }
+        
+        GuarantorValidationResult result = new GuarantorValidationResult();
+        result.setGuarantorId(guarantor.getId());
+        result.setGuarantorName(guarantor.getFirstName() + " " + guarantor.getLastName());
+        result.setIsEligible(true);
+
+        // Get guarantor's savings balance
+        Optional<Account> savingsAccount = accountRepository.findByMemberIdAndAccountType(
+                guarantor.getId(), Account.AccountType.SAVINGS);
+        BigDecimal savingsBalance = savingsAccount.map(Account::getBalance).orElse(BigDecimal.ZERO);
+        
+        log.debug("Savings: {}", savingsBalance);
+        
+        result.setSavingsBalance(savingsBalance);
+        result.setTotalBalance(savingsBalance);
+        result.setOutstandingBalance(BigDecimal.ZERO);
+        result.setAvailableGuaranteeCapacity(savingsBalance);
+        result.setErrors(new ArrayList<>());
+        result.setWarnings(new ArrayList<>());
+
+        // Check 1: Member must be ACTIVE
+        log.debug("Check 1: Member status = {}", guarantor.getStatus());
+        if (guarantor.getStatus() != Member.Status.ACTIVE) {
+            log.debug("FAIL: Not ACTIVE");
+            result.addError("Guarantor is not ACTIVE (Current status: " + guarantor.getStatus() + ")");
+            result.setIsEligible(false);
+            return result;
+        }
+        log.debug("PASS: Member is ACTIVE");
+
+        // Check 2: Guarantor must have at least the guarantee amount
+        log.debug("Check 2: Guarantee amount - Required: {}, Actual: {}", guaranteeAmount, savingsBalance);
+        if (savingsBalance.compareTo(guaranteeAmount) < 0) {
+            log.debug("FAIL: Insufficient savings - {} < {}", savingsBalance, guaranteeAmount);
+            result.addError("Savings balance (KES " + savingsBalance + ") is less than guarantee amount (KES " + guaranteeAmount + ")");
+            result.setIsEligible(false);
+            return result;
+        }
+        log.debug("PASS: Has sufficient savings for guarantee amount");
+
+        // Check 3: Check available guarantee capacity (already pledged amounts)
+        log.debug("Check 3: Checking available guarantee capacity");
+        BigDecimal alreadyPledged = excludeLoanId != null
+                ? guarantorRepository.sumActivePledgesByMemberIdExcludingLoan(guarantor.getId(), excludeLoanId)
+                : guarantorRepository.sumActivePledgesByMemberId(guarantor.getId());
+        if (alreadyPledged == null) alreadyPledged = BigDecimal.ZERO;
+
+        BigDecimal availableCapacity = savingsBalance.subtract(alreadyPledged);
+        result.setAvailableGuaranteeCapacity(availableCapacity);
+
+        log.debug("Check 3: savingsBalance={}, alreadyPledged={}, availableCapacity={}, guaranteeAmount={}",
+                savingsBalance, alreadyPledged, availableCapacity, guaranteeAmount);
+
+        if (availableCapacity.compareTo(guaranteeAmount) < 0) {
+            log.debug("FAIL: Insufficient available capacity - {} < {}", availableCapacity, guaranteeAmount);
+            result.addError(String.format(
+                    "Insufficient guarantee capacity. Available: KES %,.0f (Total savings: KES %,.0f minus already pledged: KES %,.0f). Required: KES %,.0f",
+                    availableCapacity, savingsBalance, alreadyPledged, guaranteeAmount));
+            result.setIsEligible(false);
+            return result;
+        }
+        log.debug("PASS: Sufficient guarantee capacity");
+
+        // Check 4: Check for defaulted loans
+        log.debug("Check 4: Checking for defaulted loans");
+        List<Loan> guarantorLoans = loanRepository.findByMemberId(guarantor.getId());
+        boolean hasDefaultedLoan = guarantorLoans.stream()
+                .anyMatch(loan -> loan.getStatus() == Loan.Status.DEFAULTED);
+        
+        if (hasDefaultedLoan && !rules.getAllowDefaulters()) {
+            log.debug("FAIL: Has defaulted loans and not allowed");
+            result.addError("Guarantor has defaulted loans");
+            result.setIsEligible(false);
+            return result;
+        }
+        if (hasDefaultedLoan) {
+            log.debug("WARNING: Has defaulted loans but allowed by rules");
+            result.addWarning("Guarantor has defaulted loans");
+        }
+        log.debug("PASS: No blocking defaulted loans");
+
+        log.debug("=== FINAL RESULT (Custom Amount) ===");
+        log.debug("Guarantor: {}", result.getGuarantorName());
+        log.debug("Is Eligible: {}", result.isEligible());
+        log.debug("Savings: {}", result.getTotalBalance());
+        log.debug("Errors: {}", result.getErrors());
+        log.debug("=== END VALIDATION ===");
+        return result;
+    }
+
+    /**
      * Validate a single guarantor for a loan application.
      * Delegates to the overload with no excluded loan.
      */
@@ -43,9 +158,14 @@ public class GuarantorValidationService {
      * @param excludeLoanId optional loan ID to exclude from pledge sum (for re-validation of existing applications)
      */
     public GuarantorValidationResult validateGuarantor(Member guarantor, BigDecimal loanAmount, Long excludeLoanId) {
+        // For backward compatibility, use loanAmount as guaranteeAmount if not specified
+        return validateGuarantorWithGuaranteeAmount(guarantor, loanAmount, loanAmount, excludeLoanId);
+    }
+
+    public GuarantorValidationResult validateGuarantorWithGuaranteeAmount(Member guarantor, BigDecimal loanAmount, BigDecimal guaranteeAmount, Long excludeLoanId) {
         log.debug("=== GUARANTOR VALIDATION START ===");
         log.debug("Guarantor: {} {}, ID: {}", guarantor.getFirstName(), guarantor.getLastName(), guarantor.getId());
-        log.debug("Loan amount: {}", loanAmount);
+        log.debug("Loan amount: {}, Guarantee amount: {}", loanAmount, guaranteeAmount);
         
         LoanEligibilityRules rules = rulesService.getRules();
         if (rules == null) {
@@ -147,34 +267,34 @@ public class GuarantorValidationService {
         BigDecimal availableCapacity = totalBalance.subtract(alreadyPledged);
         result.setAvailableGuaranteeCapacity(availableCapacity);
 
-        log.debug("Check 3: totalBalance={}, alreadyPledged={}, availableCapacity={}, loanAmount={}",
-                totalBalance, alreadyPledged, availableCapacity, loanAmount);
+        log.debug("Check 3: totalBalance={}, alreadyPledged={}, availableCapacity={}, guaranteeAmount={}",
+                totalBalance, alreadyPledged, availableCapacity, guaranteeAmount);
 
-        if (availableCapacity.compareTo(loanAmount) < 0) {
-            log.debug("FAIL: Insufficient available guarantee capacity - {} < {}", availableCapacity, loanAmount);
+        if (availableCapacity.compareTo(guaranteeAmount) < 0) {
+            log.debug("FAIL: Insufficient available guarantee capacity - {} < {}", availableCapacity, guaranteeAmount);
             result.addError(String.format(
                     "Insufficient guarantee capacity. Available: KES %,.0f (Total savings: KES %,.0f minus already pledged: KES %,.0f). Required: KES %,.0f",
-                    availableCapacity, totalBalance, alreadyPledged, loanAmount));
+                    availableCapacity, totalBalance, alreadyPledged, guaranteeAmount));
             result.setIsEligible(false);
             log.debug("=== RESULT: NOT ELIGIBLE (Check 3 - Pledge Capacity) ===");
             return result;
         }
         log.debug("PASS: Sufficient guarantee capacity");
 
-        // Check 4: Savings should be at least X% of loan amount
-        BigDecimal requiredBalance = loanAmount.multiply(rules.getMinGuarantorSavingsToLoanRatio());
-        log.debug("Check 4: Loan ratio - Loan: {}, Ratio: {}, Required: {}, Actual: {}", 
-            loanAmount, rules.getMinGuarantorSavingsToLoanRatio(), requiredBalance, totalBalance);
+        // Check 4: Savings should be at least X% of guarantee amount (not full loan amount)
+        BigDecimal requiredBalance = guaranteeAmount.multiply(rules.getMinGuarantorSavingsToLoanRatio());
+        log.debug("Check 4: Guarantee ratio - Guarantee: {}, Ratio: {}, Required: {}, Actual: {}", 
+            guaranteeAmount, rules.getMinGuarantorSavingsToLoanRatio(), requiredBalance, totalBalance);
         if (totalBalance.compareTo(requiredBalance) < 0) {
             log.debug("FAIL: Below required ratio - {} < {}", totalBalance, requiredBalance);
             result.addError("Savings balance (KES " + totalBalance + ") should be at least " + 
                 rules.getMinGuarantorSavingsToLoanRatio().multiply(new BigDecimal("100")) + 
-                "% of loan amount (KES " + requiredBalance + ")");
+                "% of guarantee amount (KES " + requiredBalance + ")");
             result.setIsEligible(false);
-            log.debug("=== RESULT: NOT ELIGIBLE (Check 4 - Loan Ratio) ===");
+            log.debug("=== RESULT: NOT ELIGIBLE (Check 4 - Guarantee Ratio) ===");
             return result;
         }
-        log.debug("PASS: Meets loan ratio requirement");
+        log.debug("PASS: Meets guarantee ratio requirement");
 
         // Check 5: Check for defaulted loans
         log.debug("Check 5: Checking for defaulted loans");

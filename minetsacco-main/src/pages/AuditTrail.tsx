@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,9 +40,20 @@ const actionColors: Record<string, string> = {
   APPROVE: "bg-green-100 text-green-800",
   REJECT: "bg-red-100 text-red-800",
   DISBURSE: "bg-blue-100 text-blue-800",
-  CREATE: "bg-purple-100 text-purple-800",
-  UPDATE: "bg-yellow-100 text-yellow-800",
-  DELETE: "bg-red-200 text-red-900",
+  REPAY: "bg-cyan-100 text-cyan-800",
+  ACTIVATE: "bg-emerald-100 text-emerald-800",
+  VERIFY: "bg-indigo-100 text-indigo-800",
+  CREATE_TICKET: "bg-purple-100 text-purple-800",
+  RESOLVE_TICKET: "bg-purple-200 text-purple-900",
+  BULK_UPLOAD: "bg-orange-100 text-orange-800",
+  BULK_APPROVE: "bg-green-200 text-green-900",
+  BULK_REJECT: "bg-red-200 text-red-900",
+  UPDATE_FUND_CONFIG: "bg-yellow-100 text-yellow-800",
+  TOGGLE_FUND: "bg-yellow-200 text-yellow-900",
+  SET_CONTEXT: "bg-slate-100 text-slate-800",
+  CLEAR_CONTEXT: "bg-slate-200 text-slate-900",
+  GUARANTOR_PLEDGE_REDUCED: "bg-teal-100 text-teal-800",
+  GUARANTOR_DEFAULT_DEBIT: "bg-red-300 text-red-950",
 };
 
 const statusColors: Record<string, string> = {
@@ -70,13 +81,7 @@ export const AuditTrail = () => {
   const { toast } = useToast();
   const { session } = useAuth();
 
-  useEffect(() => {
-    if (session) {
-      fetchAuditLogs();
-    }
-  }, [session, page, pageSize, actionFilter, entityTypeFilter, statusFilter, startDate, endDate]);
-
-  const fetchAuditLogs = async () => {
+  const fetchAuditLogs = useCallback(async () => {
     setLoading(true);
     try {
       // Validate date range
@@ -86,15 +91,17 @@ export const AuditTrail = () => {
         return;
       }
 
-      // Use /api/audit endpoint with optional filters
-      let url = `${API_BASE_URL}/audit?page=${page}&size=${pageSize}`;
+      // Use /api/audit/filter endpoint with optional filters
+      let url = `${API_BASE_URL}/audit/filter?page=${page}&size=${pageSize}`;
 
       if (actionFilter) url += `&action=${actionFilter}`;
       if (entityTypeFilter) url += `&entityType=${entityTypeFilter}`;
       if (statusFilter) url += `&status=${statusFilter}`;
-      if (startDate && endDate) {
-        url += `&startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`;
-      }
+      
+      // Always include date range for filter endpoint
+      const start = startDate ? new Date(startDate).toISOString() : new Date(0).toISOString();
+      const end = endDate ? new Date(endDate).toISOString() : new Date().toISOString();
+      url += `&startDate=${start}&endDate=${end}`;
 
       const response = await fetch(url, {
         headers: { "Authorization": `Bearer ${session?.token}` },
@@ -114,17 +121,30 @@ export const AuditTrail = () => {
       toast({ title: "Error", description: "Failed to fetch audit logs", variant: "destructive" });
     }
     setLoading(false);
-  };
+  }, [page, pageSize, actionFilter, entityTypeFilter, statusFilter, startDate, endDate, session, toast]);
+
+  useEffect(() => {
+    if (session) {
+      fetchAuditLogs();
+    }
+  }, [session, page, pageSize]);
+
+  // Reset to page 0 when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [actionFilter, entityTypeFilter, statusFilter, startDate, endDate]);
 
   const handleExport = async () => {
     try {
-      let url = `${API_BASE_URL}/audit?page=0&size=10000`;
+      let url = `${API_BASE_URL}/audit/filter?page=0&size=10000`;
       if (actionFilter) url += `&action=${actionFilter}`;
       if (entityTypeFilter) url += `&entityType=${entityTypeFilter}`;
       if (statusFilter) url += `&status=${statusFilter}`;
-      if (startDate && endDate) {
-        url += `&startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`;
-      }
+      
+      // Always include date range for filter endpoint
+      const start = startDate ? new Date(startDate).toISOString() : new Date(0).toISOString();
+      const end = endDate ? new Date(endDate).toISOString() : new Date().toISOString();
+      url += `&startDate=${start}&endDate=${end}`;
 
       const response = await fetch(url, {
         headers: { "Authorization": `Bearer ${session?.token}` },
@@ -163,6 +183,15 @@ export const AuditTrail = () => {
     }
   };
 
+  const handleClearFilters = () => {
+    setActionFilter("");
+    setEntityTypeFilter("");
+    setStatusFilter("");
+    setStartDate("");
+    setEndDate("");
+    setPage(0);
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
@@ -197,9 +226,20 @@ export const AuditTrail = () => {
                   <SelectItem value="APPROVE">Approve</SelectItem>
                   <SelectItem value="REJECT">Reject</SelectItem>
                   <SelectItem value="DISBURSE">Disburse</SelectItem>
-                  <SelectItem value="CREATE">Create</SelectItem>
-                  <SelectItem value="UPDATE">Update</SelectItem>
-                  <SelectItem value="DELETE">Delete</SelectItem>
+                  <SelectItem value="REPAY">Repay</SelectItem>
+                  <SelectItem value="ACTIVATE">Activate</SelectItem>
+                  <SelectItem value="VERIFY">Verify</SelectItem>
+                  <SelectItem value="CREATE_TICKET">Create Ticket</SelectItem>
+                  <SelectItem value="RESOLVE_TICKET">Resolve Ticket</SelectItem>
+                  <SelectItem value="BULK_UPLOAD">Bulk Upload</SelectItem>
+                  <SelectItem value="BULK_APPROVE">Bulk Approve</SelectItem>
+                  <SelectItem value="BULK_REJECT">Bulk Reject</SelectItem>
+                  <SelectItem value="UPDATE_FUND_CONFIG">Update Fund Config</SelectItem>
+                  <SelectItem value="TOGGLE_FUND">Toggle Fund</SelectItem>
+                  <SelectItem value="SET_CONTEXT">Set Context</SelectItem>
+                  <SelectItem value="CLEAR_CONTEXT">Clear Context</SelectItem>
+                  <SelectItem value="GUARANTOR_PLEDGE_REDUCED">Guarantor Pledge Reduced</SelectItem>
+                  <SelectItem value="GUARANTOR_DEFAULT_DEBIT">Guarantor Default Debit</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -216,6 +256,10 @@ export const AuditTrail = () => {
                   <SelectItem value="DEPOSIT_REQUEST">Deposit Request</SelectItem>
                   <SelectItem value="MEMBER">Member</SelectItem>
                   <SelectItem value="GUARANTOR">Guarantor</SelectItem>
+                  <SelectItem value="KYC_DOCUMENT">KYC Document</SelectItem>
+                  <SelectItem value="BulkBatch">Bulk Batch</SelectItem>
+                  <SelectItem value="FundConfiguration">Fund Configuration</SelectItem>
+                  <SelectItem value="SUPPORT">Support</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -262,6 +306,9 @@ export const AuditTrail = () => {
             >
               <Filter className="mr-2 h-4 w-4" />
               Apply Filters
+            </Button>
+            <Button onClick={handleClearFilters} variant="outline" size="sm">
+              Clear Filters
             </Button>
             <Button onClick={handleExport} variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />

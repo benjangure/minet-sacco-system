@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { Capacitor } from "@capacitor/core";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -31,10 +32,16 @@ import MemberDashboard from "./pages/MemberDashboard";
 import MemberAccountStatement from "./pages/MemberAccountStatement";
 import MemberLoanBalances from "./pages/MemberLoanBalances";
 import MemberLoanApplication from "./pages/MemberLoanApplication";
+import MyGuarantees from "./pages/MyGuarantees";
 import { AuditTrail } from "./pages/AuditTrail";
 import LoanRepaymentRequests from "./pages/LoanRepaymentRequests";
+import LoanRepaymentRecording from "./pages/LoanRepaymentRecording";
 import MemberLoanRepaymentStatus from "./pages/MemberLoanRepaymentStatus";
 import MemberSettings from "./pages/MemberSettings";
+import MemberTransactionHistory from "./pages/MemberTransactionHistory";
+import TellerMemberContext from "./pages/TellerMemberContext";
+import CustomerSupportPortal from "./pages/CustomerSupportPortal";
+import AuditReports from "./pages/AuditReports";
 
 
 const queryClient = new QueryClient();
@@ -58,8 +65,11 @@ function RootRoute() {
     return <Navigate to="/dashboard" replace />;
   }
   
-  // Default to member portal for mobile app
-  return <Navigate to="/member" replace />;
+  // Check if running as mobile app (APK)
+  const isMobileApp = Capacitor.isNativePlatform();
+  
+  // Default to member portal for mobile app, staff login for web
+  return <Navigate to={isMobileApp ? "/member" : "/login"} replace />;
 }
 
 const AppRoutes = () => (
@@ -74,7 +84,12 @@ const AppRoutes = () => (
     <Route path="/members" element={<ProtectedRoute><AppLayout><Members /></AppLayout></ProtectedRoute>} />
     <Route path="/loans" element={<ProtectedRoute><AppLayout><Loans /></AppLayout></ProtectedRoute>} />
     <Route path="/loan-repayment-requests" element={<ProtectedRoute><AppLayout><LoanRepaymentRequests /></AppLayout></ProtectedRoute>} />
+    <Route path="/loan-repayment-recording" element={<ProtectedRoute><AppLayout><LoanRepaymentRecording /></AppLayout></ProtectedRoute>} />
     <Route path="/savings" element={<ProtectedRoute><AppLayout><Savings /></AppLayout></ProtectedRoute>} />
+    <Route path="/member-transaction-history" element={<ProtectedRoute><AppLayout><MemberTransactionHistory /></AppLayout></ProtectedRoute>} />
+    <Route path="/teller-member-context" element={<ProtectedRoute><AppLayout><TellerMemberContext /></AppLayout></ProtectedRoute>} />
+    <Route path="/customer-support-portal" element={<ProtectedRoute><AppLayout><CustomerSupportPortal /></AppLayout></ProtectedRoute>} />
+    <Route path="/audit-reports" element={<ProtectedRoute><AppLayout><AuditReports /></AppLayout></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><AppLayout><Reports /></AppLayout></ProtectedRoute>} />
     <Route path="/bulk-processing" element={<ProtectedRoute><AppLayout><BulkProcessing /></AppLayout></ProtectedRoute>} />
     <Route path="/kyc-approval" element={<ProtectedRoute><AppLayout><KycApproval /></AppLayout></ProtectedRoute>} />
@@ -120,6 +135,14 @@ const AppRoutes = () => (
       element={
         <ProtectedRoute requiredRole="MEMBER">
           <MemberLoanApplication />
+        </ProtectedRoute>
+      } 
+    />
+    <Route 
+      path="/member/my-guarantees" 
+      element={
+        <ProtectedRoute requiredRole="MEMBER">
+          <MyGuarantees />
         </ProtectedRoute>
       } 
     />

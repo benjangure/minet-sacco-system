@@ -11,6 +11,7 @@ import com.minet.sacco.entity.User;
 import com.minet.sacco.entity.Notification;
 import com.minet.sacco.repository.*;
 import com.minet.sacco.service.AuditService;
+import com.minet.sacco.service.GuarantorTrackingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -58,6 +59,9 @@ public class TellerLoanRepaymentController {
 
     @Autowired
     private NotificationRepository notificationRepository;
+
+    @Autowired
+    private GuarantorTrackingService guarantorTrackingService;
 
     /**
      * Get all pending loan repayment requests
@@ -155,9 +159,9 @@ public class TellerLoanRepaymentController {
             LoanRepayment repayment = new LoanRepayment();
             repayment.setLoan(loan);
             repayment.setAmount(confirmedAmount);
-            repayment.setRepaymentDate(LocalDateTime.now());
-            repayment.setPaymentMethod(repaymentRequest.getPaymentMethod());
-            repayment.setDescription(repaymentRequest.getDescription());
+            repayment.setPaymentDate(LocalDateTime.now());
+            repayment.setPaymentMethod(LoanRepayment.PaymentMethod.valueOf(repaymentRequest.getPaymentMethod().toUpperCase()));
+            repayment.setReferenceNumber(repaymentRequest.getDescription());
             loanRepaymentRepository.save(repayment);
 
             // Update loan outstanding balance
@@ -181,13 +185,12 @@ public class TellerLoanRepaymentController {
             transaction.setTransactionDate(LocalDateTime.now());
             transactionRepository.save(transaction);
 
-            // If fully repaid, release guarantor pledges
+            // Track pledge reduction for guarantors (proportional to repayment)
+            guarantorTrackingService.trackPledgeReduction(loan, confirmedAmount);
+
+            // If fully repaid, release all guarantor pledges
             if (isFullyRepaid) {
-                List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
-                for (Guarantor guarantor : guarantors) {
-                    guarantor.setStatus(Guarantor.Status.RELEASED);
-                    guarantorRepository.save(guarantor);
-                }
+                guarantorTrackingService.releaseAllPledges(loan);
             }
 
             // Update repayment request status

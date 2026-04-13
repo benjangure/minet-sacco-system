@@ -128,18 +128,34 @@ public class MemberService {
      */
     private void createMemberUserAccount(Member member) {
         String username = member.getEmployeeId() != null ? member.getEmployeeId() : member.getMemberNumber();
-        if (username == null || userRepository.existsByUsername(username)) {
-            return; // Already has an account or no identifier available
+        if (username == null) {
+            return; // No identifier available
         }
-        User user = new User();
-        user.setUsername(username);
-        user.setEmail(member.getEmail() != null ? member.getEmail() : username + "@minet.sacco");
-        user.setPassword(passwordEncoder.encode(member.getNationalId())); // default password = national ID
-        user.setRole(User.Role.MEMBER);
-        user.setMemberId(member.getId());
-        user.setEnabled(true);
-        user.setCreatedAt(LocalDateTime.now());
-        userRepository.save(user);
+        
+        // Check if user already exists
+        Optional<User> existingUser = userRepository.findByUsername(username);
+        User user;
+        
+        if (existingUser.isPresent()) {
+            // Update existing user with member_id if not already set
+            user = existingUser.get();
+            if (user.getMemberId() == null) {
+                user.setMemberId(member.getId());
+                user.setUpdatedAt(LocalDateTime.now());
+                userRepository.save(user);
+            }
+        } else {
+            // Create new user account
+            user = new User();
+            user.setUsername(username);
+            user.setEmail(member.getEmail() != null ? member.getEmail() : username + "@minet.sacco");
+            user.setPassword(passwordEncoder.encode(member.getNationalId())); // default password = national ID
+            user.setRole(User.Role.MEMBER);
+            user.setMemberId(member.getId());
+            user.setEnabled(true);
+            user.setCreatedAt(LocalDateTime.now());
+            userRepository.save(user);
+        }
     }
 
     @Transactional

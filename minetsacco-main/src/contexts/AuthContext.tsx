@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { getBackendUrl } from "@/config/api";
 
 type AppRole = "ADMIN" | "TREASURER" | "LOAN_OFFICER" | "CREDIT_COMMITTEE" | "AUDITOR" | "TELLER" | "CUSTOMER_SUPPORT";
 
@@ -28,7 +29,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
 const APP_VERSION = "1.0.0"; // Increment this to force logout on all users
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -38,6 +38,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<AuthContextType["profile"]>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  
+  // Get dynamic API base URL from config
+  const getApiBaseUrl = () => `${getBackendUrl()}/api`;
 
   useEffect(() => {
     // Check if app version has changed (forces logout on updates)
@@ -113,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (username: string, password: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

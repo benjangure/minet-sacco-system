@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, Home, Send, User, FileText, Bell, LogOut } from 'lucide-react';
+import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/images/logo.png';
@@ -31,11 +31,17 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
       case 'loans':
         navigate('/member/dashboard?tab=loans');
         break;
+      case 'guarantees':
+        navigate('/member/my-guarantees');
+        break;
       case 'reports':
         navigate('/member/dashboard?tab=reports');
         break;
       case 'notifications':
         navigate('/member/dashboard?tab=notifications');
+        break;
+      case 'settings':
+        navigate('/member/settings');
         break;
       default:
         navigate('/member/dashboard');
@@ -47,6 +53,7 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
     { icon: Send, label: 'Transactions', id: 'transact' },
     { icon: User, label: 'My Account', id: 'account' },
     { icon: FileText, label: 'Loans', id: 'loans' },
+    { icon: Handshake, label: 'My Guarantees', id: 'guarantees' },
     { icon: FileText, label: 'Reports', id: 'reports' },
     { icon: Bell, label: 'Notifications', id: 'notifications', badge: unreadNotifications },
   ];
@@ -115,7 +122,15 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
           </nav>
 
           {/* Logout Button */}
-          <div className="pt-4 border-t border-white/20">
+          <div className="pt-4 border-t border-white/20 space-y-2">
+            <Button
+              onClick={() => handleMenuClick('settings')}
+              variant="ghost"
+              className="w-full justify-start gap-3 text-white hover:bg-white/10"
+            >
+              <Settings className="h-5 w-5" />
+              Settings
+            </Button>
             <Button
               onClick={onLogout}
               variant="ghost"

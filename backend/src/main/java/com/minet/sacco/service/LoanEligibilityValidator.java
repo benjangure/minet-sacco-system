@@ -136,12 +136,16 @@ public class LoanEligibilityValidator {
         // Shares are capital contributions and don't count toward loan capacity
         BigDecimal totalBalance = savingsBalance;
         
+        // Get frozen savings from self-guarantee loans
+        BigDecimal frozenSavings = savingsAccount.map(Account::getFrozenSavings).orElse(BigDecimal.ZERO);
+        if (frozenSavings == null) frozenSavings = BigDecimal.ZERO;
+        
         // Subtract frozen pledges from available balance
         // If member is a guarantor for other loans, those pledges freeze their savings
         BigDecimal frozenPledges = guarantorRepository.sumActivePledgesByMemberId(member.getId());
         if (frozenPledges == null) frozenPledges = BigDecimal.ZERO;
         
-        BigDecimal availableBalance = totalBalance.subtract(frozenPledges);
+        BigDecimal availableBalance = totalBalance.subtract(frozenSavings).subtract(frozenPledges);
 
         result.setSavingsBalance(savingsBalance);
         result.setSharesBalance(sharesBalance);
@@ -160,8 +164,9 @@ public class LoanEligibilityValidator {
                 .map(Loan::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         
-        // Calculate true savings (current savings minus disbursed loans)
-        BigDecimal trueSavings = savingsBalance.subtract(totalDisbursed);
+        // Calculate true savings using frozen savings (not total disbursed)
+        // True Savings = Current Savings - Frozen Savings (from self-guarantees)
+        BigDecimal trueSavings = savingsBalance.subtract(frozenSavings);
         if (trueSavings.compareTo(BigDecimal.ZERO) < 0) {
             trueSavings = BigDecimal.ZERO;
         }

@@ -30,6 +30,12 @@ public class Guarantor {
     @DecimalMin(value = "0.00")
     private BigDecimal pledgeAmount;
 
+    @DecimalMin(value = "0.00")
+    private BigDecimal guaranteeAmount;  // Amount this guarantor is pledging
+
+    @Column(name = "self_guarantee", nullable = false)
+    private boolean selfGuarantee = false;  // True if member is self-guaranteeing
+
     private String rejectionReason;
 
     private LocalDateTime createdAt;
@@ -60,6 +66,12 @@ public class Guarantor {
 
     public BigDecimal getPledgeAmount() { return pledgeAmount; }
     public void setPledgeAmount(BigDecimal pledgeAmount) { this.pledgeAmount = pledgeAmount; }
+
+    public BigDecimal getGuaranteeAmount() { return guaranteeAmount; }
+    public void setGuaranteeAmount(BigDecimal guaranteeAmount) { this.guaranteeAmount = guaranteeAmount; }
+
+    public boolean isSelfGuarantee() { return selfGuarantee; }
+    public void setSelfGuarantee(boolean selfGuarantee) { this.selfGuarantee = selfGuarantee; }
 
     public String getRejectionReason() { return rejectionReason; }
     public void setRejectionReason(String rejectionReason) { this.rejectionReason = rejectionReason; }

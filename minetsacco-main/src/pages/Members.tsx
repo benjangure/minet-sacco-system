@@ -117,7 +117,7 @@ const Members = () => {
     if (session) {
       fetchMembers();
     }
-  }, [session, statusFilter]);
+  }, [session]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -125,6 +125,15 @@ const Members = () => {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  const handleApplyStatusFilter = () => {
+    fetchMembers();
+  };
+
+  const handleClearFilters = () => {
+    setStatusFilter("all");
+    setSearch("");
+  };
 
   const [form, setForm] = useState({
     firstName: "",
@@ -543,7 +552,7 @@ const Members = () => {
       {/* Filters */}
       <Card className="mb-6 border-none shadow-sm">
         <CardContent className="pt-6">
-          <div className="flex gap-4">
+          <div className="flex gap-4 items-end">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Search by name, member number, or national ID..." className="pl-10" value={search} onChange={e => setSearch(e.target.value)} />
@@ -558,8 +567,11 @@ const Members = () => {
                 <SelectItem value="DORMANT">Dormant</SelectItem>
                 <SelectItem value="SUSPENDED">Suspended</SelectItem>
                 <SelectItem value="REJECTED">Rejected</SelectItem>
+                <SelectItem value="EXITED">Exited</SelectItem>
               </SelectContent>
             </Select>
+            <Button onClick={handleApplyStatusFilter} size="sm">Apply Filter</Button>
+            <Button onClick={handleClearFilters} variant="outline" size="sm">Clear</Button>
           </div>
         </CardContent>
       </Card>

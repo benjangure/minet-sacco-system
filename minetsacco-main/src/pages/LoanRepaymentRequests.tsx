@@ -255,8 +255,11 @@ export default function LoanRepaymentRequests() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={fetchRequests} variant="outline">
-              Refresh
+            <Button onClick={fetchRequests} size="sm">
+              Apply Filter
+            </Button>
+            <Button onClick={() => setStatusFilter('PENDING')} variant="outline" size="sm">
+              Clear
             </Button>
           </div>
         </CardContent>
@@ -269,7 +272,7 @@ export default function LoanRepaymentRequests() {
             <div className="text-center">
               <p className="text-muted-foreground text-sm">Pending Requests</p>
               <p className="text-3xl font-bold text-yellow-600">
-                {requests.filter(r => r.status === 'PENDING').length}
+                {filteredRequests.filter(r => r.status === 'PENDING').length}
               </p>
             </div>
           </CardContent>
@@ -279,7 +282,7 @@ export default function LoanRepaymentRequests() {
             <div className="text-center">
               <p className="text-muted-foreground text-sm">Approved</p>
               <p className="text-3xl font-bold text-green-600">
-                {requests.filter(r => r.status === 'APPROVED').length}
+                {filteredRequests.filter(r => r.status === 'APPROVED').length}
               </p>
             </div>
           </CardContent>
@@ -289,7 +292,7 @@ export default function LoanRepaymentRequests() {
             <div className="text-center">
               <p className="text-muted-foreground text-sm">Rejected</p>
               <p className="text-3xl font-bold text-red-600">
-                {requests.filter(r => r.status === 'REJECTED').length}
+                {filteredRequests.filter(r => r.status === 'REJECTED').length}
               </p>
             </div>
           </CardContent>

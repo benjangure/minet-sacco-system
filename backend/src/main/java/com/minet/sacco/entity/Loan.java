@@ -70,24 +70,6 @@ public class Loan {
     @Column(name = "member_eligibility_warnings", columnDefinition = "TEXT")
     private String memberEligibilityWarnings;
 
-    @Column(name = "guarantor1_eligibility_status", length = 20)
-    private String guarantor1EligibilityStatus;
-
-    @Column(name = "guarantor1_eligibility_errors", columnDefinition = "TEXT")
-    private String guarantor1EligibilityErrors;
-
-    @Column(name = "guarantor2_eligibility_status", length = 20)
-    private String guarantor2EligibilityStatus;
-
-    @Column(name = "guarantor2_eligibility_errors", columnDefinition = "TEXT")
-    private String guarantor2EligibilityErrors;
-
-    @Column(name = "guarantor3_eligibility_status", length = 20)
-    private String guarantor3EligibilityStatus;
-
-    @Column(name = "guarantor3_eligibility_errors", columnDefinition = "TEXT")
-    private String guarantor3EligibilityErrors;
-
     private LocalDateTime applicationDate;
     private LocalDateTime approvalDate;
     private LocalDateTime disbursementDate;
@@ -166,21 +148,6 @@ public class Loan {
     public void setMemberEligibilityErrors(String memberEligibilityErrors) { this.memberEligibilityErrors = memberEligibilityErrors; }
     public String getMemberEligibilityWarnings() { return memberEligibilityWarnings; }
     public void setMemberEligibilityWarnings(String memberEligibilityWarnings) { this.memberEligibilityWarnings = memberEligibilityWarnings; }
-
-    public String getGuarantor1EligibilityStatus() { return guarantor1EligibilityStatus; }
-    public void setGuarantor1EligibilityStatus(String guarantor1EligibilityStatus) { this.guarantor1EligibilityStatus = guarantor1EligibilityStatus; }
-    public String getGuarantor1EligibilityErrors() { return guarantor1EligibilityErrors; }
-    public void setGuarantor1EligibilityErrors(String guarantor1EligibilityErrors) { this.guarantor1EligibilityErrors = guarantor1EligibilityErrors; }
-
-    public String getGuarantor2EligibilityStatus() { return guarantor2EligibilityStatus; }
-    public void setGuarantor2EligibilityStatus(String guarantor2EligibilityStatus) { this.guarantor2EligibilityStatus = guarantor2EligibilityStatus; }
-    public String getGuarantor2EligibilityErrors() { return guarantor2EligibilityErrors; }
-    public void setGuarantor2EligibilityErrors(String guarantor2EligibilityErrors) { this.guarantor2EligibilityErrors = guarantor2EligibilityErrors; }
-
-    public String getGuarantor3EligibilityStatus() { return guarantor3EligibilityStatus; }
-    public void setGuarantor3EligibilityStatus(String guarantor3EligibilityStatus) { this.guarantor3EligibilityStatus = guarantor3EligibilityStatus; }
-    public String getGuarantor3EligibilityErrors() { return guarantor3EligibilityErrors; }
-    public void setGuarantor3EligibilityErrors(String guarantor3EligibilityErrors) { this.guarantor3EligibilityErrors = guarantor3EligibilityErrors; }
 
     public LocalDateTime getApplicationDate() { return applicationDate; }
     public void setApplicationDate(LocalDateTime applicationDate) { this.applicationDate = applicationDate; }

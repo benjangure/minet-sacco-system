@@ -262,6 +262,7 @@ const Reports = () => {
                           <SelectItem value="LOAN_DISBURSEMENT">Loan Disbursement</SelectItem>
                           <SelectItem value="LOAN_REPAYMENT">Loan Repayment</SelectItem>
                           <SelectItem value="INTEREST">Interest</SelectItem>
+                          <SelectItem value="LOAN_DEFAULT_DEBIT">Loan Default Debit</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

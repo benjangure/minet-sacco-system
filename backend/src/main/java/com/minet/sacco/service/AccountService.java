@@ -104,6 +104,16 @@ public class AccountService {
             throw new RuntimeException("Insufficient balance");
         }
 
+        // Check frozen savings (for self-guarantee loans)
+        BigDecimal frozenSavings = account.getFrozenSavings() != null ? account.getFrozenSavings() : BigDecimal.ZERO;
+        BigDecimal availableBalance = account.getBalance().subtract(frozenSavings);
+        
+        if (availableBalance.compareTo(request.getAmount()) < 0) {
+            throw new RuntimeException("Insufficient available balance. Total balance: KES " + account.getBalance() + 
+                    ", Frozen (for loan guarantees): KES " + frozenSavings + 
+                    ", Available: KES " + availableBalance);
+        }
+
         // Update balance
         account.setBalance(account.getBalance().subtract(request.getAmount()));
         account.setUpdatedAt(LocalDateTime.now());

@@ -4,6 +4,7 @@ import com.minet.sacco.dto.LoanApplicationRequest;
 import com.minet.sacco.dto.LoanApprovalRequest;
 import com.minet.sacco.dto.LoanApprovalValidationDTO;
 import com.minet.sacco.dto.LoanRepaymentRequest;
+import com.minet.sacco.dto.GuarantorRequest;
 import com.minet.sacco.entity.*;
 import com.minet.sacco.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,6 +67,9 @@ public class LoanService {
     @Autowired
     private LoanEligibilityRulesService loanEligibilityRulesService;
 
+    @Autowired
+    private GuarantorTrackingService guarantorTrackingService;
+
     public Member getMemberById(Long memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new RuntimeException("Member not found"));
@@ -122,20 +126,75 @@ public class LoanService {
             throw new RuntimeException("Loan term exceeds the maximum allowed by SACCO policy (" + globalMax + " months / " + (globalMax / 12) + " years)");
         }
 
-        // NEW: Validate guarantors exist and are ACTIVE
-        if (request.getGuarantorIds() != null && !request.getGuarantorIds().isEmpty()) {
-            // Validate maximum 3 guarantors
-            if (request.getGuarantorIds().size() > 3) {
-                throw new RuntimeException("Maximum 3 guarantors allowed, but " + request.getGuarantorIds().size() + " were provided");
-            }
-            
-            for (Long guarantorMemberId : request.getGuarantorIds()) {
-                Member guarantor = memberRepository.findById(guarantorMemberId)
+        // Validate guarantors exist and are ACTIVE
+        BigDecimal totalGuaranteeAmount = BigDecimal.ZERO;
+        boolean hasSelfGuarantee = false;
+        
+        if (request.getGuarantors() != null && !request.getGuarantors().isEmpty()) {
+            for (com.minet.sacco.dto.GuarantorRequest gReq : request.getGuarantors()) {
+                // Validate guarantor ID is not null
+                if (gReq.getGuarantorId() == null) {
+                    throw new RuntimeException("Guarantor ID cannot be null. For self-guarantee, please ensure the member ID is properly set.");
+                }
+                
+                Member guarantor = memberRepository.findById(gReq.getGuarantorId())
                         .orElseThrow(() -> new RuntimeException("Guarantor member not found"));
                 if (guarantor.getStatus() != Member.Status.ACTIVE) {
                     throw new RuntimeException("Guarantor is not ACTIVE: " + guarantor.getFirstName() + " " + guarantor.getLastName());
                 }
+                
+                // Validate guarantee amount is positive
+                if (gReq.getGuaranteeAmount() == null || gReq.getGuaranteeAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new RuntimeException("Guarantee amount must be greater than zero");
+                }
+                
+                totalGuaranteeAmount = totalGuaranteeAmount.add(gReq.getGuaranteeAmount());
+                
+                // Check if this is self-guarantee
+                if (gReq.isSelfGuarantee() && gReq.getGuarantorId().equals(request.getMemberId())) {
+                    hasSelfGuarantee = true;
+                    
+                    // FIX 1: Validate self-guarantor has sufficient savings
+                    Account savingsAccount = accountRepository
+                            .findByMemberIdAndAccountType(gReq.getGuarantorId(), Account.AccountType.SAVINGS)
+                            .orElse(null);
+                    
+                    BigDecimal availableSavings = savingsAccount != null ? 
+                            savingsAccount.getBalance() : BigDecimal.ZERO;
+                    
+                    if (availableSavings.compareTo(gReq.getGuaranteeAmount()) < 0) {
+                        throw new RuntimeException(
+                            "Self-guarantee validation failed: You must have at least KES " + 
+                            gReq.getGuaranteeAmount() + " in savings to self-guarantee this loan. " +
+                            "Current available savings: KES " + availableSavings);
+                    }
+                }
+                
+                // For external guarantors, validate they have sufficient savings
+                if (!gReq.isSelfGuarantee()) {
+                    Account guarantorSavings = accountRepository
+                            .findByMemberIdAndAccountType(gReq.getGuarantorId(), Account.AccountType.SAVINGS)
+                            .orElse(null);
+                    
+                    BigDecimal guarantorAvailableSavings = guarantorSavings != null ? 
+                            guarantorSavings.getBalance() : BigDecimal.ZERO;
+                    
+                    if (guarantorAvailableSavings.compareTo(gReq.getGuaranteeAmount()) < 0) {
+                        throw new RuntimeException(
+                            "Guarantor " + guarantor.getFirstName() + " " + guarantor.getLastName() + 
+                            " does not have sufficient savings to guarantee KES " + gReq.getGuaranteeAmount() + 
+                            ". Available savings: KES " + guarantorAvailableSavings);
+                    }
+                }
             }
+            
+            // Validate total guarantee amount equals loan amount
+            if (totalGuaranteeAmount.compareTo(request.getAmount()) != 0) {
+                throw new RuntimeException("Total guarantee amount (" + totalGuaranteeAmount + ") must equal loan amount (" + request.getAmount() + ")");
+            }
+        } else if (!hasSelfGuarantee) {
+            // If no guarantors provided and no self-guarantee, loan cannot proceed
+            throw new RuntimeException("Loan must have at least one guarantor or member must self-guarantee");
         }
 
         // Calculate loan financials
@@ -150,6 +209,22 @@ public class LoanService {
         BigDecimal totalRepayable = principal.add(totalInterest);
         BigDecimal monthlyRepayment = totalRepayable.divide(BigDecimal.valueOf(termMonths), 2, BigDecimal.ROUND_HALF_UP);
 
+        // Determine loan status based on guarantor types
+        boolean hasNonSelfGuarantors = request.getGuarantors() != null && 
+            request.getGuarantors().stream().anyMatch(g -> !g.isSelfGuarantee());
+
+        Loan.Status initialStatus;
+        if (hasNonSelfGuarantors) {
+            // Has external guarantors - need their approval first
+            initialStatus = Loan.Status.PENDING_GUARANTOR_APPROVAL;
+        } else if (request.getGuarantors() != null && !request.getGuarantors().isEmpty()) {
+            // Only self-guarantors - skip to loan officer review
+            initialStatus = Loan.Status.PENDING_LOAN_OFFICER_REVIEW;
+        } else {
+            // No guarantors at all
+            initialStatus = Loan.Status.PENDING;
+        }
+
         // Create loan
         Loan loan = new Loan();
         loan.setMember(member);
@@ -162,41 +237,73 @@ public class LoanService {
         loan.setTotalRepayable(totalRepayable);
         loan.setOutstandingBalance(totalRepayable);
         loan.setPurpose(request.getPurpose());
-        loan.setStatus(request.getGuarantorIds() != null && !request.getGuarantorIds().isEmpty() 
-            ? Loan.Status.PENDING_GUARANTOR_APPROVAL 
-            : Loan.Status.PENDING);
+        loan.setStatus(initialStatus);
         loan.setApplicationDate(LocalDateTime.now());
         loan.setCreatedBy(createdBy);
         loan.setLoanNumber(null); // NEW: Explicitly set to null - will be assigned on disbursement
 
         loan = loanRepository.save(loan);
 
-        // Create guarantor records
-        if (request.getGuarantorIds() != null && !request.getGuarantorIds().isEmpty()) {
-            // Each guarantor pledges the FULL loan amount (joint and several liability)
-            // This is the standard Kenyan SACCO model where each guarantor is liable for 100% of the loan
-            for (Long guarantorMemberId : request.getGuarantorIds()) {
-                Member guarantorMember = memberRepository.findById(guarantorMemberId)
+        // Create guarantor records with custom guarantee amounts
+        if (request.getGuarantors() != null && !request.getGuarantors().isEmpty()) {
+            for (com.minet.sacco.dto.GuarantorRequest gReq : request.getGuarantors()) {
+                Member guarantorMember = memberRepository.findById(gReq.getGuarantorId())
                         .orElseThrow(() -> new RuntimeException("Guarantor member not found"));
 
                 Guarantor guarantor = new Guarantor();
                 guarantor.setLoan(loan);
                 guarantor.setMember(guarantorMember);
-                guarantor.setStatus(Guarantor.Status.PENDING);
-                guarantor.setPledgeAmount(principal); // Full loan amount frozen for each guarantor
+                guarantor.setGuaranteeAmount(gReq.getGuaranteeAmount());  // Custom guarantee amount
+                guarantor.setSelfGuarantee(gReq.isSelfGuarantee());
+                
+                // Auto-approve self-guarantors
+                if (gReq.isSelfGuarantee()) {
+                    guarantor.setStatus(Guarantor.Status.ACCEPTED);
+                    guarantor.setApprovedAt(LocalDateTime.now());
+                } else {
+                    guarantor.setStatus(Guarantor.Status.PENDING);
+                }
+                
                 guarantorRepository.save(guarantor);
                 
-                // Send notification to guarantor
-                Optional<User> guarantorUserOpt = userService.getUserByMemberId(guarantorMemberId);
-                if (guarantorUserOpt.isPresent()) {
-                    notificationService.notifyUser(guarantorUserOpt.get().getId(),
-                        "You have been added as a guarantor for a loan application. " +
-                        "Member: " + member.getFirstName() + " " + member.getLastName() + ", " +
-                        "Loan Amount: KES " + principal + ", " +
-                        "Product: " + loanProduct.getName() + ". " +
-                        "Please review and approve or reject.",
-                        "GUARANTOR_REQUEST", loan.getId(), guarantorMemberId, "GUARANTOR_REQUEST");
+                // Send notification to guarantor (skip if self-guarantee)
+                if (!gReq.isSelfGuarantee()) {
+                    Optional<User> guarantorUserOpt = userService.getUserByMemberId(gReq.getGuarantorId());
+                    if (guarantorUserOpt.isPresent()) {
+                        // Build a more detailed notification message for partial guarantees
+                        String guaranteeMessage;
+                        if (gReq.getGuaranteeAmount().compareTo(request.getAmount()) < 0) {
+                            // Partial guarantee - specify both the total loan and their portion
+                            guaranteeMessage = "You have been requested to guarantee KES " + gReq.getGuaranteeAmount() + 
+                                " of a KES " + request.getAmount() + " loan application for " +
+                                member.getFirstName() + " " + member.getLastName() + " (Member: " + member.getMemberNumber() + "). " +
+                                "Product: " + loanProduct.getName() + ", Term: " + request.getTermMonths() + " months. " +
+                                "Please review and approve or reject.";
+                        } else {
+                            // Full guarantee
+                            guaranteeMessage = "You have been requested to guarantee a KES " + gReq.getGuaranteeAmount() + 
+                                " loan application for " + member.getFirstName() + " " + member.getLastName() + 
+                                " (Member: " + member.getMemberNumber() + "). " +
+                                "Product: " + loanProduct.getName() + ", Term: " + request.getTermMonths() + " months. " +
+                                "Please review and approve or reject.";
+                        }
+                        
+                        notificationService.notifyUser(guarantorUserOpt.get().getId(),
+                            guaranteeMessage,
+                            "GUARANTOR_REQUEST", loan.getId(), gReq.getGuarantorId(), "GUARANTOR_REQUEST");
+                    }
                 }
+            }
+            
+            // Check if all guarantors are approved (for mixed scenarios)
+            List<Guarantor> allGuarantors = guarantorRepository.findByLoanId(loan.getId());
+            boolean allApproved = allGuarantors.stream()
+                .allMatch(g -> g.getStatus() == Guarantor.Status.ACCEPTED);
+            
+            if (allApproved && hasNonSelfGuarantors) {
+                // All guarantors approved, transition to loan officer review
+                loan.setStatus(Loan.Status.PENDING_LOAN_OFFICER_REVIEW);
+                loan = loanRepository.save(loan);
             }
         }
 
@@ -210,6 +317,9 @@ public class LoanService {
 
         // Check current status and determine next stage based on user role
         Loan.Status currentStatus = loan.getStatus();
+        
+        // Validate that the user's role matches the current loan status
+        validateApprovalAuthorization(currentStatus, approvedBy);
         
         if (request.getApproved()) {
             // Validate member and guarantors
@@ -237,30 +347,10 @@ public class LoanService {
                 
                 for (int i = 0; i < validationResults.size() && i < 3; i++) {
                     GuarantorValidationService.GuarantorValidationResult result = validationResults.get(i);
-                    String status = result.isEligible() ? "ELIGIBLE" : "INELIGIBLE";
-                    String errors = result.getErrors().isEmpty() ? null : String.join("; ", result.getErrors());
                     
-                    if (i == 0) {
-                        loan.setGuarantor1EligibilityStatus(status);
-                        loan.setGuarantor1EligibilityErrors(errors);
-                        if (guarantors.size() > 0) {
-                            guarantors.get(0).setStatus(result.isEligible() ? Guarantor.Status.ACCEPTED : Guarantor.Status.REJECTED);
-                            guarantorRepository.save(guarantors.get(0));
-                        }
-                    } else if (i == 1) {
-                        loan.setGuarantor2EligibilityStatus(status);
-                        loan.setGuarantor2EligibilityErrors(errors);
-                        if (guarantors.size() > 1) {
-                            guarantors.get(1).setStatus(result.isEligible() ? Guarantor.Status.ACCEPTED : Guarantor.Status.REJECTED);
-                            guarantorRepository.save(guarantors.get(1));
-                        }
-                    } else if (i == 2) {
-                        loan.setGuarantor3EligibilityStatus(status);
-                        loan.setGuarantor3EligibilityErrors(errors);
-                        if (guarantors.size() > 2) {
-                            guarantors.get(2).setStatus(result.isEligible() ? Guarantor.Status.ACCEPTED : Guarantor.Status.REJECTED);
-                            guarantorRepository.save(guarantors.get(2));
-                        }
+                    if (i < guarantors.size()) {
+                        guarantors.get(i).setStatus(result.isEligible() ? Guarantor.Status.ACCEPTED : Guarantor.Status.REJECTED);
+                        guarantorRepository.save(guarantors.get(i));
                     }
                 }
             }
@@ -308,17 +398,37 @@ public class LoanService {
                 }
             }
         } else {
-            loan.setStatus(Loan.Status.REJECTED);
+            // Determine rejection status based on current stage
+            // Rejection should revert to previous stage, not go directly to REJECTED
+            if (currentStatus == Loan.Status.PENDING_TREASURER) {
+                // Treasurer rejects → go back to Credit Committee
+                loan.setStatus(Loan.Status.PENDING_CREDIT_COMMITTEE);
+                notificationService.notifyUsersByRole("CREDIT_COMMITTEE", 
+                    "Loan application from " + loan.getMember().getFirstName() + " " + 
+                    loan.getMember().getLastName() + " (Amount: KES " + loan.getAmount() + ") was rejected by Treasurer. " +
+                    "Reason: " + request.getComments() + ". Please review and decide.",
+                    "LOAN_REJECTION", loan.getId(), loan.getMember().getId(), "LOAN_REJECTION");
+            } else if (currentStatus == Loan.Status.PENDING_CREDIT_COMMITTEE) {
+                // Credit Committee rejects → go back to Loan Officer
+                loan.setStatus(Loan.Status.PENDING_LOAN_OFFICER_REVIEW);
+                notificationService.notifyUsersByRole("LOAN_OFFICER", 
+                    "Loan application from " + loan.getMember().getFirstName() + " " + 
+                    loan.getMember().getLastName() + " (Amount: KES " + loan.getAmount() + ") was rejected by Credit Committee. " +
+                    "Reason: " + request.getComments() + ". Please review and decide.",
+                    "LOAN_REJECTION", loan.getId(), loan.getMember().getId(), "LOAN_REJECTION");
+            } else {
+                // Loan Officer rejects → final rejection
+                loan.setStatus(Loan.Status.REJECTED);
+                Optional<User> memberUserOpt = userService.getUserByMemberId(loan.getMember().getId());
+                if (memberUserOpt.isPresent()) {
+                    notificationService.notifyUser(memberUserOpt.get().getId(), 
+                        "Your loan application for KES " + loan.getAmount() + " has been rejected. Reason: " + request.getComments(),
+                        "LOAN_REJECTED", loan.getId(), loan.getMember().getId(), "LOAN_REJECTED");
+                }
+            }
+            
             loan.setRejectionReason(request.getComments());
             loan.setApprovedBy(approvedBy);
-            
-            // Notify member of rejection
-            Optional<User> memberUserOpt = userService.getUserByMemberId(loan.getMember().getId());
-            if (memberUserOpt.isPresent()) {
-                notificationService.notifyUser(memberUserOpt.get().getId(), 
-                    "Your loan application for KES " + loan.getAmount() + " has been rejected. Reason: " + request.getComments(),
-                    "LOAN_REJECTED", loan.getId(), loan.getMember().getId(), "LOAN_REJECTED");
-            }
         }
 
         // Log audit event
@@ -355,8 +465,11 @@ public class LoanService {
         LoanRepayment repayment = new LoanRepayment();
         repayment.setLoan(loan);
         repayment.setAmount(request.getAmount());
-        repayment.setCreatedBy(createdBy);
+        repayment.setRecordedBy(createdBy);
         repayment = loanRepaymentRepository.save(repayment);
+
+        // Track pledge reduction for guarantors (proportional to repayment)
+        guarantorTrackingService.trackPledgeReduction(loan, request.getAmount());
 
         // Check if loan is fully repaid
         BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loan.getId());
@@ -366,11 +479,7 @@ public class LoanService {
             loan.setStatus(Loan.Status.REPAID);
             loanRepository.save(loan);
             // Release all guarantor pledges — their savings are no longer frozen
-            List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
-            for (Guarantor g : guarantors) {
-                g.setStatus(Guarantor.Status.RELEASED);
-                guarantorRepository.save(g);
-            }
+            guarantorTrackingService.releaseAllPledges(loan);
         }
 
         return repayment;
@@ -545,9 +654,13 @@ public class LoanService {
         Member borrower = loan.getMember();
 
         if (approved) {
-            // Validate guarantor is still eligible
+            // Validate guarantor is still eligible using their specific guarantee amount
+            BigDecimal guaranteeAmount = guarantor.getGuaranteeAmount() != null ? 
+                    guarantor.getGuaranteeAmount() : loan.getAmount();
+            
             GuarantorValidationService.GuarantorValidationResult validation = 
-                    guarantorValidationService.validateGuarantor(guarantorMember, loan.getAmount(), loan.getId());
+                    guarantorValidationService.validateGuarantorWithGuaranteeAmount(
+                            guarantorMember, loan.getAmount(), guaranteeAmount, loan.getId());
 
             if (!validation.isEligible()) {
                 throw new RuntimeException("Guarantor is no longer eligible: " + validation.getErrors());
@@ -556,14 +669,18 @@ public class LoanService {
             guarantor.setStatus(Guarantor.Status.ACCEPTED);
             guarantor.setApprovedAt(LocalDateTime.now());
             
-            // Check if all guarantors have approved
+            // Check if all non-self guarantors have approved
             List<Guarantor> allGuarantors = guarantorRepository.findByLoanId(loan.getId());
-            long acceptedCount = allGuarantors.stream()
+            List<Guarantor> nonSelfGuarantors = allGuarantors.stream()
+                    .filter(g -> !g.isSelfGuarantee())
+                    .toList();
+            
+            long acceptedCount = nonSelfGuarantors.stream()
                     .filter(g -> g.getStatus() == Guarantor.Status.ACCEPTED)
                     .count();
             
-            // If all guarantors approved, move loan to next stage
-            if (acceptedCount == allGuarantors.size()) {
+            // If all non-self guarantors approved, move loan to next stage
+            if (acceptedCount == nonSelfGuarantors.size() && !nonSelfGuarantors.isEmpty()) {
                 loan.setStatus(Loan.Status.PENDING_LOAN_OFFICER_REVIEW);
                 loanRepository.save(loan);
                 
@@ -577,7 +694,7 @@ public class LoanService {
                 notificationService.notifyUsersByRole("LOAN_OFFICER",
                     "Guarantor " + guarantorMember.getFirstName() + " " + guarantorMember.getLastName() + 
                     " has approved the guarantee for loan from " + borrower.getFirstName() + " " + 
-                    borrower.getLastName() + " (" + acceptedCount + "/" + allGuarantors.size() + " approved)",
+                    borrower.getLastName() + " (" + acceptedCount + "/" + nonSelfGuarantors.size() + " approved)",
                     "GUARANTOR_APPROVED", loan.getId(), borrower.getId(), "GUARANTOR_APPROVED");
             }
         } else {
@@ -602,5 +719,47 @@ public class LoanService {
         }
 
         return guarantorRepository.save(guarantor);
+    }
+
+    /**
+     * Validate that the user's role matches the current loan status
+     * Only the appropriate staff member can approve at each stage
+     */
+    private void validateApprovalAuthorization(Loan.Status currentStatus, User approvedBy) {
+        // Get user's role
+        User.Role userRole = approvedBy.getRole();
+
+        String errorMessage = null;
+
+        switch (currentStatus) {
+            case PENDING_LOAN_OFFICER_REVIEW:
+                if (userRole != User.Role.LOAN_OFFICER) {
+                    errorMessage = "Only Loan Officers can approve loans in PENDING_LOAN_OFFICER_REVIEW status";
+                }
+                break;
+
+            case PENDING_CREDIT_COMMITTEE:
+                if (userRole != User.Role.CREDIT_COMMITTEE) {
+                    errorMessage = "Only Credit Committee members can approve loans in PENDING_CREDIT_COMMITTEE status";
+                }
+                break;
+
+            case PENDING_TREASURER:
+                if (userRole != User.Role.TREASURER) {
+                    errorMessage = "Only Treasurers can approve loans in PENDING_TREASURER status";
+                }
+                break;
+
+            case PENDING_GUARANTOR_APPROVAL:
+                errorMessage = "Loans in PENDING_GUARANTOR_APPROVAL status must be approved by guarantors, not staff";
+                break;
+
+            default:
+                errorMessage = "Loan cannot be approved in " + currentStatus + " status";
+        }
+
+        if (errorMessage != null) {
+            throw new RuntimeException(errorMessage);
+        }
     }
 }

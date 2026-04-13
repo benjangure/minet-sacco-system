@@ -22,7 +22,7 @@ public class LoanApplicationRequest {
     @Min(1)
     private Integer termMonths;
 
-    private List<Long> guarantorIds;
+    private List<GuarantorRequest> guarantors;  // Changed from List<Long> to List<GuarantorRequest>
 
     private String purpose;
 
@@ -39,8 +39,8 @@ public class LoanApplicationRequest {
     public Integer getTermMonths() { return termMonths; }
     public void setTermMonths(Integer termMonths) { this.termMonths = termMonths; }
 
-    public List<Long> getGuarantorIds() { return guarantorIds; }
-    public void setGuarantorIds(List<Long> guarantorIds) { this.guarantorIds = guarantorIds; }
+    public List<GuarantorRequest> getGuarantors() { return guarantors; }
+    public void setGuarantors(List<GuarantorRequest> guarantors) { this.guarantors = guarantors; }
 
     public String getPurpose() { return purpose; }
     public void setPurpose(String purpose) { this.purpose = purpose; }

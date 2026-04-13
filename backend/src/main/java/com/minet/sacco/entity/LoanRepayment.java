@@ -3,6 +3,8 @@ package com.minet.sacco.entity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -23,19 +25,33 @@ public class LoanRepayment {
     @DecimalMin(value = "0.01")
     private BigDecimal amount;
 
-    private LocalDateTime repaymentDate;
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod = PaymentMethod.CASH;
 
-    private String paymentMethod; // CASH, MPESA, BANK_TRANSFER
+    private String referenceNumber; // Receipt/transaction reference
+
+    @NotNull
+    private LocalDateTime paymentDate;
 
     private String description;
 
+    @NotNull
     @ManyToOne
-    @JoinColumn(name = "created_by")
-    private User createdBy;
+    @JoinColumn(name = "recorded_by")
+    private User recordedBy;
 
-    @PrePersist
-    protected void onCreate() {
-        repaymentDate = LocalDateTime.now();
+    @CreationTimestamp
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
+
+    public enum PaymentMethod {
+        CASH,
+        MPESA,
+        BANK_TRANSFER,
+        CHEQUE,
+        OTHER
     }
 
     // Getters and Setters
@@ -48,15 +64,24 @@ public class LoanRepayment {
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
 
-    public LocalDateTime getRepaymentDate() { return repaymentDate; }
-    public void setRepaymentDate(LocalDateTime repaymentDate) { this.repaymentDate = repaymentDate; }
+    public PaymentMethod getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(PaymentMethod paymentMethod) { this.paymentMethod = paymentMethod; }
 
-    public String getPaymentMethod() { return paymentMethod; }
-    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+    public String getReferenceNumber() { return referenceNumber; }
+    public void setReferenceNumber(String referenceNumber) { this.referenceNumber = referenceNumber; }
+
+    public LocalDateTime getPaymentDate() { return paymentDate; }
+    public void setPaymentDate(LocalDateTime paymentDate) { this.paymentDate = paymentDate; }
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 
-    public User getCreatedBy() { return createdBy; }
-    public void setCreatedBy(User createdBy) { this.createdBy = createdBy; }
+    public User getRecordedBy() { return recordedBy; }
+    public void setRecordedBy(User recordedBy) { this.recordedBy = recordedBy; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 }

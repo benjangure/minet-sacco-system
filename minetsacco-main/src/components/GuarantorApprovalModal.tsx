@@ -25,6 +25,7 @@ interface GuarantorEligibility {
   availableCapacity: number;
   activeGuarantorships: number;
   loanAmount: number;
+  guaranteeAmount: number;
   canGuarantee: boolean;
   errors: string[];
   warnings: string[];
@@ -75,9 +76,36 @@ export default function GuarantorApprovalModal({
 
     setLoadingEligibility(true);
     try {
+      // Get the guarantee amount from the guarantor object
+      // The guarantor object is the full Guarantor entity from the backend
+      let guaranteeAmount = guarantor?.guaranteeAmount;
+      
+      // If guaranteeAmount is null or undefined, use the loan amount as fallback
+      // This handles both new guarantors (with guaranteeAmount set) and old ones (without)
+      if (!guaranteeAmount) {
+        guaranteeAmount = loan.amount;
+      }
+      
+      // Convert to number if it's a string
+      if (typeof guaranteeAmount === 'string') {
+        guaranteeAmount = parseFloat(guaranteeAmount);
+      }
+      
+      console.log('Guarantor object:', guarantor);
+      console.log('Guarantee amount extracted:', guaranteeAmount);
+      console.log('Loan amount:', loan.amount);
+      console.log('API call URL:', `/member/guarantor-eligibility/${memberId}/${loan.amount}`);
+      console.log('API call params:', { guaranteeAmount: guaranteeAmount });
+      
       const response = await api.get(
-        `/member/guarantor-eligibility/${memberId}/${loan.amount}`
+        `/member/guarantor-eligibility/${memberId}/${loan.amount}`,
+        {
+          params: {
+            guaranteeAmount: guaranteeAmount
+          }
+        }
       );
+      console.log('Eligibility response:', response.data);
       setEligibility(response.data);
     } catch (err: any) {
       console.error('Error checking eligibility:', err);
@@ -220,6 +248,13 @@ export default function GuarantorApprovalModal({
                     <p className="font-semibold text-lg text-blue-600">{formatCurrency(loan.amount)}</p>
                   </div>
                   <div>
+                    <p className="text-sm text-muted-foreground">Your Guarantee Amount</p>
+                    <p className="font-semibold text-lg text-purple-600">{formatCurrency(guarantor?.guaranteeAmount || loan.amount)}</p>
+                    {guarantor?.guaranteeAmount && Number(guarantor.guaranteeAmount) < loan.amount && (
+                      <p className="text-xs text-muted-foreground mt-1">Partial guarantee of the total loan</p>
+                    )}
+                  </div>
+                  <div>
                     <p className="text-sm text-muted-foreground">Loan Product</p>
                     <p className="font-semibold">{loan.loanProduct?.name}</p>
                   </div>
@@ -252,6 +287,35 @@ export default function GuarantorApprovalModal({
                         <p className={`font-semibold text-sm ${eligibility.canGuarantee ? 'text-green-800' : 'text-red-800'}`}>
                           {eligibility.canGuarantee ? '✓ You can guarantee this loan' : '✗ You cannot guarantee this loan'}
                         </p>
+                      </div>
+
+                      {/* Calculation Breakdown - Always Show */}
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                        <p className="text-xs font-semibold text-blue-900 mb-2">Eligibility Calculation:</p>
+                        <div className="space-y-2 text-xs text-blue-800">
+                          <div className="flex justify-between">
+                            <span>Total Savings:</span>
+                            <span className="font-semibold">{formatCurrency(eligibility.savingsBalance)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Already Pledged:</span>
+                            <span className="font-semibold">- {formatCurrency(eligibility.currentPledges)}</span>
+                          </div>
+                          <div className="border-t border-blue-300 pt-2 flex justify-between">
+                            <span>Available Capacity:</span>
+                            <span className="font-semibold text-green-700">{formatCurrency(eligibility.availableCapacity)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Your Guarantee Amount:</span>
+                            <span className="font-semibold text-purple-700">{formatCurrency(eligibility.guaranteeAmount)}</span>
+                          </div>
+                          <div className="border-t border-blue-300 pt-2 flex justify-between">
+                            <span>Result:</span>
+                            <span className={`font-semibold ${eligibility.availableCapacity >= eligibility.guaranteeAmount ? 'text-green-700' : 'text-red-700'}`}>
+                              {eligibility.availableCapacity >= eligibility.guaranteeAmount ? '✓ Sufficient' : '✗ Insufficient'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
                       <div>

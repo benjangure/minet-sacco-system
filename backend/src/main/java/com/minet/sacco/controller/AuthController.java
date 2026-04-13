@@ -1,5 +1,6 @@
 package com.minet.sacco.controller;
 
+import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.AuthRequest;
 import com.minet.sacco.dto.AuthResponse;
 import com.minet.sacco.entity.User;
@@ -115,5 +116,14 @@ public class AuthController {
             System.err.println("ERROR: Failed to generate member JWT token: " + e.getMessage());
             throw new Exception(e.getMessage(), e);
         }
+    }
+
+    /**
+     * Health check endpoint for APK to verify backend connectivity
+     * No authentication required - used by APK settings to test connection
+     */
+    @GetMapping("/health")
+    public ResponseEntity<?> healthCheck() {
+        return ResponseEntity.ok(new ApiResponse(true, "Backend is healthy", null));
     }
 }

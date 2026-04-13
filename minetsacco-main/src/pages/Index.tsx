@@ -88,8 +88,9 @@ const Index = () => {
         const totalShares = sharesAccounts.reduce((sum: number, a: any) => sum + (a.balance || 0), 0);
 
         const activeLoans = loansData.filter((l: any) => ["DISBURSED", "ACTIVE"].includes(l.status)).length;
-        const pendingLoans = loansData.filter((l: any) => ["PENDING", "UNDER_REVIEW"].includes(l.status)).length;
+        const pendingLoans = loansData.filter((l: any) => ["PENDING", "PENDING_GUARANTOR_APPROVAL", "PENDING_LOAN_OFFICER_REVIEW", "PENDING_CREDIT_COMMITTEE", "PENDING_TREASURER", "UNDER_REVIEW"].includes(l.status)).length;
         const defaultedLoans = loansData.filter((l: any) => l.status === "DEFAULTED").length;
+        const approvedLoansForDisbursement = loansData.filter((l: any) => l.status === "APPROVED").length;
 
         setStats({
           totalMembers: membersData.length,
@@ -105,7 +106,7 @@ const Index = () => {
           kycDocumentsVerified: kycIncompleteData.reduce((sum: number, m: any) => sum + (m.documentsVerified || 0), 0),
           membersWithIncompleteKyc: kycIncompleteData.length,
           myUploadedDocuments: myUploadsData.length,
-          approvedLoansForDisbursement: approvedLoansData.length,
+          approvedLoansForDisbursement,
           pendingDeposits: pendingDepositsData.length,
         });
 
@@ -162,7 +163,7 @@ const Index = () => {
   const getStatCards = () => {
     const allCards = {
       members: { title: "Total Members", value: stats.totalMembers.toLocaleString(), icon: Users, sub: `${stats.activeMembers} active`, link: "/members" },
-      pending: { title: "Pending Approvals", value: stats.approvedLoansForDisbursement.toLocaleString(), icon: FileText, sub: "Loans ready for disbursement", link: "/bulk-processing" },
+      pending: { title: "Pending Approvals", value: stats.approvedLoansForDisbursement.toLocaleString(), icon: FileText, sub: "Loans ready for disbursement", link: "/loans?status=APPROVED" },
       loans: { title: "Active Loans", value: stats.activeLoans.toLocaleString(), icon: Landmark, sub: `${stats.pendingLoans} pending approval`, link: "/loans" },
       savings: { title: "Total Savings", value: `KES ${stats.totalSavings.toLocaleString()}`, icon: PiggyBank, sub: `KES ${stats.totalShares.toLocaleString()} in shares`, link: "/savings" },
       defaulted: { title: "Defaulted Loans", value: stats.defaultedLoans.toLocaleString(), icon: AlertTriangle, sub: "Requires attention", link: "/loans" },

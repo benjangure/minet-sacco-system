@@ -3,7 +3,9 @@ package com.minet.sacco.controller;
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.MemberApprovalRequest;
 import com.minet.sacco.entity.Member;
+import com.minet.sacco.entity.Transaction;
 import com.minet.sacco.entity.User;
+import com.minet.sacco.repository.TransactionRepository;
 import com.minet.sacco.service.MemberService;
 import com.minet.sacco.service.UserService;
 import jakarta.validation.Valid;
@@ -18,6 +20,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -31,6 +35,9 @@ public class MemberController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
 
     private static final String UPLOAD_DIR = "uploads/members/";
 
@@ -285,6 +292,48 @@ public class MemberController {
                 .header("Content-Type", contentType)
                 .header("Content-Disposition", "inline; filename=\"" + filePath.getFileName().toString() + "\"")
                 .body(fileContent);
+    }
+
+    @GetMapping("/{memberId}/transactions")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
+    public ResponseEntity<ApiResponse<List<Transaction>>> getMemberTransactions(
+            @PathVariable Long memberId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) String transactionType) {
+        
+        // Verify member exists
+        Member member = memberService.getMemberById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+        
+        List<Transaction> transactions;
+        
+        // If no date range provided, get all transactions
+        if (startDate == null || endDate == null) {
+            transactions = transactionRepository.findByAccountMemberIdOrderByTransactionDateDesc(memberId);
+        } else {
+            // Parse dates
+            LocalDateTime start = LocalDate.parse(startDate).atStartOfDay();
+            LocalDateTime end = LocalDate.parse(endDate).atTime(23, 59, 59);
+            
+            // If transaction type filter provided
+            if (transactionType != null && !transactionType.isEmpty()) {
+                try {
+                    Transaction.TransactionType type = Transaction.TransactionType.valueOf(transactionType.toUpperCase());
+                    transactions = transactionRepository.findByMemberIdAndTypeAndDateRange(memberId, type, start, end);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest()
+                            .body(ApiResponse.error("Invalid transaction type: " + transactionType));
+                }
+            } else {
+                transactions = transactionRepository.findByMemberIdAndDateRange(memberId, start, end);
+            }
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success(
+                "Transactions retrieved for member: " + member.getFirstName() + " " + member.getLastName(),
+                transactions
+        ));
     }
 }
 

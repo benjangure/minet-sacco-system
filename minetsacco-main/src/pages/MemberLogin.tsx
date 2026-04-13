@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
-import api from '@/config/api';
+import api, { getBackendUrl, setBackendUrl } from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, LogIn, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, LogIn, Eye, EyeOff, Settings, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 import logo from '@/assets/images/logo.png';
 
 export default function MemberLogin() {
@@ -17,6 +17,11 @@ export default function MemberLogin() {
   const [error, setError] = useState('');
   const [accessError, setAccessError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [backendUrl, setBackendUrlLocal] = useState('');
+  const [tempUrl, setTempUrl] = useState('');
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -26,6 +31,11 @@ export default function MemberLogin() {
       setAccessError(error);
       localStorage.removeItem('accessError');
     }
+
+    // Load current backend URL
+    const currentUrl = getBackendUrl();
+    setBackendUrlLocal(currentUrl);
+    setTempUrl(currentUrl);
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -81,6 +91,59 @@ export default function MemberLogin() {
     }
   };
 
+  const validateUrl = (url: string): boolean => {
+    try {
+      new URL(url);
+      return url.startsWith('http://') || url.startsWith('https://');
+    } catch {
+      return false;
+    }
+  };
+
+  const testConnection = async () => {
+    if (!validateUrl(tempUrl)) {
+      setConnectionStatus({ type: 'error', text: 'Invalid URL format' });
+      return;
+    }
+
+    setTestingConnection(true);
+    try {
+      // Test the health check endpoint (no authentication required)
+      const response = await fetch(`${tempUrl}/api/auth/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setConnectionStatus({ type: 'success', text: `✓ Backend is reachable! (${tempUrl})` });
+      } else if (response.status === 404) {
+        setConnectionStatus({ type: 'error', text: 'Backend not found at this URL' });
+      } else {
+        setConnectionStatus({ type: 'error', text: `Server error: ${response.status}` });
+      }
+    } catch (error) {
+      setConnectionStatus({ type: 'error', text: 'Cannot reach backend - check URL and network' });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleSaveUrl = () => {
+    if (!validateUrl(tempUrl)) {
+      setConnectionStatus({ type: 'error', text: 'Invalid URL format' });
+      return;
+    }
+
+    setBackendUrl(tempUrl);
+    setBackendUrlLocal(tempUrl);
+    setConnectionStatus({ type: 'success', text: 'Backend URL updated!' });
+    setTimeout(() => {
+      setConnectionStatus(null);
+      setShowSettings(false);
+    }, 1500);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -94,6 +157,79 @@ export default function MemberLogin() {
           </CardHeader>
 
           <CardContent className="space-y-6">
+            {/* Settings Toggle Button */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSettings(!showSettings)}
+              className="w-full gap-2"
+            >
+              <Settings className="h-4 w-4" />
+              {showSettings ? 'Hide Settings' : 'Backend Settings'}
+              {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+
+            {/* Settings Panel */}
+            {showSettings && (
+              <div className="space-y-4 p-4 bg-muted rounded-lg border">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Current Backend</Label>
+                  <div className="p-2 bg-background rounded text-xs font-mono break-all">
+                    {backendUrl}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="backend-url" className="text-sm">Backend URL</Label>
+                  <Input
+                    id="backend-url"
+                    type="text"
+                    value={tempUrl}
+                    onChange={(e) => setTempUrl(e.target.value)}
+                    placeholder="http://192.168.0.50:8080"
+                    className="text-xs font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Format: http://IP:PORT or https://domain
+                  </p>
+                </div>
+
+                {connectionStatus && (
+                  <Alert variant={connectionStatus.type === 'error' ? 'destructive' : 'default'}>
+                    {connectionStatus.type === 'error' ? (
+                      <AlertCircle className="h-4 w-4" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                    <AlertDescription className="text-xs">{connectionStatus.text}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={testConnection}
+                    disabled={testingConnection}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs"
+                  >
+                    {testingConnection ? 'Testing...' : 'Test'}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleSaveUrl}
+                    disabled={testingConnection || tempUrl === backendUrl}
+                    size="sm"
+                    className="flex-1 text-xs"
+                  >
+                    Save
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleLogin} className="space-y-4">
               {accessError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -158,8 +294,6 @@ export default function MemberLogin() {
                 {loading ? 'Logging in...' : 'Login'}
               </Button>
             </form>
-
-
           </CardContent>
         </Card>
       </div>

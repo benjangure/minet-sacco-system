@@ -556,8 +556,9 @@ public class BulkProcessingService {
             LoanRepayment repayment = new LoanRepayment();
             repayment.setLoan(loan);
             repayment.setAmount(item.getLoanRepaymentAmount());
-            repayment.setRepaymentDate(LocalDateTime.now());
-            repayment.setCreatedBy(systemUser);
+            repayment.setPaymentDate(LocalDateTime.now());
+            repayment.setPaymentMethod(LoanRepayment.PaymentMethod.CASH);
+            repayment.setRecordedBy(systemUser);
             loanRepaymentRepository.save(repayment);
             
             loan.setOutstandingBalance(loan.getOutstandingBalance().subtract(item.getLoanRepaymentAmount()));
@@ -614,20 +615,36 @@ public class BulkProcessingService {
 
     private void createMemberLoginCredentials(Member member) {
         String username = member.getMemberNumber();
-        if (username == null || userRepository.existsByUsername(username)) {
-            return; // Skip if no identifier or account already exists
+        if (username == null) {
+            return; // Skip if no identifier
         }
-        User user = new User();
-        user.setUsername(username);
-        user.setEmail(member.getEmail() != null && !member.getEmail().isBlank()
-            ? member.getEmail()
-            : username + "@minet.sacco");
-        user.setPassword(passwordEncoder.encode(member.getNationalId()));
-        user.setRole(User.Role.MEMBER);
-        user.setMemberId(member.getId());
-        user.setEnabled(true);
-        user.setCreatedAt(LocalDateTime.now());
-        userRepository.save(user);
+        
+        // Check if user already exists
+        Optional<User> existingUser = userRepository.findByUsername(username);
+        User user;
+        
+        if (existingUser.isPresent()) {
+            // Update existing user with member_id if not already set
+            user = existingUser.get();
+            if (user.getMemberId() == null) {
+                user.setMemberId(member.getId());
+                user.setUpdatedAt(LocalDateTime.now());
+                userRepository.save(user);
+            }
+        } else {
+            // Create new user account
+            user = new User();
+            user.setUsername(username);
+            user.setEmail(member.getEmail() != null && !member.getEmail().isBlank()
+                ? member.getEmail()
+                : username + "@minet.sacco");
+            user.setPassword(passwordEncoder.encode(member.getNationalId()));
+            user.setRole(User.Role.MEMBER);
+            user.setMemberId(member.getId());
+            user.setEnabled(true);
+            user.setCreatedAt(LocalDateTime.now());
+            userRepository.save(user);
+        }
     }
 
     private void createDefaultAccounts(Member member) {
@@ -1056,33 +1073,13 @@ public class BulkProcessingService {
         List<GuarantorValidationService.GuarantorValidationResult> guarantorResults = 
             guarantorValidationService.validateAllGuarantors(guarantorIds, item.getAmount());
 
-        // Store guarantor eligibility in Loan entity
+        // Store guarantor eligibility in Guarantor entity
         for (int i = 0; i < guarantorResults.size() && i < 3; i++) {
             GuarantorValidationService.GuarantorValidationResult gResult = guarantorResults.get(i);
-            String status = gResult.isEligible() ? "ELIGIBLE" : "INELIGIBLE";
-            String errors = gResult.getErrors().isEmpty() ? null : String.join("; ", gResult.getErrors());
             
-            if (i == 0) {
-                loan.setGuarantor1EligibilityStatus(status);
-                loan.setGuarantor1EligibilityErrors(errors);
-                if (guarantors.size() > 0) {
-                    guarantors.get(0).setStatus(gResult.isEligible() ? Guarantor.Status.ACCEPTED : Guarantor.Status.REJECTED);
-                    guarantorRepository.save(guarantors.get(0));
-                }
-            } else if (i == 1) {
-                loan.setGuarantor2EligibilityStatus(status);
-                loan.setGuarantor2EligibilityErrors(errors);
-                if (guarantors.size() > 1) {
-                    guarantors.get(1).setStatus(gResult.isEligible() ? Guarantor.Status.ACCEPTED : Guarantor.Status.REJECTED);
-                    guarantorRepository.save(guarantors.get(1));
-                }
-            } else if (i == 2) {
-                loan.setGuarantor3EligibilityStatus(status);
-                loan.setGuarantor3EligibilityErrors(errors);
-                if (guarantors.size() > 2) {
-                    guarantors.get(2).setStatus(gResult.isEligible() ? Guarantor.Status.ACCEPTED : Guarantor.Status.REJECTED);
-                    guarantorRepository.save(guarantors.get(2));
-                }
+            if (i < guarantors.size()) {
+                guarantors.get(i).setStatus(gResult.isEligible() ? Guarantor.Status.ACCEPTED : Guarantor.Status.REJECTED);
+                guarantorRepository.save(guarantors.get(i));
             }
         }
 

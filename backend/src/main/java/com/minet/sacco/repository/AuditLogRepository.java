@@ -76,4 +76,25 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
     // Count by entity type
     long countByEntityType(String entityType);
+
+    // Find by action (non-paginated)
+    List<AuditLog> findByActionOrderByTimestampDesc(String action);
+
+    // Find by user ID (non-paginated)
+    List<AuditLog> findByUserIdOrderByTimestampDesc(Long userId);
+
+    // Find by user ID and action (non-paginated)
+    List<AuditLog> findByUserIdAndActionOrderByTimestampDesc(Long userId, String action);
+
+    // Find by entity type, entity ID, and action (non-paginated)
+    List<AuditLog> findByEntityTypeAndEntityIdAndActionOrderByTimestampDesc(String entityType, Long entityId, String action);
+
+    // Find by timestamp between (non-paginated)
+    List<AuditLog> findByTimestampBetweenOrderByTimestampDesc(LocalDateTime startDate, LocalDateTime endDate);
+
+    // Find by action and timestamp between (non-paginated)
+    List<AuditLog> findByActionAndTimestampBetweenOrderByTimestampDesc(String action, LocalDateTime startDate, LocalDateTime endDate);
+
+    // Find all ordered by timestamp (non-paginated)
+    List<AuditLog> findAllByOrderByTimestampDesc();
 }
