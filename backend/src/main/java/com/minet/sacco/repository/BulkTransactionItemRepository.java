@@ -8,6 +8,6 @@ import java.util.List;
 
 @Repository
 public interface BulkTransactionItemRepository extends JpaRepository<BulkTransactionItem, Long> {
-    List<BulkTransactionItem> findByBatchId(Long batchId);
-    List<BulkTransactionItem> findByBatchIdAndStatus(Long batchId, String status);
+    List<BulkTransactionItem> findByBatch_Id(Long batchId);
+    List<BulkTransactionItem> findByBatch_IdAndStatus(Long batchId, String status);
 }

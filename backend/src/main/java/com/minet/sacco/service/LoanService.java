@@ -12,8 +12,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -100,6 +103,21 @@ public class LoanService {
         Member member = memberRepository.findById(request.getMemberId())
                 .orElseThrow(() -> new RuntimeException("Member not found"));
 
+        // CHECK FOR PENDING LOANS - Prevent multiple pending applications
+        List<Loan> pendingLoans = loanRepository.findByMemberIdAndStatusIn(member.getId(), 
+            java.util.Arrays.asList(
+                Loan.Status.PENDING,
+                Loan.Status.PENDING_GUARANTOR_APPROVAL,
+                Loan.Status.PENDING_LOAN_OFFICER_REVIEW,
+                Loan.Status.PENDING_CREDIT_COMMITTEE,
+                Loan.Status.PENDING_TREASURER,
+                Loan.Status.APPROVED
+            ));
+        
+        if (!pendingLoans.isEmpty()) {
+            throw new RuntimeException("You already have a pending loan application. Please wait for it to be processed before applying for a new loan.");
+        }
+
         LoanProduct loanProduct = loanProductRepository.findById(request.getLoanProductId())
                 .orElseThrow(() -> new RuntimeException("Loan product not found"));
 
@@ -154,13 +172,17 @@ public class LoanService {
                 if (gReq.isSelfGuarantee() && gReq.getGuarantorId().equals(request.getMemberId())) {
                     hasSelfGuarantee = true;
                     
-                    // FIX 1: Validate self-guarantor has sufficient savings
+                    // FIX 1: Validate self-guarantor has sufficient AVAILABLE savings (excluding frozen)
                     Account savingsAccount = accountRepository
                             .findByMemberIdAndAccountType(gReq.getGuarantorId(), Account.AccountType.SAVINGS)
                             .orElse(null);
                     
-                    BigDecimal availableSavings = savingsAccount != null ? 
+                    // Calculate available savings = balance - frozen_savings
+                    BigDecimal totalBalance = savingsAccount != null ? 
                             savingsAccount.getBalance() : BigDecimal.ZERO;
+                    BigDecimal frozenSavings = savingsAccount != null ? 
+                            (savingsAccount.getFrozenSavings() != null ? savingsAccount.getFrozenSavings() : BigDecimal.ZERO) : BigDecimal.ZERO;
+                    BigDecimal availableSavings = totalBalance.subtract(frozenSavings);
                     
                     if (availableSavings.compareTo(gReq.getGuaranteeAmount()) < 0) {
                         throw new RuntimeException(
@@ -170,22 +192,9 @@ public class LoanService {
                     }
                 }
                 
-                // For external guarantors, validate they have sufficient savings
-                if (!gReq.isSelfGuarantee()) {
-                    Account guarantorSavings = accountRepository
-                            .findByMemberIdAndAccountType(gReq.getGuarantorId(), Account.AccountType.SAVINGS)
-                            .orElse(null);
-                    
-                    BigDecimal guarantorAvailableSavings = guarantorSavings != null ? 
-                            guarantorSavings.getBalance() : BigDecimal.ZERO;
-                    
-                    if (guarantorAvailableSavings.compareTo(gReq.getGuaranteeAmount()) < 0) {
-                        throw new RuntimeException(
-                            "Guarantor " + guarantor.getFirstName() + " " + guarantor.getLastName() + 
-                            " does not have sufficient savings to guarantee KES " + gReq.getGuaranteeAmount() + 
-                            ". Available savings: KES " + guarantorAvailableSavings);
-                    }
-                }
+                // For external guarantors, validation is done at approval time (not at application)
+                // This preserves data privacy - member doesn't see guarantor's financial info
+                // Guarantor will see if they're eligible when they try to approve
             }
             
             // Validate total guarantee amount equals loan amount
@@ -241,6 +250,9 @@ public class LoanService {
         loan.setApplicationDate(LocalDateTime.now());
         loan.setCreatedBy(createdBy);
         loan.setLoanNumber(null); // NEW: Explicitly set to null - will be assigned on disbursement
+
+        // Calculate repayment details and set originalPrincipal
+        loan.calculateRepaymentDetails();
 
         loan = loanRepository.save(loan);
 
@@ -461,25 +473,43 @@ public class LoanService {
             throw new RuntimeException("Loan is not in disbursed status");
         }
 
+        // Validate repayment amount
+        // Round both to 2 decimal places to avoid floating point precision issues
+        BigDecimal outstandingBefore = getOutstandingBalance(loan.getId())
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal requestAmount = request.getAmount().setScale(2, java.math.RoundingMode.HALF_UP);
+        if (requestAmount.compareTo(outstandingBefore) > 0) {
+            throw new RuntimeException("Repayment amount cannot exceed outstanding balance of KES " + outstandingBefore);
+        }
+
         // Create repayment record
         LoanRepayment repayment = new LoanRepayment();
         repayment.setLoan(loan);
         repayment.setAmount(request.getAmount());
         repayment.setRecordedBy(createdBy);
+        repayment.setPaymentDate(LocalDateTime.now());
         repayment = loanRepaymentRepository.save(repayment);
 
+        // Calculate new outstanding balance
+        BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loan.getId());
+        BigDecimal totalDue = calculateTotalDue(loan);
+        BigDecimal newOutstanding = totalDue.subtract(totalRepaid != null ? totalRepaid : BigDecimal.ZERO);
+        
+        // Update loan's outstanding balance
+        loan.setOutstandingBalance(newOutstanding);
+
         // Track pledge reduction for guarantors (proportional to repayment)
+        // This also unfreezes proportional savings for self-guarantors
         guarantorTrackingService.trackPledgeReduction(loan, request.getAmount());
 
         // Check if loan is fully repaid
-        BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loan.getId());
-        BigDecimal totalDue = calculateTotalDue(loan);
-
-        if (totalRepaid.compareTo(totalDue) >= 0) {
+        if (newOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
             loan.setStatus(Loan.Status.REPAID);
             loanRepository.save(loan);
             // Release all guarantor pledges — their savings are no longer frozen
             guarantorTrackingService.releaseAllPledges(loan);
+        } else {
+            loanRepository.save(loan);
         }
 
         return repayment;
@@ -488,9 +518,9 @@ public class LoanService {
     public BigDecimal calculateTotalDue(Loan loan) {
         // Simple interest calculation: Principal + (Principal * Rate * Time)
         BigDecimal principal = loan.getAmount();
-        BigDecimal rate = loan.getInterestRate().divide(BigDecimal.valueOf(100));
-        BigDecimal time = BigDecimal.valueOf(loan.getTermMonths()).divide(BigDecimal.valueOf(12));
-        BigDecimal interest = principal.multiply(rate).multiply(time);
+        BigDecimal rate = loan.getInterestRate().divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+        BigDecimal time = BigDecimal.valueOf(loan.getTermMonths()).divide(BigDecimal.valueOf(12), 4, RoundingMode.HALF_UP);
+        BigDecimal interest = principal.multiply(rate).multiply(time).setScale(2, RoundingMode.HALF_UP);
         return principal.add(interest);
     }
 
@@ -701,12 +731,19 @@ public class LoanService {
             guarantor.setStatus(Guarantor.Status.REJECTED);
             guarantor.setRejectionReason(comments);
             
-            // Notify borrower that guarantor rejected
+            // Update loan status to PENDING_GUARANTOR_REPLACEMENT
+            loan.setStatus(Loan.Status.PENDING_GUARANTOR_REPLACEMENT);
+            loan.setRejectionReason("Guarantor " + guarantorMember.getFirstName() + " " + 
+                guarantorMember.getLastName() + " rejected: " + (comments != null ? comments : "Not specified"));
+            loanRepository.save(loan);
+            
+            // Notify borrower that guarantor rejected with action options
             Optional<User> borrowerUserOpt = userService.getUserByMemberId(borrower.getId());
             if (borrowerUserOpt.isPresent()) {
                 notificationService.notifyUser(borrowerUserOpt.get().getId(),
                     "Guarantor " + guarantorMember.getFirstName() + " " + guarantorMember.getLastName() + 
-                    " has rejected your loan application. Reason: " + (comments != null ? comments : "Not specified"),
+                    " has rejected your loan application. Reason: " + (comments != null ? comments : "Not specified") +
+                    ". You have 3 options: Replace Guarantor, Reduce Loan Amount, or Withdraw Application.",
                     "GUARANTOR_REJECTED", loan.getId(), borrower.getId(), "GUARANTOR_REJECTED");
             }
             
@@ -714,7 +751,8 @@ public class LoanService {
             notificationService.notifyUsersByRole("LOAN_OFFICER",
                 "Guarantor " + guarantorMember.getFirstName() + " " + guarantorMember.getLastName() + 
                 " has rejected the guarantee for loan application from " + borrower.getFirstName() + " " + 
-                borrower.getLastName() + ". Reason: " + (comments != null ? comments : "Not specified"),
+                borrower.getLastName() + ". Reason: " + (comments != null ? comments : "Not specified") +
+                ". Loan status: PENDING_GUARANTOR_REPLACEMENT",
                 "GUARANTOR_REJECTED", loan.getId(), borrower.getId(), "GUARANTOR_REJECTED");
         }
 
@@ -761,5 +799,394 @@ public class LoanService {
         if (errorMessage != null) {
             throw new RuntimeException(errorMessage);
         }
+    }
+
+    /**
+     * Apply for loan on behalf of a member (Loan Officer only)
+     * Same logic as applyForLoan but with loan officer context
+     */
+    @Transactional
+    public Loan applyForLoanOnBehalf(LoanApplicationRequest request, User loanOfficer) {
+        // Delegate to the existing applyForLoan method
+        // The loan officer is recorded as the creator
+        return applyForLoan(request, loanOfficer);
+    }
+
+    /**
+     * Validate member eligibility for loan officer
+     * Returns detailed eligibility information for UI display
+     */
+    public java.util.Map<String, Object> validateMemberEligibilityForLoanOfficer(
+            Long memberId, BigDecimal loanAmount, BigDecimal selfGuaranteeAmount) {
+        
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+        
+        if (member.getStatus() != Member.Status.ACTIVE) {
+            throw new RuntimeException("Member is not ACTIVE");
+        }
+
+        // Check for pending loans
+        List<Loan> pendingLoans = loanRepository.findByMemberIdAndStatusIn(member.getId(), 
+            java.util.Arrays.asList(
+                Loan.Status.PENDING,
+                Loan.Status.PENDING_GUARANTOR_APPROVAL,
+                Loan.Status.PENDING_LOAN_OFFICER_REVIEW,
+                Loan.Status.PENDING_CREDIT_COMMITTEE,
+                Loan.Status.PENDING_TREASURER,
+                Loan.Status.APPROVED
+            ));
+        
+        if (!pendingLoans.isEmpty()) {
+            java.util.Map<String, Object> result = new java.util.HashMap<>();
+            result.put("eligible", false);
+            result.put("reason", "Member already has a pending loan application");
+            return result;
+        }
+
+        // Calculate eligibility
+        LoanEligibilityValidator.EligibilityResult eligibility = checkMemberEligibility(member, loanAmount);
+        
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("eligible", eligibility.isEligible());
+        result.put("netEligibleAmount", eligibility.getNetEligibleAmount());
+        result.put("grossEligibility", eligibility.getGrossEligibility());
+        result.put("totalOutstanding", eligibility.getTotalOutstanding());
+        result.put("baseSavings", eligibility.getBaseSavings());
+        result.put("trueSavings", eligibility.getTrueSavings());
+        result.put("errors", eligibility.getErrors());
+        result.put("warnings", eligibility.getWarnings());
+        
+        return result;
+    }
+
+    /**
+     * Validate guarantor eligibility for loan officer
+     * Returns detailed eligibility information for UI display
+     */
+    public java.util.Map<String, Object> validateGuarantorEligibilityForLoanOfficer(
+            Long guarantorMemberId, BigDecimal guaranteeAmount) {
+        
+        Member guarantor = memberRepository.findById(guarantorMemberId)
+                .orElseThrow(() -> new RuntimeException("Guarantor member not found"));
+        
+        if (guarantor.getStatus() != Member.Status.ACTIVE) {
+            java.util.Map<String, Object> result = new java.util.HashMap<>();
+            result.put("eligible", false);
+            result.put("reason", "Guarantor is not ACTIVE");
+            return result;
+        }
+
+        // Get all accounts for the guarantor and sum up savings
+        java.util.List<Account> allAccounts = accountRepository.findByMemberId(guarantorMemberId);
+        
+        BigDecimal totalBalance = BigDecimal.ZERO;
+        BigDecimal frozenSavings = BigDecimal.ZERO;
+        
+        // Sum all SAVINGS type accounts
+        for (Account account : allAccounts) {
+            if (account.getAccountType() == Account.AccountType.SAVINGS) {
+                totalBalance = totalBalance.add(account.getBalance() != null ? account.getBalance() : BigDecimal.ZERO);
+                frozenSavings = frozenSavings.add(account.getFrozenSavings() != null ? account.getFrozenSavings() : BigDecimal.ZERO);
+            }
+        }
+        
+        BigDecimal availableSavings = totalBalance.subtract(frozenSavings);
+        
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("eligible", availableSavings.compareTo(guaranteeAmount) >= 0);
+        result.put("totalBalance", totalBalance);
+        result.put("frozenSavings", frozenSavings);
+        result.put("availableSavings", availableSavings);
+        result.put("requiredAmount", guaranteeAmount);
+        
+        if (availableSavings.compareTo(guaranteeAmount) < 0) {
+            result.put("reason", "Insufficient available savings. Required: KES " + guaranteeAmount + 
+                    ", Available: KES " + availableSavings);
+            result.put("errors", new String[]{"Insufficient available savings"});
+        }
+        
+        return result;
+    }
+
+    /**
+     * Replace a rejected guarantor with a new one
+     * Only works when loan is in PENDING_GUARANTOR_REPLACEMENT status
+     */
+    @Transactional
+    public void replaceGuarantor(Long loanId, Long oldGuarantorId, Long newGuarantorMemberId, 
+                                BigDecimal newGuaranteeAmount, User requestedBy) {
+        Loan loan = loanRepository.findById(loanId)
+            .orElseThrow(() -> new RuntimeException("Loan not found"));
+        
+        if (loan.getStatus() != Loan.Status.PENDING_GUARANTOR_REPLACEMENT) {
+            throw new RuntimeException("Loan is not in PENDING_GUARANTOR_REPLACEMENT status");
+        }
+        
+        // Find old guarantor
+        Guarantor oldGuarantor = guarantorRepository.findById(oldGuarantorId)
+            .orElseThrow(() -> new RuntimeException("Guarantor not found"));
+        
+        if (oldGuarantor.getStatus() != Guarantor.Status.REJECTED) {
+            throw new RuntimeException("Can only replace rejected guarantors");
+        }
+        
+        // Mark old guarantor as REPLACED
+        oldGuarantor.setStatus(Guarantor.Status.REPLACED);
+        guarantorRepository.save(oldGuarantor);
+        
+        // Create new guarantor
+        Member newGuarantorMember = memberRepository.findById(newGuarantorMemberId)
+            .orElseThrow(() -> new RuntimeException("New guarantor member not found"));
+        
+        // Validate new guarantor eligibility
+        GuarantorValidationService.GuarantorValidationResult eligibility = 
+            guarantorValidationService.validateGuarantorWithGuaranteeAmount(
+                newGuarantorMember, loan.getAmount(), newGuaranteeAmount, loan.getId());
+        
+        if (!eligibility.isEligible()) {
+            throw new RuntimeException("New guarantor is not eligible: " + 
+                String.join(", ", eligibility.getErrors()));
+        }
+        
+        // Create new guarantor record
+        Guarantor newGuarantor = new Guarantor();
+        newGuarantor.setLoan(loan);
+        newGuarantor.setMember(newGuarantorMember);
+        newGuarantor.setGuaranteeAmount(newGuaranteeAmount);
+        newGuarantor.setStatus(Guarantor.Status.PENDING);
+        guarantorRepository.save(newGuarantor);
+        
+        // Loan stays in PENDING_GUARANTOR_REPLACEMENT until all guarantors approve
+        
+        // Notify new guarantor
+        Optional<User> newGuarantorUser = userService.getUserByMemberId(newGuarantorMemberId);
+        if (newGuarantorUser.isPresent()) {
+            String message = "You have been added as a guarantor for loan #" + loan.getLoanNumber() + 
+                            " for member " + loan.getMember().getFirstName() + " " +
+                            loan.getMember().getLastName() + ". Guarantee amount: KES " + 
+                            newGuaranteeAmount + ". Please approve or reject.";
+            
+            notificationService.notifyUser(newGuarantorUser.get().getId(), message,
+                "GUARANTOR_REQUEST", loan.getId(), newGuarantorMemberId, "GUARANTOR_ADDED");
+        }
+        
+        // Audit log
+        auditService.logAction(requestedBy, "REPLACE", "GUARANTOR", newGuarantor.getId(),
+            "Replaced guarantor for loan #" + loan.getLoanNumber(), 
+            "Old: " + oldGuarantor.getMember().getFirstName() + ", New: " + 
+            newGuarantorMember.getFirstName(), "SUCCESS");
+    }
+
+    /**
+     * Reduce loan amount when guarantor rejects
+     * Loan moves back to PENDING_CREDIT_COMMITTEE for re-approval
+     */
+    @Transactional
+    public void reduceLoanAmount(Long loanId, BigDecimal newAmount, String reason, User requestedBy) {
+        Loan loan = loanRepository.findById(loanId)
+            .orElseThrow(() -> new RuntimeException("Loan not found"));
+        
+        if (loan.getStatus() != Loan.Status.PENDING_GUARANTOR_REPLACEMENT) {
+            throw new RuntimeException("Loan is not in PENDING_GUARANTOR_REPLACEMENT status");
+        }
+        
+        if (newAmount.compareTo(loan.getAmount()) >= 0) {
+            throw new RuntimeException("New amount must be less than current amount");
+        }
+        
+        // Store original amount if not already stored
+        if (loan.getOriginalAmount() == null) {
+            loan.setOriginalAmount(loan.getAmount());
+        }
+        
+        // Clear all guarantor assignments for reassignment
+        List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
+        for (Guarantor g : guarantors) {
+            g.setPreviousGuaranteeAmount(g.getGuaranteeAmount());
+            g.setGuaranteeAmount(BigDecimal.ZERO);
+            g.setStatus(Guarantor.Status.PENDING_REASSIGNMENT);
+            g.setReassignmentReason("Loan amount reduced from " + loan.getAmount() + " to " + newAmount);
+            guarantorRepository.save(g);
+        }
+        
+        // Calculate new repayment details
+        loan.setAmount(newAmount);
+        loan.calculateRepaymentDetails();
+        
+        // Move loan to PENDING_GUARANTOR_REASSIGNMENT for member to re-assign guarantors
+        loan.setStatus(Loan.Status.PENDING_GUARANTOR_REASSIGNMENT);
+        loan.setRejectionReason("Loan amount reduced from " + loan.getOriginalAmount() + 
+                               " to " + newAmount + ". Reason: " + reason + ". Guarantors must be re-assigned.");
+        loanRepository.save(loan);
+        
+        // Notify guarantors
+        for (Guarantor g : guarantors) {
+            Optional<User> guarantorUser = userService.getUserByMemberId(g.getMember().getId());
+            if (guarantorUser.isPresent()) {
+                notificationService.notifyUser(guarantorUser.get().getId(),
+                    "Your guarantee amount needs to be re-assigned. Please wait for the member to assign your new guarantee amount.",
+                    "GUARANTOR_REASSIGNMENT", loan.getId(), loan.getMember().getId(), "GUARANTOR_REASSIGNMENT");
+            }
+        }
+        
+        // Notify member
+        Optional<User> memberUser = userService.getUserByMemberId(loan.getMember().getId());
+        if (memberUser.isPresent()) {
+            String message = "Your loan amount has been reduced to KES " + newAmount +
+                            ". Please re-assign your guarantors with new guarantee amounts that cover the new loan amount.";
+            notificationService.notifyUser(memberUser.get().getId(), message,
+                "LOAN_REDUCTION", loan.getId(), loan.getMember().getId(), "LOAN_REDUCTION");
+        }
+        
+        // Audit log
+        auditService.logAction(requestedBy, "REDUCE", "LOAN", loan.getId(),
+            "Loan #" + loan.getLoanNumber(), "Reduced from " + loan.getOriginalAmount() +
+            " to " + newAmount + ". Guarantors cleared for reassignment.", "SUCCESS");
+    }
+
+    /**
+     * Withdraw loan application when guarantor rejects
+     * Loan is marked as REJECTED and all guarantors marked as DECLINED
+     */
+    @Transactional
+    public void withdrawLoanApplication(Long loanId, String reason, User requestedBy) {
+        Loan loan = loanRepository.findById(loanId)
+            .orElseThrow(() -> new RuntimeException("Loan not found"));
+        
+        if (loan.getStatus() != Loan.Status.PENDING_GUARANTOR_REPLACEMENT) {
+            throw new RuntimeException("Can only withdraw loans in PENDING_GUARANTOR_REPLACEMENT status");
+        }
+        
+        // Mark loan as REJECTED
+        loan.setStatus(Loan.Status.REJECTED);
+        loan.setRejectionReason("Withdrawn by member: " + reason);
+        loanRepository.save(loan);
+        
+        // Mark all guarantors as DECLINED
+        List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
+        for (Guarantor g : guarantors) {
+            if (g.getStatus() != Guarantor.Status.REJECTED) {
+                g.setStatus(Guarantor.Status.DECLINED);
+                guarantorRepository.save(g);
+            }
+        }
+        
+        // Notify member
+        Optional<User> memberUser = userService.getUserByMemberId(loan.getMember().getId());
+        if (memberUser.isPresent()) {
+            String message = "Your loan application #" + loan.getLoanNumber() + 
+                            " has been withdrawn. You can reapply anytime with different guarantors.";
+            notificationService.notifyUser(memberUser.get().getId(), message,
+                "LOAN_WITHDRAWN", loan.getId(), loan.getMember().getId(), "LOAN_WITHDRAWN");
+        }
+        
+        // Notify guarantors
+        for (Guarantor g : guarantors) {
+            Optional<User> guarantorUser = userService.getUserByMemberId(g.getMember().getId());
+            if (guarantorUser.isPresent()) {
+                String message = "Loan #" + loan.getLoanNumber() + " for member " +
+                               loan.getMember().getFirstName() + " has been withdrawn.";
+                notificationService.notifyUser(guarantorUser.get().getId(), message,
+                    "LOAN_WITHDRAWN", loan.getId(), g.getMember().getId(), "LOAN_WITHDRAWN");
+            }
+        }
+        
+        // Audit log
+        auditService.logAction(requestedBy, "WITHDRAW", "LOAN", loan.getId(),
+            "Loan #" + loan.getLoanNumber(), reason, "SUCCESS");
+    }
+
+    /**
+     * Reassign guarantors after loan amount reduction
+     * Member provides new guarantor assignments with new guarantee amounts
+     * Validates that total guarantees cover the new loan amount
+     * Creates new guarantor approval requests
+     * 
+     * @param loanId ID of the loan
+     * @param guarantorAssignments List of guarantor IDs and their new guarantee amounts
+     * @param requestedBy User making the request
+     */
+    @Transactional
+    public void reassignGuarantors(Long loanId, List<Map<String, Object>> guarantorAssignments, User requestedBy) {
+        Loan loan = loanRepository.findById(loanId)
+            .orElseThrow(() -> new RuntimeException("Loan not found"));
+        
+        if (loan.getStatus() != Loan.Status.PENDING_GUARANTOR_REASSIGNMENT) {
+            throw new RuntimeException("Loan is not in PENDING_GUARANTOR_REASSIGNMENT status");
+        }
+        
+        // Validate guarantor assignments
+        BigDecimal totalGuaranteeAmount = BigDecimal.ZERO;
+        List<Guarantor> guarantorsToUpdate = new ArrayList<>();
+        
+        for (Map<String, Object> assignment : guarantorAssignments) {
+            Long guarantorId = ((Number) assignment.get("guarantorId")).longValue();
+            BigDecimal guaranteeAmount = new BigDecimal(assignment.get("guaranteeAmount").toString());
+            
+            Guarantor guarantor = guarantorRepository.findById(guarantorId)
+                .orElseThrow(() -> new RuntimeException("Guarantor not found: " + guarantorId));
+            
+            if (!guarantor.getLoan().getId().equals(loanId)) {
+                throw new RuntimeException("Guarantor does not belong to this loan");
+            }
+            
+            if (guaranteeAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new RuntimeException("Guarantee amount must be greater than 0");
+            }
+            
+            // Validate individual guarantee amount does not exceed loan amount
+            if (guaranteeAmount.compareTo(loan.getAmount()) > 0) {
+                throw new RuntimeException("Guarantee amount for " + guarantor.getMember().getFirstName() + 
+                    " (" + guaranteeAmount + ") cannot exceed loan amount (" + loan.getAmount() + ")");
+            }
+            
+            guarantor.setGuaranteeAmount(guaranteeAmount);
+            guarantor.setStatus(Guarantor.Status.PENDING);  // Reset to PENDING for new approval
+            guarantorsToUpdate.add(guarantor);
+            totalGuaranteeAmount = totalGuaranteeAmount.add(guaranteeAmount);
+        }
+        
+        // Validate total guarantees cover loan amount
+        if (totalGuaranteeAmount.compareTo(loan.getAmount()) < 0) {
+            throw new RuntimeException("Total guarantee amount (" + totalGuaranteeAmount + 
+                ") must be at least equal to loan amount (" + loan.getAmount() + ")");
+        }
+        
+        // Save updated guarantors
+        for (Guarantor g : guarantorsToUpdate) {
+            guarantorRepository.save(g);
+        }
+        
+        // Update loan status back to PENDING_GUARANTOR_APPROVAL
+        loan.setStatus(Loan.Status.PENDING_GUARANTOR_APPROVAL);
+        loanRepository.save(loan);
+        
+        // Notify guarantors of re-approval requests
+        for (Guarantor g : guarantorsToUpdate) {
+            Optional<User> guarantorUser = userService.getUserByMemberId(g.getMember().getId());
+            if (guarantorUser.isPresent()) {
+                String message = "Your guarantee amount has changed from KES " + 
+                               g.getPreviousGuaranteeAmount() + " to KES " + g.getGuaranteeAmount() + 
+                               ". Please review and approve or reject the new amount.";
+                notificationService.notifyUser(guarantorUser.get().getId(), message,
+                    "GUARANTOR_APPROVAL_REQUEST", loan.getId(), g.getMember().getId(), "GUARANTOR_APPROVAL_REQUEST");
+            }
+        }
+        
+        // Notify member
+        Optional<User> memberUser = userService.getUserByMemberId(loan.getMember().getId());
+        if (memberUser.isPresent()) {
+            String message = "You have successfully re-assigned guarantors for loan #" + loan.getLoanNumber() + 
+                           ". Total guarantee amount: KES " + totalGuaranteeAmount + 
+                           ". Waiting for guarantor approvals.";
+            notificationService.notifyUser(memberUser.get().getId(), message,
+                "GUARANTOR_REASSIGNMENT_COMPLETE", loan.getId(), loan.getMember().getId(), "GUARANTOR_REASSIGNMENT_COMPLETE");
+        }
+        
+        // Audit log
+        auditService.logAction(requestedBy, "REASSIGN", "GUARANTORS", loan.getId(),
+            "Loan #" + loan.getLoanNumber(), "Re-assigned " + guarantorsToUpdate.size() + 
+            " guarantors with total guarantee amount: KES " + totalGuaranteeAmount, "SUCCESS");
     }
 }

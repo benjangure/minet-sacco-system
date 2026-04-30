@@ -53,12 +53,21 @@ public class Loan {
     private BigDecimal totalRepayable;
 
     @DecimalMin(value = "0.00")
+    @Column(name = "original_principal")
+    private BigDecimal originalPrincipal;
+
+    @DecimalMin(value = "0.00")
+    @Column(name = "original_amount")
+    private BigDecimal originalAmount;  // Store original loan amount for reduction tracking
+
+    @Column(name = "rejection_stage")
+    private String rejectionStage;  // Track which stage rejected (GUARANTOR, LOAN_OFFICER, etc.)
+
+    @DecimalMin(value = "0.00")
     private BigDecimal outstandingBalance;
 
     @Column(columnDefinition = "TEXT")
     private String purpose;
-
-    @Column(columnDefinition = "TEXT")
     private String rejectionReason;
 
     @Column(name = "member_eligibility_status", length = 20)
@@ -86,9 +95,14 @@ public class Loan {
     @JoinColumn(name = "disbursed_by")
     private User disbursedBy;
 
+    @Column(name = "migration_status")
+    private String migrationStatus = "ACTIVE"; // ACTIVE or MIGRATED
+
     public enum Status {
         PENDING, 
         PENDING_GUARANTOR_APPROVAL, 
+        PENDING_GUARANTOR_REPLACEMENT,
+        PENDING_GUARANTOR_REASSIGNMENT,
         PENDING_LOAN_OFFICER_REVIEW, 
         PENDING_CREDIT_COMMITTEE, 
         PENDING_TREASURER, 
@@ -133,6 +147,15 @@ public class Loan {
     public BigDecimal getTotalRepayable() { return totalRepayable; }
     public void setTotalRepayable(BigDecimal totalRepayable) { this.totalRepayable = totalRepayable; }
 
+    public BigDecimal getOriginalPrincipal() { return originalPrincipal; }
+    public void setOriginalPrincipal(BigDecimal originalPrincipal) { this.originalPrincipal = originalPrincipal; }
+
+    public BigDecimal getOriginalAmount() { return originalAmount; }
+    public void setOriginalAmount(BigDecimal originalAmount) { this.originalAmount = originalAmount; }
+
+    public String getRejectionStage() { return rejectionStage; }
+    public void setRejectionStage(String rejectionStage) { this.rejectionStage = rejectionStage; }
+
     public BigDecimal getOutstandingBalance() { return outstandingBalance; }
     public void setOutstandingBalance(BigDecimal outstandingBalance) { this.outstandingBalance = outstandingBalance; }
 
@@ -167,6 +190,9 @@ public class Loan {
     public User getDisbursedBy() { return disbursedBy; }
     public void setDisbursedBy(User disbursedBy) { this.disbursedBy = disbursedBy; }
 
+    public String getMigrationStatus() { return migrationStatus; }
+    public void setMigrationStatus(String migrationStatus) { this.migrationStatus = migrationStatus; }
+
     /**
      * Calculate loan repayment details based on amount, interest rate, and term
      * Uses simple interest formula: Interest = Principal × (Rate/100) × (Term/12)
@@ -175,6 +201,9 @@ public class Loan {
         if (this.amount == null || this.interestRate == null || this.termMonths == null) {
             return;
         }
+
+        // Set original principal - this never changes and is used for proportional calculations
+        this.originalPrincipal = this.amount;
 
         // Simple interest calculation: Interest = Principal × Rate × Time
         // Rate is annual, so we convert to decimal and multiply by time in years

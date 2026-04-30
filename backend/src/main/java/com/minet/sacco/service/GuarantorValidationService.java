@@ -30,6 +30,9 @@ public class GuarantorValidationService {
     @Autowired
     private LoanEligibilityRulesService rulesService;
 
+    @Autowired
+    private MemberSuspensionService memberSuspensionService;
+
     /**
      * Validate a single guarantor for a loan application with custom guarantee amount.
      * @param guarantor The guarantor member
@@ -85,8 +88,20 @@ public class GuarantorValidationService {
         }
         log.debug("PASS: Member is ACTIVE");
 
-        // Check 2: Guarantor must have at least the guarantee amount
-        log.debug("Check 2: Guarantee amount - Required: {}, Actual: {}", guaranteeAmount, savingsBalance);
+        // Check 2: Member must not be suspended
+        log.debug("Check 2: Checking suspension status");
+        if (memberSuspensionService.isMemberSuspended(guarantor.getId())) {
+            log.debug("FAIL: Member is suspended");
+            Optional<MemberSuspension> suspension = memberSuspensionService.getActiveSuspension(guarantor.getId());
+            String reason = suspension.map(MemberSuspension::getReason).orElse("Unknown");
+            result.addError("Guarantor is suspended (Reason: " + reason + ")");
+            result.setIsEligible(false);
+            return result;
+        }
+        log.debug("PASS: Member is not suspended");
+
+        // Check 3: Guarantor must have at least the guarantee amount
+        log.debug("Check 3: Guarantee amount - Required: {}, Actual: {}", guaranteeAmount, savingsBalance);
         if (savingsBalance.compareTo(guaranteeAmount) < 0) {
             log.debug("FAIL: Insufficient savings - {} < {}", savingsBalance, guaranteeAmount);
             result.addError("Savings balance (KES " + savingsBalance + ") is less than guarantee amount (KES " + guaranteeAmount + ")");
@@ -243,22 +258,35 @@ public class GuarantorValidationService {
         }
         log.debug("PASS: Member is ACTIVE");
 
-        // Check 2: Minimum savings requirement
-        log.debug("Check 2: Min savings - Required: {}, Actual: {}", rules.getMinGuarantorSavings(), totalBalance);
+        // Check 2: Member must not be suspended
+        log.debug("Check 2: Checking suspension status");
+        if (memberSuspensionService.isMemberSuspended(guarantor.getId())) {
+            log.debug("FAIL: Member is suspended");
+            Optional<MemberSuspension> suspension = memberSuspensionService.getActiveSuspension(guarantor.getId());
+            String reason = suspension.map(MemberSuspension::getReason).orElse("Unknown");
+            result.addError("Guarantor is suspended (Reason: " + reason + ")");
+            result.setIsEligible(false);
+            log.debug("=== RESULT: NOT ELIGIBLE (Check 2 - Suspension) ===");
+            return result;
+        }
+        log.debug("PASS: Member is not suspended");
+
+        // Check 3: Minimum savings requirement
+        log.debug("Check 3: Min savings - Required: {}, Actual: {}", rules.getMinGuarantorSavings(), totalBalance);
         if (totalBalance.compareTo(rules.getMinGuarantorSavings()) < 0) {
             log.debug("FAIL: Below minimum savings - {} < {}", totalBalance, rules.getMinGuarantorSavings());
             result.addError("Savings balance (KES " + totalBalance + ") below minimum (KES " + rules.getMinGuarantorSavings() + ")");
             result.setIsEligible(false);
-            log.debug("=== RESULT: NOT ELIGIBLE (Check 2 - Min Balance) ===");
+            log.debug("=== RESULT: NOT ELIGIBLE (Check 3 - Min Balance) ===");
             return result;
         }
         log.debug("PASS: Meets minimum balance");
 
-        // Check 3 (NEW - MOVED BEFORE LOAN RATIO): Available guarantee capacity check
+        // Check 4 (NEW - MOVED BEFORE LOAN RATIO): Available guarantee capacity check
         // A guarantor's savings are partially "frozen" for each active guarantee.
         // available_capacity = totalBalance - sum(active pledge amounts)
         // This must be checked BEFORE the loan ratio check so we always show correct available capacity
-        log.debug("Check 3: Checking available guarantee capacity");
+        log.debug("Check 4: Checking available guarantee capacity");
         BigDecimal alreadyPledged = excludeLoanId != null
                 ? guarantorRepository.sumActivePledgesByMemberIdExcludingLoan(guarantor.getId(), excludeLoanId)
                 : guarantorRepository.sumActivePledgesByMemberId(guarantor.getId());
@@ -281,9 +309,9 @@ public class GuarantorValidationService {
         }
         log.debug("PASS: Sufficient guarantee capacity");
 
-        // Check 4: Savings should be at least X% of guarantee amount (not full loan amount)
+        // Check 5: Savings should be at least X% of guarantee amount (not full loan amount)
         BigDecimal requiredBalance = guaranteeAmount.multiply(rules.getMinGuarantorSavingsToLoanRatio());
-        log.debug("Check 4: Guarantee ratio - Guarantee: {}, Ratio: {}, Required: {}, Actual: {}", 
+        log.debug("Check 5: Guarantee ratio - Guarantee: {}, Ratio: {}, Required: {}, Actual: {}", 
             guaranteeAmount, rules.getMinGuarantorSavingsToLoanRatio(), requiredBalance, totalBalance);
         if (totalBalance.compareTo(requiredBalance) < 0) {
             log.debug("FAIL: Below required ratio - {} < {}", totalBalance, requiredBalance);
@@ -296,8 +324,8 @@ public class GuarantorValidationService {
         }
         log.debug("PASS: Meets guarantee ratio requirement");
 
-        // Check 5: Check for defaulted loans
-        log.debug("Check 5: Checking for defaulted loans");
+        // Check 6: Check for defaulted loans
+        log.debug("Check 6: Checking for defaulted loans");
         List<Loan> guarantorLoans = loanRepository.findByMemberId(guarantor.getId());
         log.debug("Total loans for guarantor: {}", guarantorLoans.size());
         boolean hasDefaultedLoan = guarantorLoans.stream()
@@ -317,8 +345,8 @@ public class GuarantorValidationService {
         }
         log.debug("PASS: No blocking defaulted loans");
 
-        // Check 6: Count active guarantor commitments (warning only)
-        log.debug("Check 6: Checking active guarantor commitments");
+        // Check 7: Count active guarantor commitments (warning only)
+        log.debug("Check 7: Checking active guarantor commitments");
         List<Guarantor> activeGuarantorships = guarantorRepository.findByMemberIdAndStatus(
                 guarantor.getId(), Guarantor.Status.ACCEPTED);
         
@@ -327,8 +355,8 @@ public class GuarantorValidationService {
             result.addWarning("Already guarantor for " + activeGuarantorships.size() + " loans");
         }
 
-        // Check 7: Outstanding loan balance (warning only)
-        log.debug("Check 7: Checking outstanding balance");
+        // Check 8: Outstanding loan balance (warning only)
+        log.debug("Check 8: Checking outstanding balance");
         BigDecimal totalOutstanding = guarantorLoans.stream()
                 .filter(loan -> loan.getStatus() == Loan.Status.DISBURSED || loan.getStatus() == Loan.Status.APPROVED)
                 .map(Loan::getOutstandingBalance)

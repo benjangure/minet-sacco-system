@@ -31,21 +31,26 @@ public interface GuarantorRepository extends JpaRepository<Guarantor, Long> {
      * Only counts ACTIVE status (loan has been DISBURSED).
      * PENDING and ACCEPTED pledges don't freeze savings until the loan is actually disbursed.
      * This ensures guarantors can apply for multiple loans before any are disbursed.
+     * CRITICAL: Excludes self-guarantees (self_guarantee = false) to avoid double-counting.
+     * Self-guarantees are already counted separately in getTrueSavings().
      */
     @Query(value = "SELECT COALESCE(SUM(g.pledge_amount), 0) FROM guarantors g " +
            "JOIN loans l ON g.loan_id = l.id " +
            "WHERE g.member_id = :memberId " +
+           "AND g.self_guarantee = false " +
            "AND g.status = 'ACTIVE' " +
            "AND l.status NOT IN ('REPAID', 'REJECTED', 'DEFAULTED')", nativeQuery = true)
     BigDecimal sumActivePledgesByMemberId(@Param("memberId") Long memberId);
 
     /**
      * Same as above but excluding a specific loan (used when re-validating an existing application).
+     * CRITICAL: Excludes self-guarantees (self_guarantee = false) to avoid double-counting.
      */
     @Query(value = "SELECT COALESCE(SUM(g.pledge_amount), 0) FROM guarantors g " +
            "JOIN loans l ON g.loan_id = l.id " +
            "WHERE g.member_id = :memberId " +
            "AND g.loan_id <> :excludeLoanId " +
+           "AND g.self_guarantee = false " +
            "AND g.status = 'ACTIVE' " +
            "AND l.status NOT IN ('REPAID', 'REJECTED', 'DEFAULTED')", nativeQuery = true)
     BigDecimal sumActivePledgesByMemberIdExcludingLoan(@Param("memberId") Long memberId,

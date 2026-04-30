@@ -136,9 +136,12 @@ public class BulkValidationService {
                     }
                     
                     // Validate repayment amount doesn't exceed outstanding balance
-                    if (item.getLoanRepaymentAmount().compareTo(loan.getOutstandingBalance()) > 0) {
-                        errors.add("Row " + rowNumber + ": Repayment amount (" + item.getLoanRepaymentAmount() + 
-                                 ") exceeds outstanding balance (" + loan.getOutstandingBalance() + ")");
+                    // Round both to 2 decimal places to avoid floating point precision issues
+                    BigDecimal repaymentRounded = item.getLoanRepaymentAmount().setScale(2, java.math.RoundingMode.HALF_UP);
+                    BigDecimal outstandingRounded = loan.getOutstandingBalance().setScale(2, java.math.RoundingMode.HALF_UP);
+                    if (repaymentRounded.compareTo(outstandingRounded) > 0) {
+                        errors.add("Row " + rowNumber + ": Repayment amount (KES " + repaymentRounded + 
+                                 ") exceeds outstanding balance (KES " + outstandingRounded + ")");
                     }
                     
                     item.setLoan(loan);

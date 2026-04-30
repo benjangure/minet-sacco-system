@@ -33,6 +33,11 @@ public class Guarantor {
     @DecimalMin(value = "0.00")
     private BigDecimal guaranteeAmount;  // Amount this guarantor is pledging
 
+    @DecimalMin(value = "0.00")
+    private BigDecimal previousGuaranteeAmount;  // Previous amount before reassignment
+
+    private String reassignmentReason;  // Reason for reassignment
+
     @Column(name = "self_guarantee", nullable = false)
     private boolean selfGuarantee = false;  // True if member is self-guaranteeing
 
@@ -42,8 +47,11 @@ public class Guarantor {
 
     private LocalDateTime approvedAt;
 
+    @Column(name = "migration_status")
+    private String migrationStatus = "ACTIVE"; // ACTIVE or MIGRATED
+
     public enum Status {
-        PENDING, ACCEPTED, REJECTED, ACTIVE, DECLINED, RELEASED
+        PENDING, ACCEPTED, REJECTED, REPLACED, ACTIVE, DECLINED, RELEASED, PENDING_REASSIGNMENT
     }
 
     @PrePersist
@@ -70,6 +78,12 @@ public class Guarantor {
     public BigDecimal getGuaranteeAmount() { return guaranteeAmount; }
     public void setGuaranteeAmount(BigDecimal guaranteeAmount) { this.guaranteeAmount = guaranteeAmount; }
 
+    public BigDecimal getPreviousGuaranteeAmount() { return previousGuaranteeAmount; }
+    public void setPreviousGuaranteeAmount(BigDecimal previousGuaranteeAmount) { this.previousGuaranteeAmount = previousGuaranteeAmount; }
+
+    public String getReassignmentReason() { return reassignmentReason; }
+    public void setReassignmentReason(String reassignmentReason) { this.reassignmentReason = reassignmentReason; }
+
     public boolean isSelfGuarantee() { return selfGuarantee; }
     public void setSelfGuarantee(boolean selfGuarantee) { this.selfGuarantee = selfGuarantee; }
 
@@ -81,4 +95,7 @@ public class Guarantor {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public String getMigrationStatus() { return migrationStatus; }
+    public void setMigrationStatus(String migrationStatus) { this.migrationStatus = migrationStatus; }
 }

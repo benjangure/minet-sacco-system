@@ -20,9 +20,14 @@ const Index = () => {
     myUploadedDocuments: 0,
     approvedLoansForDisbursement: 0,
     pendingDeposits: 0,
+    totalDisbursedPrincipal: 0,
+    totalDisbursedOutstanding: 0,
+    totalDisbursedOutstandingPrincipal: 0,
+    totalDisbursedOutstandingInterest: 0,
   });
   const [loansByProduct, setLoansByProduct] = useState<any[]>([]);
   const [membersByStatus, setMembersByStatus] = useState<any[]>([]);
+  const [loanPortfolioBreakdown, setLoanPortfolioBreakdown] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [depositPanelOpen, setDepositPanelOpen] = useState(false);
 
@@ -92,6 +97,24 @@ const Index = () => {
         const defaultedLoans = loansData.filter((l: any) => l.status === "DEFAULTED").length;
         const approvedLoansForDisbursement = loansData.filter((l: any) => l.status === "APPROVED").length;
 
+        // Loan portfolio totals (DISBURSED loans only)
+        const disbursedLoans = loansData.filter((l: any) => l.status === "DISBURSED");
+        const totalDisbursedPrincipal = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0);
+        const totalDisbursedOutstanding = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.outstandingBalance || 0), 0);
+        const repaidPortion = Math.max(0, totalDisbursedPrincipal - totalDisbursedOutstanding);
+        const totalDisbursedOutstandingInterest = disbursedLoans.reduce((sum: number, l: any) => {
+          const outstanding = Number(l.outstandingBalance || 0);
+          const totalRepayable = Number(l.totalRepayable || 0);
+          const totalInterest = Number(l.totalInterest || 0);
+          if (outstanding <= 0 || totalRepayable <= 0 || totalInterest <= 0) return sum;
+          const interestRatio = Math.min(1, Math.max(0, totalInterest / totalRepayable));
+          return sum + (outstanding * interestRatio);
+        }, 0);
+        const totalDisbursedOutstandingPrincipal = Math.max(
+          0,
+          totalDisbursedOutstanding - totalDisbursedOutstandingInterest
+        );
+
         setStats({
           totalMembers: membersData.length,
           activeMembers,
@@ -108,7 +131,17 @@ const Index = () => {
           myUploadedDocuments: myUploadsData.length,
           approvedLoansForDisbursement,
           pendingDeposits: pendingDepositsData.length,
+          totalDisbursedPrincipal,
+          totalDisbursedOutstanding,
+          totalDisbursedOutstandingPrincipal,
+          totalDisbursedOutstandingInterest,
         });
+
+        setLoanPortfolioBreakdown([
+          { name: "Outstanding Principal", value: totalDisbursedOutstandingPrincipal },
+          { name: "Outstanding Interest (Est.)", value: totalDisbursedOutstandingInterest },
+          { name: "Repaid", value: repaidPortion },
+        ]);
 
         // Members by status for pie chart
         const statusCount: Record<string, number> = {};
@@ -187,8 +220,10 @@ const Index = () => {
 
   const statCards = getStatCards();
   const showCharts = ["ADMIN", "TREASURER", "AUDITOR", "LOAN_OFFICER", "CUSTOMER_SUPPORT"].includes(role || "");
+  const showLoanPortfolio = ["ADMIN", "TREASURER", "LOAN_OFFICER"].includes(role || "");
 
   const COLORS = ["hsl(0, 72%, 51%)", "hsl(0, 0%, 70%)", "hsl(40, 90%, 50%)", "hsl(0, 0%, 45%)"];
+  const LOAN_PORTFOLIO_COLORS = ["hsl(0, 72%, 51%)", "hsl(28, 90%, 55%)", "hsl(142, 71%, 45%)"];
 
   return (
     <div>
@@ -294,6 +329,84 @@ const Index = () => {
           </Card>
         ))}
       </div>
+
+      {/* Loan Portfolio (Admin/Treasurer/Loan Officer only) */}
+      {showLoanPortfolio && (
+        <Card className="border-none shadow-sm mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg">Loan Portfolio (Disbursed)</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Live totals across all disbursed loans.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 md:grid-cols-3">
+              <Card
+                className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => navigate("/loans?status=DISBURSED")}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Disbursed</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-foreground">
+                    {loading ? "..." : `KES ${stats.totalDisbursedPrincipal.toLocaleString()}`}
+                  </div>
+                  <p className="text-xs mt-1 text-muted-foreground">Click to view disbursed loans</p>
+                </CardContent>
+              </Card>
+
+              <Card
+                className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => navigate("/loans?status=DISBURSED")}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Outstanding</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">
+                    {loading ? "..." : `KES ${stats.totalDisbursedOutstanding.toLocaleString()}`}
+                  </div>
+                  <p className="text-xs mt-1 text-muted-foreground">
+                    Principal: KES {stats.totalDisbursedOutstandingPrincipal.toLocaleString()} | Interest (est.): KES {stats.totalDisbursedOutstandingInterest.toLocaleString()}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-none shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding Split vs Repaid</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loanPortfolioBreakdown.some((d: any) => Number(d.value) > 0) ? (
+                    <ResponsiveContainer width="100%" height={180}>
+                      <PieChart>
+                        <Pie
+                          data={loanPortfolioBreakdown}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={75}
+                          dataKey="value"
+                        >
+                          {loanPortfolioBreakdown.map((_: any, i: number) => (
+                            <Cell key={i} fill={LOAN_PORTFOLIO_COLORS[i % LOAN_PORTFOLIO_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => `KES ${Number(value).toLocaleString()}`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[180px] flex items-center justify-center text-muted-foreground">
+                      No disbursed loan data yet
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {showCharts && (
         <div className="grid gap-6 md:grid-cols-2">

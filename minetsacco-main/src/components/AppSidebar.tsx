@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Landmark, PiggyBank, FileText, Settings, Shield, LogOut, HelpCircle, Package, Upload, CheckCircle2, BarChart3,
+  LayoutDashboard, Users, Landmark, PiggyBank, FileText, Settings, Shield, LogOut, HelpCircle, Package, Upload, CheckCircle2, BarChart3, Database, Sliders, Ban, LogOut as LogOutIcon,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -39,13 +39,23 @@ const allAdminItems = [
   { title: "Loan Eligibility Rules", url: "/admin/loan-eligibility-rules", icon: Settings, roles: ["admin"] },
   { title: "Audit Trail", url: "/admin/audit-trail", icon: BarChart3, roles: ["admin", "auditor"] },
   { title: "Audit Reports", url: "/audit-reports", icon: BarChart3, roles: ["admin", "auditor"] },
+  { title: "Data Migration", url: "/admin/data-migration", icon: Database, roles: ["admin", "treasurer"] },
+  { title: "System Settings", url: "/admin/system-settings", icon: Sliders, roles: ["admin"] },
+  { title: "Member Suspension", url: "/admin/member-suspension", icon: Ban, roles: ["admin", "credit_committee"] },
+  { title: "Member Exit", url: "/admin/member-exit", icon: LogOutIcon, roles: ["admin", "credit_committee"] },
   { title: "Settings", url: "/settings", icon: Settings, roles: ["admin"] },
   { title: "User Guide", url: "/guide", icon: HelpCircle, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
 ];
 
+// Helper function to check if user has any of the required roles
+const userHasRole = (userRole: string | null, requiredRoles: string[]): boolean => {
+  if (!userRole) return false;
+  return requiredRoles.includes(userRole.toLowerCase());
+};
+
 const roleLabels: Record<string, string> = {
   admin: "Admin", treasurer: "Treasurer", loan_officer: "Loan Officer",
-  credit_committee: "Committee", auditor: "Auditor", teller: "Teller", helpdesk: "Support",
+  credit_committee: "Committee", auditor: "Auditor", teller: "Teller", customer_support: "Support", hr_staff: "HR Staff",
 };
 
 export function AppSidebar() {
@@ -53,9 +63,9 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const { profile, role, signOut } = useAuth();
 
-  const mainItems = allMainItems.filter(item => !role || item.roles.includes(role.toLowerCase()));
-  const kycItemsFiltered = kycItems.filter(item => !role || item.roles.includes(role.toLowerCase()));
-  const adminItems = allAdminItems.filter(item => !role || item.roles.includes(role.toLowerCase()));
+  const mainItems = allMainItems.filter(item => userHasRole(role, item.roles));
+  const kycItemsFiltered = kycItems.filter(item => userHasRole(role, item.roles));
+  const adminItems = allAdminItems.filter(item => userHasRole(role, item.roles));
 
   return (
     <Sidebar collapsible="icon">

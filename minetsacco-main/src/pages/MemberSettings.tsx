@@ -117,7 +117,7 @@ export default function MemberSettings() {
                 type="text"
                 value={tempUrl}
                 onChange={(e) => setTempUrl(e.target.value)}
-                placeholder="http://192.168.0.50:8080"
+                placeholder="http://192.168.0.41:8080"
                 className="font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">

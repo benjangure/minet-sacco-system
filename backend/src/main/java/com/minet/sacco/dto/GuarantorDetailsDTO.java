@@ -16,6 +16,7 @@ public class GuarantorDetailsDTO {
     private String lastName;
     private String status;  // PENDING, ACCEPTED, REJECTED, ACTIVE, DECLINED, RELEASED
     private BigDecimal guaranteeAmount;  // Original guarantee amount
+    private BigDecimal previousGuaranteeAmount;  // Previous amount before reassignment
     private BigDecimal frozenPledge;  // Current frozen amount (may be less due to repayments)
     private BigDecimal availableCapacity;  // Available capacity for new guarantees
     private String eligibilityStatus;  // ELIGIBLE, NOT_ELIGIBLE
@@ -95,6 +96,14 @@ public class GuarantorDetailsDTO {
     
     public void setGuaranteeAmount(BigDecimal guaranteeAmount) {
         this.guaranteeAmount = guaranteeAmount;
+    }
+    
+    public BigDecimal getPreviousGuaranteeAmount() {
+        return previousGuaranteeAmount;
+    }
+    
+    public void setPreviousGuaranteeAmount(BigDecimal previousGuaranteeAmount) {
+        this.previousGuaranteeAmount = previousGuaranteeAmount;
     }
     
     public BigDecimal getFrozenPledge() {

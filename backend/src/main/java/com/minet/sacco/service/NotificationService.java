@@ -122,7 +122,8 @@ public class NotificationService {
     @CacheEvict(value = "unreadCount", key = "#userId", allEntries = false)
     public void markAsRead(Long notificationId, Long userId) {
         Optional<Notification> notification = notificationRepository.findById(notificationId);
-        if (notification.isPresent()) {
+        if (notification.isPresent() && notification.get().getUser() != null &&
+            notification.get().getUser().getId().equals(userId)) {
             notification.get().setRead(true);
             notificationRepository.save(notification.get());
         }
@@ -141,6 +142,10 @@ public class NotificationService {
     @Transactional
     @CacheEvict(value = "unreadCount", key = "#userId", allEntries = false)
     public void deleteNotification(Long notificationId, Long userId) {
-        notificationRepository.deleteById(notificationId);
+        Optional<Notification> notification = notificationRepository.findById(notificationId);
+        if (notification.isPresent() && notification.get().getUser() != null &&
+            notification.get().getUser().getId().equals(userId)) {
+            notificationRepository.deleteById(notificationId);
+        }
     }
 }

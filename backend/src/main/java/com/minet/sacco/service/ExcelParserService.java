@@ -40,10 +40,10 @@ public class ExcelParserService {
                 
                 int colIndex = 0;
                 
-                // Column 0: Member Number (always present)
-                Cell memberCell = row.getCell(colIndex++);
-                if (memberCell != null) {
-                    item.setMemberNumber(getCellValueAsString(memberCell));
+                // Column 0: Employee ID (always present)
+                Cell employeeIdCell = row.getCell(colIndex++);
+                if (employeeIdCell != null) {
+                    item.setMemberNumber(getCellValueAsString(employeeIdCell));  // Store as memberNumber for now, will be used to lookup by employeeId
                 }
                 
                 // Column 1: Savings (always present)
@@ -68,6 +68,32 @@ public class ExcelParserService {
                 Cell loanNumberCell = row.getCell(colIndex++);
                 if (loanNumberCell != null) {
                     item.setLoanNumber(getCellValueAsString(loanNumberCell));
+                }
+                
+                // Column 5: Loan Repayment Payment Method (optional, defaults to SALARY_DEDUCTION)
+                if (colIndex < row.getLastCellNum()) {
+                    Cell paymentMethodCell = row.getCell(colIndex++);
+                    if (paymentMethodCell != null) {
+                        String paymentMethod = getCellValueAsString(paymentMethodCell);
+                        if (paymentMethod != null && !paymentMethod.trim().isEmpty()) {
+                            item.setLoanRepaymentPaymentMethod(paymentMethod.trim().toUpperCase());
+                        }
+                    }
+                } else {
+                    colIndex++; // Skip if column doesn't exist
+                }
+                
+                // Column 6: Loan Repayment Reference Number (optional)
+                if (colIndex < row.getLastCellNum()) {
+                    Cell referenceNumberCell = row.getCell(colIndex++);
+                    if (referenceNumberCell != null) {
+                        String referenceNumber = getCellValueAsString(referenceNumberCell);
+                        if (referenceNumber != null && !referenceNumber.trim().isEmpty()) {
+                            item.setLoanRepaymentReferenceNumber(referenceNumber.trim());
+                        }
+                    }
+                } else {
+                    colIndex++; // Skip if column doesn't exist
                 }
                 
                 // Dynamic columns based on enabled funds
@@ -288,11 +314,20 @@ public class ExcelParserService {
         try {
             switch (cell.getCellType()) {
                 case NUMERIC:
-                    return BigDecimal.valueOf(cell.getNumericCellValue());
+                    // Round to 2 decimal places to avoid floating point precision issues
+                    // e.g. Excel stores 11399.92 as double 11399.920000000001
+                    return BigDecimal.valueOf(cell.getNumericCellValue())
+                            .setScale(2, java.math.RoundingMode.HALF_UP);
                 case STRING:
                     String value = cell.getStringCellValue().trim();
                     if (value.isEmpty()) return BigDecimal.ZERO;
-                    return new BigDecimal(value);
+                    // Strip currency prefixes (Ksh, KES, Kes, $, etc.) and thousands commas
+                    // e.g. "Ksh 11,399.92" → "11399.92"
+                    value = value.replaceAll("(?i)^(ksh|kes|ksh\\.?)\\s*", "")  // remove Ksh/KES prefix
+                                 .replaceAll("[,\\s]", "")                        // remove commas and spaces
+                                 .trim();
+                    if (value.isEmpty()) return BigDecimal.ZERO;
+                    return new BigDecimal(value).setScale(2, java.math.RoundingMode.HALF_UP);
                 default:
                     return BigDecimal.ZERO;
             }

@@ -87,8 +87,13 @@ public class LoanDisbursementService {
         loan.setDisbursementDate(LocalDateTime.now());
         Loan updatedLoan = loanRepository.save(loan);
 
-        // Credit member's account
-        Account account = accountRepository.findByMemberIdAndAccountType(
+        // NOTE: Loan amount goes to member's bank account (not savings)
+        // This mocks real SACCO operations where loans are transferred to external bank accounts
+        // Savings account is NOT credited - it remains unchanged
+        // Bank details are stored in Member entity and used during disbursement
+        
+        // Create transaction record for audit trail
+        Account savingsAccount = accountRepository.findByMemberIdAndAccountType(
                 updatedLoan.getMember().getId(), Account.AccountType.SAVINGS)
                 .orElseGet(() -> {
                     Account newAccount = new Account();
@@ -99,16 +104,13 @@ public class LoanDisbursementService {
                     return accountRepository.save(newAccount);
                 });
 
-        account.setBalance(account.getBalance().add(updatedLoan.getAmount()));
-        account.setUpdatedAt(LocalDateTime.now());
-        accountRepository.save(account);
-
-        // Create transaction record
         Transaction transaction = new Transaction();
-        transaction.setAccount(account);
+        transaction.setAccount(savingsAccount);
         transaction.setTransactionType(Transaction.TransactionType.LOAN_DISBURSEMENT);
         transaction.setAmount(updatedLoan.getAmount());
-        transaction.setDescription("Loan disbursement - Loan Number: " + loanNumber);
+        transaction.setDescription("Loan disbursement to bank account - Loan Number: " + loanNumber + 
+                                  " | Bank: " + updatedLoan.getMember().getBankName() + 
+                                  " | Account: " + updatedLoan.getMember().getBankAccountNumber());
         transaction.setCreatedBy(disbursedBy);
         transactionRepository.save(transaction);
 
@@ -128,20 +130,69 @@ public class LoanDisbursementService {
 
     /**
      * Update all guarantors for a loan to ACTIVE status and freeze their pledge amount
+     * FREEZE both self-guarantor and external guarantor savings as per Rule 2
+     * 
+     * CRITICAL: Sets both guaranteeAmount (original) and pledgeAmount (frozen)
+     * - guaranteeAmount: Original amount pledged at disbursement (never changes)
+     * - pledgeAmount: Frozen amount (reduces proportionally as loan is repaid)
      */
     @Transactional
     public void updateGuarantorStatusToActive(Loan loan) {
         java.util.List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
         for (Guarantor guarantor : guarantors) {
             guarantor.setStatus(Guarantor.Status.ACTIVE);
-            // Freeze the guarantor's pledge amount equal to their guarantee amount
-            // If guarantee_amount is not set, use the loan amount (for backward compatibility)
-            BigDecimal pledgeAmount = guarantor.getGuaranteeAmount() != null && guarantor.getGuaranteeAmount().compareTo(BigDecimal.ZERO) > 0
-                    ? guarantor.getGuaranteeAmount()
-                    : loan.getAmount();
+            // Freeze the guarantor's pledge amount based on PRINCIPAL ONLY (Kenyan SACCO standard)
+            // For self-guarantees: always use loan principal amount
+            // For external guarantors: use their specific guarantee amount (should be principal portion)
+            BigDecimal pledgeAmount;
+            if (guarantor.isSelfGuarantee()) {
+                // Self-guarantee should only freeze the loan principal amount
+                pledgeAmount = loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : loan.getAmount();
+            } else {
+                // External guarantor uses their specific guarantee amount (should be principal portion)
+                pledgeAmount = guarantor.getGuaranteeAmount() != null && guarantor.getGuaranteeAmount().compareTo(BigDecimal.ZERO) > 0
+                        ? guarantor.getGuaranteeAmount()
+                        : loan.getOriginalPrincipal();
+            }
+            
+            // Set pledgeAmount (frozen amount)
             guarantor.setPledgeAmount(pledgeAmount);
+            
+            // IMPORTANT: Also ensure guaranteeAmount is set (original amount)
+            // This is used for eligibility calculations and never changes
+            if (guarantor.getGuaranteeAmount() == null || 
+                guarantor.getGuaranteeAmount().compareTo(BigDecimal.ZERO) == 0) {
+                guarantor.setGuaranteeAmount(pledgeAmount);
+            }
+            
             guarantorRepository.save(guarantor);
+            
+            // RULE 2: Freeze ALL guarantor savings based on principal amount only
+            freezeGuarantorSavings(guarantor, pledgeAmount);
         }
+    }
+    
+    /**
+     * Freeze guarantor savings (both self-guarantors and external guarantors)
+     * This implements Rule 2: ALL guarantor savings are frozen immediately at disbursement
+     */
+    @Transactional
+    private void freezeGuarantorSavings(Guarantor guarantor, BigDecimal freezeAmount) {
+        // Get guarantor's savings account
+        Account savingsAccount = accountRepository
+                .findByMemberIdAndAccountType(guarantor.getMember().getId(), Account.AccountType.SAVINGS)
+                .orElse(null);
+        
+        if (savingsAccount == null) {
+            return;
+        }
+        
+        // Add to frozen savings (applies to both self-guarantors and external guarantors)
+        BigDecimal currentFrozen = savingsAccount.getFrozenSavings() != null ? 
+                savingsAccount.getFrozenSavings() : BigDecimal.ZERO;
+        savingsAccount.setFrozenSavings(currentFrozen.add(freezeAmount));
+        savingsAccount.setUpdatedAt(LocalDateTime.now());
+        accountRepository.save(savingsAccount);
     }
 
     /**
@@ -183,11 +234,9 @@ public class LoanDisbursementService {
                 continue;
             }
             
-            // Freeze the guarantee amount
-            BigDecimal freezeAmount = guarantor.getGuaranteeAmount() != null && 
-                                     guarantor.getGuaranteeAmount().compareTo(BigDecimal.ZERO) > 0
-                    ? guarantor.getGuaranteeAmount()
-                    : loan.getAmount();
+            // Freeze the guarantee amount based on PRINCIPAL ONLY (Kenyan SACCO standard)
+            // For self-guarantees: always use loan principal amount, not the guarantee amount from frontend
+            BigDecimal freezeAmount = loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : loan.getAmount();
             
             // Add to frozen savings
             BigDecimal currentFrozen = savingsAccount.getFrozenSavings() != null ? 

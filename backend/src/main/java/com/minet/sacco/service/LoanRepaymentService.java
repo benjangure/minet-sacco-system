@@ -118,18 +118,46 @@ public class LoanRepaymentService {
         BigDecimal outstandingBalance = loan.getOutstandingBalance();
         BigDecimal monthlyPayment = loan.getMonthlyRepayment();
         
-        // Calculate remaining months based on elapsed time since disbursement
-        int remainingMonths = loan.getTermMonths(); // Default to total term
+        // Calculate remaining months based on multiple factors
+        int remainingMonths = 0;
         
         if (loan.getDisbursementDate() != null) {
-            // Calculate months elapsed since disbursement
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime disbursementDate = loan.getDisbursementDate();
             
-            long monthsElapsed = java.time.temporal.ChronoUnit.MONTHS.between(disbursementDate, now);
+            // Calculate actual months elapsed with partial month consideration
+            long totalMonthsElapsed = java.time.temporal.ChronoUnit.MONTHS.between(disbursementDate, now);
+            int daysInMonth = disbursementDate.plusMonths(1).getDayOfMonth() - disbursementDate.getDayOfMonth();
+            long totalDaysElapsed = java.time.temporal.ChronoUnit.DAYS.between(disbursementDate, now);
+            int daysElapsed = (int) (totalDaysElapsed % 30);
+            double partialMonth = daysElapsed / (double)daysInMonth;
+            double monthsElapsed = totalMonthsElapsed + partialMonth;
             
-            // Remaining months = Total months - Months elapsed
-            remainingMonths = Math.max(0, (int)(loan.getTermMonths() - monthsElapsed));
+            // Calculate expected remaining based on time
+            int timeBasedRemaining = Math.max(0, (int)(loan.getTermMonths() - monthsElapsed));
+            
+            // Calculate remaining based on actual outstanding balance
+            if (outstandingBalance.compareTo(BigDecimal.ZERO) > 0 && monthlyPayment.compareTo(BigDecimal.ZERO) > 0) {
+                int paymentBasedRemaining = (int) Math.ceil(outstandingBalance.divide(monthlyPayment, 0, java.math.RoundingMode.UP).doubleValue());
+                remainingMonths = Math.min(timeBasedRemaining, paymentBasedRemaining);
+            } else if (outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                remainingMonths = 0; // Loan fully paid
+            } else {
+                remainingMonths = timeBasedRemaining; // Use time-based if payment calculation fails
+            }
+            
+            // Apply loan status adjustments
+            if ("DEFAULTED".equals(loan.getStatus())) {
+                // For defaulted loans, show all remaining months as due
+                remainingMonths = timeBasedRemaining;
+            } else if ("COMPLETED".equals(loan.getStatus())) {
+                remainingMonths = 0;
+            } else if ("APPROVED".equals(loan.getStatus()) && loan.getDisbursementDate() == null) {
+                remainingMonths = loan.getTermMonths(); // Not yet disbursed
+            }
+        } else {
+            // No disbursement date - use total term
+            remainingMonths = loan.getTermMonths();
         }
 
         return new LoanAmortizationSchedule(

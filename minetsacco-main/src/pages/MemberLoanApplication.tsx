@@ -62,9 +62,11 @@ export default function MemberLoanApplication() {
     }
   }, []);
 
-  // Calculate hypothetical eligibility when loan amount or self-guarantee changes
+  // Calculate hypothetical eligibility when loan amount changes
+  // FIXED: Now triggers for ALL loan types, not just self-guarantee loans
+  // Members need to see eligibility impact regardless of guarantee structure
   useEffect(() => {
-    if (amount && useSelfGuarantee) {
+    if (amount && parseFloat(amount) > 0) {
       calculateHypotheticalEligibility();
     } else {
       setHypotheticalEligibility(null);
@@ -94,24 +96,30 @@ export default function MemberLoanApplication() {
           }
         }
         
+        // Use the actual account balance from backend (never changes due to loans)
+        const baseSavings = eligibilityData.accountBalance || 0;
+        
+        // Calculate total frozen (from self-guarantees and guarantor pledges)
+        const totalFrozen = eligibilityData.totalFrozen || 0;
+        
         setEligibility({
           eligible: eligibilityData.remainingEligibility >= 0,
           displayAmount: eligibilityData.remainingEligibility,
-          displayLabel: 'Remaining Eligible',
-          baseSavings: eligibilityData.trueSavings,
+          displayLabel: eligibilityData.remainingEligibility >= 0 ? 'Remaining Eligible' : 'Not Eligible',
+          baseSavings: baseSavings,  // Actual account balance from backend
           totalDisbursed: 0,
-          trueSavings: eligibilityData.trueSavings,
+          trueSavings: eligibilityData.trueSavings,  // Available for calculation (after deducting frozen)
           grossEligibility: eligibilityData.grossEligibility,
           totalOutstanding: eligibilityData.unguaranteedOutstanding,
           netEligibleAmount: eligibilityData.remainingEligibility,
           currentSavings: eligibilityData.trueSavings,
           sharesBalance: 0,
           activeLoans: 0,
-          errors: [],
-          warnings: [],
+          errors: eligibilityData.errors || [],
+          warnings: eligibilityData.warnings || [],
           selfGuaranteedAmount: eligibilityData.selfGuaranteedAmount || 0,
           selfGuaranteedInterest: eligibilityData.selfGuaranteedInterest || 0,
-          totalFrozen: eligibilityData.totalFrozen || 0,
+          totalFrozen: totalFrozen,
           memberId: memberId
         });
       }
@@ -437,19 +445,75 @@ export default function MemberLoanApplication() {
                 <span className="font-medium">{formatCurrency(eligibility.baseSavings || 0)}</span>
               </div>
               
-              {/* Step 2: Deduct frozen amounts if any */}
-              {eligibility.totalFrozen > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs text-gray-500 font-semibold mt-2">Step 2: Deduct Frozen Amounts</p>
-                  <div className="bg-orange-50 p-3 rounded border border-orange-100 space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Frozen (Self-Guarantees):</span>
-                      <span className="font-medium text-orange-600">−{formatCurrency(eligibility.totalFrozen)}</span>
-                    </div>
-                    <p className="text-xs text-gray-500">This amount is locked in your self-guaranteed loans and cannot be used for new loans</p>
+              {/* Step 2: Deduct frozen amounts - SMART DISPLAY based on type */}
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 font-semibold mt-2">Step 2: Deduct Frozen Amounts</p>
+                
+                {eligibility.totalFrozen === 0 ? (
+                  // No frozen amounts - simple display
+                  <div className="bg-gray-50 p-3 rounded border border-gray-200 space-y-1">
+                    <p className="text-xs text-gray-600 font-semibold">Total Frozen: {formatCurrency(0)}</p>
+                    <p className="text-xs text-gray-500">✓ No frozen amounts - all your savings are available</p>
                   </div>
-                </div>
-              )}
+                ) : (
+                  // Has frozen amounts - show smart breakdown
+                  <div className="space-y-2">
+                    {/* Self-Guarantee Frozen - if any */}
+                    {(eligibility.selfGuaranteedAmount || 0) > 0 && (
+                      <div className="bg-orange-50 p-3 rounded border border-orange-200 space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <p className="text-xs font-semibold text-orange-800">🔒 Self-Guarantee Frozen</p>
+                            <p className="text-xs text-orange-700 mt-1">You locked this by guaranteeing your own loans</p>
+                          </div>
+                          <span className="text-sm font-bold text-orange-600 ml-2">{formatCurrency(eligibility.selfGuaranteedAmount || 0)}</span>
+                        </div>
+                        
+                        {/* Show which loans are self-guaranteed */}
+                        {eligibility.selfGuaranteedAmount > 0 && (
+                          <div className="bg-white p-2 rounded border border-orange-100 text-xs text-gray-600">
+                            <p className="font-semibold mb-1">Your self-guaranteed loans:</p>
+                            <p>• Amount guaranteed: {formatCurrency(eligibility.selfGuaranteedAmount)}</p>
+                            {eligibility.selfGuaranteedInterest > 0 && (
+                              <p>• Interest accrued: {formatCurrency(eligibility.selfGuaranteedInterest)}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Guarantor Pledges Frozen - if any */}
+                    {((eligibility.totalFrozen || 0) - (eligibility.selfGuaranteedAmount || 0)) > 0 && (
+                      <div className="bg-purple-50 p-3 rounded border border-purple-200 space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <p className="text-xs font-semibold text-purple-800">🤝 Guarantor Pledges Frozen</p>
+                            <p className="text-xs text-purple-700 mt-1">You locked this by guaranteeing other members' loans</p>
+                          </div>
+                          <span className="text-sm font-bold text-purple-600 ml-2">
+                            {formatCurrency((eligibility.totalFrozen || 0) - (eligibility.selfGuaranteedAmount || 0))}
+                          </span>
+                        </div>
+                        
+                        <div className="bg-white p-2 rounded border border-purple-100 text-xs text-gray-600">
+                          <p className="font-semibold mb-1">Your guarantor commitments:</p>
+                          <p>• Total pledged: {formatCurrency((eligibility.totalFrozen || 0) - (eligibility.selfGuaranteedAmount || 0))}</p>
+                          <p className="text-purple-600 font-semibold mt-2">💡 Tip: As other members repay their loans, your pledged amounts will be released and your eligibility will increase.</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Total Frozen Summary */}
+                    <div className="bg-red-50 p-2 rounded border border-red-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-semibold text-red-800">Total Frozen:</span>
+                        <span className="text-sm font-bold text-red-600">{formatCurrency(eligibility.totalFrozen)}</span>
+                      </div>
+                      <p className="text-xs text-red-600 mt-1">⚠️ These amounts cannot be used for new loans until released</p>
+                    </div>
+                  </div>
+                )}
+              </div>
               
               {/* Step 3: Available savings */}
               <div className="flex justify-between pt-2 pb-2 border-b font-semibold bg-blue-50 p-2 rounded">
@@ -487,9 +551,32 @@ export default function MemberLoanApplication() {
               </div>
             </div>
             
-            {/* Summary explanation */}
-            <div className="bg-blue-50 p-3 rounded border border-blue-100 text-xs text-gray-600">
-              <p>💡 <strong>Summary:</strong> We use your available savings ({formatCurrency(eligibility.trueSavings || 0)}) as the basis for calculating your borrowing capacity. This is multiplied by 3 to determine your maximum borrowing power, then we subtract any outstanding loans you already have.</p>
+            {/* Summary explanation - SMART based on frozen type */}
+            <div className="bg-blue-50 p-3 rounded border border-blue-100 text-xs text-gray-600 space-y-2">
+              <p>💡 <strong>How Your Eligibility Works:</strong></p>
+              
+              {eligibility.totalFrozen === 0 ? (
+                <p>Your actual savings are {formatCurrency(eligibility.baseSavings || 0)}. Since you have no frozen amounts, all your savings are available for calculating your borrowing capacity ({formatCurrency(eligibility.baseSavings || 0)} × 3 = {formatCurrency(eligibility.grossEligibility || 0)}).</p>
+              ) : (
+                <>
+                  <p>Your actual savings are {formatCurrency(eligibility.baseSavings || 0)}. However, {formatCurrency(eligibility.totalFrozen || 0)} is frozen (locked):</p>
+                  
+                  <ul className="list-disc ml-5 space-y-1">
+                    {(eligibility.selfGuaranteedAmount || 0) > 0 && (
+                      <li>
+                        <strong>🔒 Self-Guarantee:</strong> {formatCurrency(eligibility.selfGuaranteedAmount)} locked because you guaranteed your own loans. This reduces your available savings.
+                      </li>
+                    )}
+                    {((eligibility.totalFrozen || 0) - (eligibility.selfGuaranteedAmount || 0)) > 0 && (
+                      <li>
+                        <strong>🤝 Guarantor Pledges:</strong> {formatCurrency((eligibility.totalFrozen || 0) - (eligibility.selfGuaranteedAmount || 0))} locked because you're guaranteeing other members' loans. As they repay, this amount will be released.
+                      </li>
+                    )}
+                  </ul>
+                  
+                  <p className="pt-2 border-t">This leaves {formatCurrency(eligibility.trueSavings || 0)} available for calculating your borrowing capacity ({formatCurrency(eligibility.trueSavings || 0)} × 3 = {formatCurrency(eligibility.grossEligibility || 0)}).</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -777,7 +864,23 @@ export default function MemberLoanApplication() {
                 <p className="text-sm">Interest Rate: {selectedProductData.interestRate}%</p>
                 <p className="text-sm border-t pt-2 font-semibold">
                   Estimated Monthly Payment: {formatCurrency(
-                    (parseFloat(amount) * (1 + (selectedProductData.interestRate / 100) * (parseInt(duration) / 12))) / parseInt(duration)
+                    (() => {
+                      // FIXED: Use reducing balance formula (standard for Kenyan SACCOs)
+                      // Instead of flat rate: (principal * (1 + rate * term)) / term
+                      const principal = parseFloat(amount);
+                      const monthlyRate = selectedProductData.interestRate / 100 / 12;
+                      const months = parseInt(duration);
+                      
+                      if (monthlyRate === 0) {
+                        // No interest - simple division
+                        return principal / months;
+                      } else {
+                        // Reducing balance formula: P * r * (1+r)^n / ((1+r)^n - 1)
+                        const numerator = principal * monthlyRate * Math.pow(1 + monthlyRate, months);
+                        const denominator = Math.pow(1 + monthlyRate, months) - 1;
+                        return numerator / denominator;
+                      }
+                    })()
                   )}
                 </p>
               </div>

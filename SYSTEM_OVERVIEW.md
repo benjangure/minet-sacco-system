@@ -1,348 +1,613 @@
-# Minet SACCO Management System - System Overview
+# Minet SACCO - System Overview
 
-## 1. What is the System?
+## Current System Status (April 2026)
 
-Minet SACCO Management System is a comprehensive digital platform designed for managing Savings and Credit Cooperative Organization (SACCO) operations. It's an in-house SACCO system built specifically for Minet Insurance employees, providing both web-based staff portal and mobile member portal interfaces.
+This document provides an overview of the Minet SACCO system as currently implemented, including all recent features and improvements.
 
-The system handles member registration, savings management, loan applications, approvals, disbursements, and comprehensive financial reporting with role-based access control.
+---
 
-## 2. Problems the System Solves
-
-- **Manual Member Management** → Automated member registration with KYC verification
-- **Loan Processing Delays** → Streamlined loan workflow with multi-level approvals
-- **Lack of Financial Transparency** → Real-time dashboards and comprehensive reports
-- **Disconnected Channels** → Unified platform for staff and members
-- **Data Security Concerns** → JWT-based authentication with role-based permissions
-- **Audit Trail Gaps** → Complete audit logging of all transactions for SASRA compliance
-- **Mobile Accessibility** → Native Android APK for member access on-the-go
-- **Bulk Operations** → Excel-based bulk processing for monthly contributions and member registration
-- **Incorrect Loan Eligibility** → Formula-based calculation accounting for active loans
-- **Incomplete Repayment Process** → Transaction recording, conditional savings debit, guarantor pledge release
-- **Improper Account Restrictions** → Shares account properly restricted from deposits
-
-## 3. System Architecture
-
-### Technology Stack
-
-**Backend:**
-- Java 17 with Spring Boot 3.x
-- Spring Security with JWT authentication
-- Spring Data JPA with Hibernate ORM
-- PostgreSQL database
-- Maven for dependency management
-
-**Frontend (Web):**
-- React 18 with TypeScript
-- Vite as build tool
-- Tailwind CSS for styling
-- Shadcn/ui component library
-- Axios for HTTP requests
-
-**Mobile:**
-- Capacitor for cross-platform mobile development
-- React Native bridge to Android
-- Gradle for Android build management
-
-### Architecture Layers
+## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Presentation Layer                    │
-│  (React Web Portal + Android Mobile App)                │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                    API Layer                             │
-│  (Spring Boot REST Controllers)                         │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                  Business Logic Layer                    │
-│  (Services: LoanService, AccountService, etc.)         │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                  Data Access Layer                       │
-│  (JPA Repositories, Hibernate ORM)                      │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                   Database Layer                         │
-│  (PostgreSQL)                                           │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                   Shared Backend API                         │
+│              (Spring Boot REST Endpoints)                   │
+│                  PostgreSQL Database                         │
+└─────────────────────────────────────────────────────────────┘
+         ▲                                    ▲
+         │                                    │
+    ┌────┴─────────────────────────────┬─────┴────┐
+    │                                  │          │
+┌───▼────────────┐          ┌──────────▼──┐  ┌───▼──────────┐
+│  Member Portal │          │ Android APK │  │ Staff Portal │
+│  (React)       │          │ (Capacitor) │  │  (React)     │
+│ localhost:3000 │          │ Mobile App  │  │ localhost:3000
+│ /member        │          │             │  │ /dashboard
+└────────────────┘          └─────────────┘  └──────────────┘
 ```
 
-### Key Components
+---
 
-1. **Authentication & Authorization**
-   - JWT token-based authentication
-   - Role-based access control (RBAC)
-   - 7 user roles: ADMIN, TREASURER, LOAN_OFFICER, CREDIT_COMMITTEE, AUDITOR, TELLER, MEMBER
+## Core Features
 
-2. **Member Management**
-   - Member registration with KYC verification
-   - Document upload and tracking
-   - Member status management
+### 1. Member Management ✅
 
-3. **Account Management**
-   - Multiple account types: Savings, Shares, Contributions, Benevolent Fund, etc.
-   - Balance tracking and transaction history
-   - Shares account dormant (no deposits allowed)
+**Features:**
+- Manual member registration (staff portal)
+- Bulk member registration via Excel upload
+- Member approval workflow
+- Member status tracking (PENDING, ACTIVE, SUSPENDED, EXITED)
+- Member KYC document upload
+- Member profile management
 
-4. **Loan Management**
-   - Loan product configuration
-   - Eligibility rules engine
-   - Multi-stage approval workflow
-   - Guarantor validation
-   - Loan repayment tracking
+**Access:** ADMIN, TREASURER, LOAN_OFFICER, TELLER
 
-5. **Bulk Processing**
-   - Excel-based member registration
-   - Monthly contributions processing
-   - Loan disbursements
-   - Data validation and error reporting
+**Files:**
+- `backend/src/main/java/com/minet/sacco/service/MemberService.java`
+- `minetsacco-main/src/pages/Members.tsx`
 
-6. **Reporting & Analytics**
-   - Member reports
-   - Loan portfolio analysis
-   - Savings summary
-   - Profit & loss statements
-   - Transaction history
+---
 
-7. **Audit & Compliance**
-   - Complete audit trail logging
-   - User action tracking
-   - SASRA compliance features
-   - Data integrity checks
+### 2. Savings Management ✅
 
-## 4. Code Quality Measures
+**Features:**
+- Deposit to savings account (M-Pesa or bank transfer)
+- Withdrawal from savings account
+- Deposit approval workflow (for bank transfers)
+- Account balance tracking
+- Transaction history
+- Minimum balance enforcement
 
-### Clean Code Practices
+**Account Types:**
+- SAVINGS - Main account for deposits/withdrawals
+- SHARES - Dormant account (no deposits allowed)
+- CONTRIBUTIONS - Monthly contributions
 
-1. **Separation of Concerns**
-   - Controllers handle HTTP requests only
-   - Services contain business logic
-   - Repositories handle data access
-   - DTOs for data transfer
+**Access:** MEMBER (self-service), TELLER (approval), TREASURER (processing)
 
-2. **SOLID Principles**
-   - Single Responsibility: Each class has one reason to change
-   - Open/Closed: Open for extension, closed for modification
-   - Liskov Substitution: Proper interface implementation
-   - Interface Segregation: Focused interfaces
-   - Dependency Inversion: Depend on abstractions, not concretions
+**Files:**
+- `backend/src/main/java/com/minet/sacco/service/AccountService.java`
+- `minetsacco-main/src/pages/Savings.tsx`
 
-3. **Design Patterns**
-   - Repository Pattern for data access
-   - Service Layer Pattern for business logic
-   - DTO Pattern for data transfer
-   - Factory Pattern for object creation
-   - Strategy Pattern for different validation rules
+---
 
-4. **Code Organization**
-   - Logical package structure (controller, service, entity, dto, repository)
-   - Consistent naming conventions
-   - Proper exception handling
-   - Comprehensive logging
+### 3. Loan Management ✅
 
-5. **Testing & Validation**
-   - Input validation at controller and service levels
-   - Custom validators for business rules
-   - Transaction management with @Transactional
-   - Error handling with meaningful messages
+**Features:**
+- Loan product configuration (interest rate, term, amount limits)
+- Member loan application
+- Loan officer application on behalf of member ✨ NEW
+- Live member eligibility checking
+- Guarantor management (up to 3 guarantors)
+- Guarantor employee ID lookup ✨ NEW
+- Live guarantor eligibility checking ✨ NEW
+- Total guarantee amount validation ✨ NEW
+- Loan approval workflow (LOAN_OFFICER → CREDIT_COMMITTEE → TREASURER)
+- Loan disbursement
+- Loan repayment (member or bulk)
+- Loan status tracking
 
-6. **Documentation**
-   - JavaDoc comments on public methods
-   - Clear variable and method names
-   - Inline comments for complex logic
-   - README files for setup and usage
+**Loan Statuses:**
+- PENDING - Initial application
+- PENDING_GUARANTOR_APPROVAL - Waiting for guarantor approval
+- PENDING_LOAN_OFFICER_REVIEW - Loan officer review
+- PENDING_CREDIT_COMMITTEE - Credit committee approval
+- PENDING_TREASURER - Treasurer disbursement
+- APPROVED - Approved, ready for disbursement
+- REJECTED - Rejected
+- DISBURSED - Funds disbursed to member
+- ACTIVE - Loan in repayment
+- FULLY_PAID - Loan repaid
+- DEFAULTED - Loan in default
+- WRITTEN_OFF - Loan written off
 
-## 5. API Endpoints
+**Access:** MEMBER (apply), LOAN_OFFICER (process/apply on behalf), CREDIT_COMMITTEE (approve), TREASURER (disburse)
 
-### Authentication Endpoints
+**Files:**
+- `backend/src/main/java/com/minet/sacco/service/LoanService.java`
+- `backend/src/main/java/com/minet/sacco/controller/LoanController.java`
+- `minetsacco-main/src/pages/Loans.tsx`
+- `minetsacco-main/src/pages/MemberLoanApplication.tsx`
+
+---
+
+### 4. Guarantor Management ✅
+
+**Features:**
+- Guarantor eligibility validation
+- Guarantor approval/rejection workflow
+- Guarantor savings freezing (when loan approved)
+- Guarantor savings release (when loan repaid)
+- Guarantor tracking and history
+- Multiple guarantor support (up to 3 per loan)
+
+**Guarantor Statuses:**
+- PENDING - Waiting for approval
+- ACCEPTED - Approved
+- REJECTED - Rejected
+- ACTIVE - Loan active, savings frozen
+- DECLINED - Declined
+- RELEASED - Loan repaid, savings released
+
+**Access:** GUARANTOR (approve/reject), LOAN_OFFICER (manage), CREDIT_COMMITTEE (review)
+
+**Files:**
+- `backend/src/main/java/com/minet/sacco/service/GuarantorTrackingService.java`
+- `backend/src/main/java/com/minet/sacco/service/GuarantorValidationService.java`
+- `minetsacco-main/src/pages/MyGuarantees.tsx`
+
+---
+
+### 5. Bulk Processing ✅
+
+**Features:**
+- Bulk member registration via Excel
+- Bulk loan application via Excel
+- Bulk loan repayment via Excel
+- Validation reporting
+- Batch processing with error handling
+- Transaction rollback on errors
+
+**Supported Operations:**
+- Member registration (name, phone, email, DOB, ID, address, occupation)
+- Loan applications (member phone, product, amount, guarantor)
+- Loan repayments (member phone, loan ID, amount)
+
+**Access:** ADMIN, TREASURER, LOAN_OFFICER
+
+**Files:**
+- `backend/src/main/java/com/minet/sacco/service/BulkProcessingService.java`
+- `backend/src/main/java/com/minet/sacco/service/ExcelParserService.java`
+- `minetsacco-main/src/pages/BulkProcessing.tsx`
+
+---
+
+### 6. Loan Eligibility Rules ✅
+
+**Features:**
+- Configurable eligibility rules
+- Minimum savings balance requirement
+- Minimum contribution period requirement
+- Maximum loan multiple (of savings)
+- Guarantor requirements
+- Dynamic eligibility calculation
+
+**Rules Configured:**
+- Minimum savings: 1,000 KES
+- Minimum contribution period: 3 months
+- Maximum loan multiple: 3x savings
+- Guarantor requirement: Yes (up to 3)
+
+**Access:** ADMIN (configure), LOAN_OFFICER (view), CREDIT_COMMITTEE (view)
+
+**Files:**
+- `backend/src/main/java/com/minet/sacco/service/EligibilityCalculationService.java`
+- `minetsacco-main/src/pages/LoanEligibilityRules.tsx`
+
+---
+
+### 7. Reports & Analytics ✅
+
+**Features:**
+- Profit & Loss report
+- Member reports
+- Loan portfolio report
+- Loan performance report
+- Transaction history report
+- Export to Excel
+
+**Reports Available:**
+- P&L by period (monthly/yearly)
+- Member list with status
+- Member contributions
+- Loan portfolio by status
+- Loan repayment rates
+- Overdue loans
+- Transaction history
+
+**Access:** ADMIN, TREASURER, AUDITOR
+
+**Files:**
+- `backend/src/main/java/com/minet/sacco/controller/ReportsController.java`
+- `minetsacco-main/src/pages/Reports.tsx`
+- `minetsacco-main/src/pages/ProfitLossReport.tsx`
+
+---
+
+### 8. Audit Trail ✅
+
+**Features:**
+- Complete audit logging of all actions
+- User action tracking
+- Entity change tracking (old value vs new value)
+- Timestamp and IP address logging
+- Audit trail filtering and search
+- Audit report generation
+
+**Logged Actions:**
+- User login/logout
+- Member registration/approval
+- Account deposits/withdrawals
+- Loan applications/approvals/disbursements
+- Loan repayments
+- User role changes
+- Data modifications
+- Bulk processing operations
+
+**Access:** AUDITOR (view), ADMIN (view)
+
+**Files:**
+- `backend/src/main/java/com/minet/sacco/service/AuditService.java`
+- `minetsacco-main/src/pages/AuditTrail.tsx`
+
+---
+
+### 9. Notifications ✅
+
+**Features:**
+- Real-time notifications
+- Email notifications
+- SMS notifications (M-Pesa)
+- Notification history
+- Notification read/unread tracking
+- Personalized notification messages
+
+**Notification Types:**
+- Member approval
+- Loan application received
+- Loan approved/rejected
+- Loan disbursed
+- Loan repayment received
+- Guarantor approval request
+- Guarantor approval/rejection
+- Deposit approved
+- Withdrawal processed
+
+**Access:** All users (receive), ADMIN (send)
+
+**Files:**
+- `backend/src/main/java/com/minet/sacco/service/NotificationService.java`
+- `minetsacco-main/src/components/NotificationBell.tsx`
+
+---
+
+### 10. Member Portal ✅
+
+**Features:**
+- Member dashboard with account summary
+- Loan application
+- Loan repayment
+- Savings deposit/withdrawal
+- Transaction history
+- Loan balance tracking
+- Guarantor management
+- Account statement
+
+**Access:** MEMBER role only
+
+**Files:**
+- `minetsacco-main/src/pages/MemberDashboard.tsx`
+- `minetsacco-main/src/pages/MemberLoanApplication.tsx`
+- `minetsacco-main/src/pages/MyGuarantees.tsx`
+
+---
+
+### 11. Staff Portal ✅
+
+**Features:**
+- Staff dashboard with quick stats
+- Member management
+- Loan management
+- Savings management
+- Bulk processing
+- Reports & analytics
+- Audit trail
+- User management
+- System settings
+
+**Access:** ADMIN, TREASURER, LOAN_OFFICER, CREDIT_COMMITTEE, TELLER, AUDITOR
+
+**Files:**
+- `minetsacco-main/src/pages/Dashboard.tsx`
+- `minetsacco-main/src/components/AppSidebar.tsx`
+
+---
+
+### 12. Android Mobile App ✅
+
+**Features:**
+- Member portal on mobile
+- Same functionality as web portal
+- Offline support (limited)
+- Push notifications
+- Secure token storage
+- Biometric login (optional)
+
+**Technology:** Capacitor (React wrapped in native Android)
+
+**Files:**
+- `android/app/src/main/AndroidManifest.xml`
+- `android/app/build.gradle`
+- `capacitor.config.ts`
+
+---
+
+## Recent Enhancements (Current Sprint)
+
+### Loan Officer Application Feature ✨
+
+**What's New:**
+- Loan officers can apply for loans on behalf of members
+- Member selection dropdown
+- Live member eligibility checking
+- Guarantor employee ID search
+- Live guarantor eligibility checking
+- Total guarantee amount validation
+- Prevents guarantor amount from exceeding loan amount
+
+**Benefits:**
+- Faster loan processing
+- Better guarantor selection
+- Real-time eligibility feedback
+- Reduced errors
+
+**Files Modified:**
+- `minetsacco-main/src/pages/Loans.tsx` - New loan officer interface
+- `backend/src/main/java/com/minet/sacco/service/LoanService.java` - Eligibility validation
+- `backend/src/main/java/com/minet/sacco/controller/LoanController.java` - New endpoints
+
+---
+
+### Guarantor Rejection Handling ✨
+
+**What's New:**
+- When guarantor rejects, borrower gets 3 options:
+  1. Replace Guarantor - Find new guarantor
+  2. Reduce Loan Amount - Reduce to match remaining guarantees
+  3. Withdraw Application - Cancel and reapply later
+
+**Benefits:**
+- Loan doesn't get stuck
+- Clear path forward for borrower
+- Faster resolution
+- Better member experience
+
+**Status:** Planned for next sprint
+
+**Documentation:** `GUARANTOR_REJECTION_HANDLING.md`
+
+---
+
+## User Roles & Permissions
+
+### Role Hierarchy
+
+```
+ADMIN (Full Access)
+├── TREASURER (Accounting & Disbursement)
+├── LOAN_OFFICER (Loan Processing)
+├── CREDIT_COMMITTEE (Loan Approval)
+├── TELLER (Member Transactions)
+├── AUDITOR (Audit Trail)
+└── MEMBER (Self-Service)
+```
+
+### Permission Matrix
+
+| Feature | Admin | Treasurer | Loan Officer | Credit Committee | Teller | Auditor | Member |
+|---------|-------|-----------|--------------|------------------|--------|---------|--------|
+| View Members | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Own only |
+| Approve Member | ✓ | | | | | | |
+| Create Loan Product | ✓ | | | | | | |
+| Apply for Loan | | | ✓ | | | | ✓ |
+| Process Loan | | | ✓ | | | | |
+| Approve Loan | | | | ✓ | | | |
+| Disburse Loan | ✓ | ✓ | | | | | |
+| Process Deposit | ✓ | ✓ | | | ✓ | | |
+| View Audit Trail | ✓ | | | | | ✓ | |
+| Manage Users | ✓ | | | | | | |
+| View Reports | ✓ | ✓ | ✓ | ✓ | | ✓ | |
+
+---
+
+## Technology Stack
+
+### Backend
+- **Framework:** Spring Boot 3.x
+- **Language:** Java 17+
+- **Database:** PostgreSQL
+- **ORM:** JPA/Hibernate
+- **Security:** JWT, Spring Security
+- **Build:** Maven
+- **Migrations:** Flyway
+
+### Frontend
+- **Framework:** React 18+
+- **Language:** TypeScript
+- **Build Tool:** Vite
+- **Styling:** Tailwind CSS
+- **UI Components:** Shadcn/ui
+- **HTTP Client:** Axios
+- **State Management:** React Context
+
+### Mobile
+- **Framework:** Capacitor
+- **Platform:** Android
+- **Build Tool:** Gradle
+
+### External Integrations
+- **M-Pesa:** Payment processing
+- **Email:** Notifications
+- **SMS:** Notifications
+
+---
+
+## Database Schema
+
+### Core Tables
+
+**users** - Staff and member users
+- id, username, email, password, role, enabled, created_at
+
+**members** - Member profiles
+- id, member_number, employee_id, first_name, last_name, phone, email, status, created_at
+
+**accounts** - Savings/shares/contributions accounts
+- id, member_id, type, balance, frozen_savings, created_at
+
+**transactions** - Deposits and withdrawals
+- id, account_id, type, amount, status, created_at
+
+**loans** - Loan records
+- id, member_id, loan_product_id, amount, interest_rate, term_months, status, created_at
+
+**guarantors** - Guarantor relationships
+- id, loan_id, member_id, guarantee_amount, status, created_at
+
+**loan_products** - Loan product configuration
+- id, name, interest_rate, min_amount, max_amount, min_term_months, max_term_months
+
+**audit_log** - Audit trail
+- id, user_id, action, entity_type, entity_id, old_value, new_value, timestamp
+
+**notifications** - System notifications
+- id, user_id, message, type, read_at, created_at
+
+---
+
+## API Endpoints
+
+### Authentication
 - `POST /api/auth/login` - Staff login
 - `POST /api/auth/member/login` - Member login
+- `POST /api/auth/logout` - Logout
 
-### Member Management (Staff)
-- `GET /api/members` - List all members
-- `GET /api/members/{id}` - Get member details
+### Members
+- `GET /api/members` - List members
 - `POST /api/members` - Create member
+- `GET /api/members/{id}` - Get member
 - `PUT /api/members/{id}` - Update member
-- `GET /api/members/status/{status}` - Filter by status
 - `POST /api/members/{id}/approve` - Approve member
 
-### Account Management
-- `GET /api/accounts` - List all accounts
-- `GET /api/accounts/{id}` - Get account details
-- `POST /api/accounts/deposit` - Process deposit
-- `POST /api/accounts/withdraw` - Process withdrawal
-- `GET /api/member/accounts` - Member's accounts
-
-### Loan Management
+### Loans
 - `GET /api/loans` - List loans
 - `POST /api/loans/apply` - Apply for loan
-- `GET /api/loans/{id}` - Get loan details
+- `POST /api/loans/validate-member-eligibility` - Validate member eligibility
+- `POST /api/loans/validate-guarantor-eligibility` - Validate guarantor eligibility
 - `POST /api/loans/{id}/approve` - Approve loan
 - `POST /api/loans/{id}/disburse` - Disburse loan
 - `POST /api/loans/{id}/repay` - Repay loan
-- `GET /api/loan-products` - List loan products
-- `POST /api/loan-products` - Create loan product
 
-### Bulk Processing
-- `POST /api/bulk/upload` - Upload bulk file
-- `GET /api/bulk/batches` - List batches
-- `POST /api/bulk/batches/{id}/approve` - Approve batch
-- `POST /api/bulk/batches/{id}/reject` - Reject batch
+### Accounts
+- `GET /api/accounts/{memberId}` - Get member accounts
+- `POST /api/accounts/deposit` - Deposit to account
+- `POST /api/accounts/withdraw` - Withdraw from account
 
 ### Reports
+- `GET /api/reports/profit-loss` - P&L report
 - `GET /api/reports/members` - Member report
-- `GET /api/reports/loans` - Loan portfolio report
-- `GET /api/reports/savings` - Savings summary
-- `GET /api/reports/profit-loss` - P&L statement
-- `GET /api/reports/transactions` - Transaction history
+- `GET /api/reports/loans` - Loan report
 
-### Audit & Compliance
-- `GET /api/audit-trail` - Audit log
-- `GET /api/audit-trail/user/{userId}` - User actions
-- `GET /api/sasra/compliance` - SASRA compliance data
+### Audit
+- `GET /api/audit-trail` - Get audit logs
+- `GET /api/audit-trail/user/{userId}` - Get user audit logs
 
-### Notifications
-- `GET /api/notifications` - Get notifications
-- `PUT /api/notifications/{id}/read` - Mark as read
-- `DELETE /api/notifications/{id}` - Delete notification
+---
 
-### Member Portal
-- `GET /api/member/dashboard` - Member dashboard
-- `GET /api/member/account-statement` - Account statement
-- `GET /api/member/loan-balances` - Loan balances
-- `POST /api/member/deposit-requests` - Submit deposit request
-- `GET /api/member/guarantor-requests` - Guarantor requests
-- `POST /api/member/guarantor-requests/{id}/approve` - Approve guarantee
+## Deployment
 
-**Total: 50+ REST endpoints**
+### Development
+```bash
+# Backend
+cd backend
+mvn spring-boot:run
 
-## 6. Spring Boot Dependencies
+# Frontend
+cd minetsacco-main
+npm run dev
 
-### Core Dependencies (from Spring Web Initializr)
-- `spring-boot-starter-web` - Web MVC framework
-- `spring-boot-starter-data-jpa` - JPA/Hibernate ORM
-- `spring-boot-starter-security` - Security framework
-- `spring-boot-starter-validation` - Bean validation
-- `spring-boot-starter-mail` - Email support
-- `spring-boot-starter-actuator` - Application monitoring
+# Access
+- Staff: http://localhost:3000
+- Member: http://localhost:3000/member
+- API: http://localhost:8080
+```
 
-### Additional Dependencies Added
-- `jjwt` - JWT token generation and validation
-- `postgresql` - PostgreSQL JDBC driver
-- `apache-poi` - Excel file processing
-- `commons-io` - File I/O utilities
-- `lombok` - Code generation (getters, setters, constructors)
-- `jackson-databind` - JSON processing
-- `spring-boot-starter-test` - Testing framework
+### Production
+- Backend: Docker container or JAR deployment
+- Frontend: Static build deployed to CDN or web server
+- Database: Managed PostgreSQL instance
+- Mobile: APK distributed via Play Store or direct download
 
-## 7. Commonly Used Annotations
+---
 
-### Spring Framework
-- `@SpringBootApplication` - Main application class
-- `@RestController` - REST API controller
-- `@RequestMapping` - URL mapping
-- `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` - HTTP method mapping
-- `@RequestBody` - Request body binding
-- `@PathVariable` - URL path variable
-- `@RequestParam` - Query parameter
-- `@Service` - Service layer component
-- `@Repository` - Data access component
-- `@Component` - Generic component
-- `@Autowired` - Dependency injection
-- `@Configuration` - Configuration class
-- `@Bean` - Bean definition
+## Security Features
 
-### Security
-- `@EnableWebSecurity` - Enable Spring Security
-- `@PreAuthorize` - Method-level authorization
-- `@Secured` - Role-based security
-- `@CrossOrigin` - CORS configuration
+- JWT token-based authentication
+- Role-based access control (RBAC)
+- Password hashing (bcrypt)
+- CORS configuration
+- SQL injection prevention (parameterized queries)
+- XSS protection
+- CSRF protection
+- Audit logging of all actions
+- Secure token storage (mobile)
+- HTTPS enforcement (production)
 
-### Data & Persistence
-- `@Entity` - JPA entity
-- `@Table` - Database table mapping
-- `@Id` - Primary key
-- `@GeneratedValue` - Auto-generated ID
-- `@Column` - Column mapping
-- `@ManyToOne`, `@OneToMany`, `@ManyToMany` - Relationships
-- `@JoinColumn` - Foreign key
-- `@Transactional` - Transaction management
-- `@Query` - Custom JPQL queries
+---
 
-### Validation
-- `@NotNull`, `@NotBlank`, `@NotEmpty` - Null/empty validation
-- `@Size` - Size validation
-- `@Min`, `@Max` - Range validation
-- `@Email` - Email format validation
-- `@Pattern` - Regex pattern validation
+## Performance Considerations
 
-### Lombok
-- `@Data` - Generates getters, setters, equals, hashCode, toString
-- `@Getter`, `@Setter` - Individual getters/setters
-- `@NoArgsConstructor`, `@AllArgsConstructor` - Constructors
-- `@Builder` - Builder pattern
+- Database indexing on frequently queried fields
+- Pagination for large result sets
+- Caching of loan products and eligibility rules
+- Lazy loading of member data
+- Optimized Excel parsing for bulk operations
+- Connection pooling for database
 
-## 8. Programming Languages & Technologies
+---
 
-### Backend
-- **Java 17** - Primary backend language
-- **SQL** - Database queries and migrations
-- **Groovy** - Gradle build scripts
+## Known Limitations & Future Enhancements
 
-### Frontend
-- **TypeScript** - Type-safe JavaScript
-- **JavaScript (ES6+)** - React components
-- **CSS/Tailwind** - Styling
-- **HTML** - Markup
+### Current Limitations
+- No offline mode for member portal
+- Limited mobile app features (web-based)
+- No advanced analytics/ML predictions
+- No integration with external banking systems
 
-### Mobile
-- **Kotlin** - Android native code (Capacitor bridge)
-- **XML** - Android layouts and resources
+### Planned Enhancements
+- Guarantor rejection handling (3 options)
+- Advanced member financial health scoring
+- Loan officer dashboard improvements
+- Mobile app native features
+- Integration with MPESA API for real-time payments
+- Advanced reporting and analytics
+- Member self-service KYC verification
 
-### Configuration & Build
-- **Maven** - Backend dependency management
-- **Gradle** - Android build system
-- **YAML** - Application configuration
-- **JSON** - Data interchange format
+---
 
-### Database
-- **PostgreSQL** - Primary database
-- **Flyway/Liquibase** - Database migrations (via Spring)
+## Support & Maintenance
 
-## 9. Key Features Summary
+### Regular Tasks
+- Database backups (daily)
+- Audit trail review (monthly)
+- User access review (quarterly)
+- Security updates (as needed)
+- Performance monitoring (ongoing)
 
-✓ Multi-role user management with JWT authentication (5 staff roles + member role)
-✓ Comprehensive member lifecycle management
-✓ Flexible loan product configuration with eligibility rules
-✓ Multi-stage loan approval workflow (LOAN_OFFICER → CREDIT_COMMITTEE → TREASURER)
-✓ Guarantor validation and capacity tracking with pledge freezing
-✓ Real-time account balance management
-✓ Bulk Excel processing for members and contributions
-✓ Complete audit trail logging for SASRA compliance
-✓ Mobile-first member portal via Android APK with splash screen and logo
-✓ Responsive web dashboard for staff with role-based access
-✓ Comprehensive financial reporting (statements, P&L, cashbook)
-✓ SASRA compliance features and audit trail
-✓ Notification system for approvals and updates
-✓ Document management and KYC tracking
-✓ Profit & loss reporting
-✓ Transaction history and reconciliation
-✓ Loan eligibility calculation accounting for active loans
-✓ Conditional savings debit on repayment (payment method dependent)
-✓ Automatic guarantor pledge release on full loan repayment
-✓ Shares account properly restricted from deposits
+### Troubleshooting
+- Check backend logs: `backend/logs/`
+- Check frontend console: Browser DevTools
+- Check database: PostgreSQL client
+- Check audit trail: Audit Trail page
 
-## 10. Performance & Scalability
+---
 
-- JWT-based stateless authentication (no session storage)
-- Database indexing on frequently queried columns
-- Pagination for large data sets
-- Lazy loading for related entities
-- Connection pooling for database efficiency
-- Caching strategies for frequently accessed data
-- Bulk operations for high-volume processing
+## Contact & Documentation
+
+- **System Overview:** This file
+- **Usage Guide:** `Minet SACCO Usage guide.docx`
+- **Project Structure:** `Minet SACCO Project Structure.docx`
+- **System Design:** `Minet SACCO System Design.docx`
+- **Loan Officer Feature:** `PRESENTATION_SUMMARY.md`
+- **Guarantor Rejection:** `GUARANTOR_REJECTION_HANDLING.md`
+

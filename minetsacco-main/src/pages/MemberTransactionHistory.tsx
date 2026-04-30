@@ -5,11 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Download, AlertCircle } from "lucide-react";
+import { Search, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const API_BASE_URL = "http://localhost:8080/api";
@@ -55,7 +54,6 @@ const MemberTransactionHistory = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [transactionTypeFilter, setTransactionTypeFilter] = useState("all");
-  const [memberSearchOpen, setMemberSearchOpen] = useState(true);
   const { toast } = useToast();
   const { session, role } = useAuth();
 
@@ -116,7 +114,6 @@ const MemberTransactionHistory = () => {
 
   const handleSelectMember = (member: Member) => {
     setSelectedMember(member);
-    setMemberSearchOpen(false);
     setTransactions([]);
     setStartDate("");
     setEndDate("");
@@ -159,7 +156,6 @@ const MemberTransactionHistory = () => {
   };
 
   const handleChangeMember = () => {
-    setMemberSearchOpen(true);
     setSelectedMember(null);
     setTransactions([]);
   };
@@ -210,14 +206,13 @@ const MemberTransactionHistory = () => {
         <p className="text-muted-foreground">View all transactions for a member</p>
       </div>
 
-      {/* Member Selection Dialog */}
-      <Dialog open={memberSearchOpen} onOpenChange={setMemberSearchOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Select Member</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="relative">
+      {!selectedMember && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Select Member</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="relative mb-4">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by member number, name..."
@@ -226,25 +221,46 @@ const MemberTransactionHistory = () => {
                 className="pl-10"
               />
             </div>
-            <div className="max-h-96 overflow-y-auto border rounded-lg">
-              {filteredMembers.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">No members found</div>
-              ) : (
-                filteredMembers.map(member => (
-                  <div
-                    key={member.id}
-                    onClick={() => handleSelectMember(member)}
-                    className="p-3 border-b hover:bg-accent cursor-pointer transition-colors"
-                  >
-                    <div className="font-medium">{member.firstName} {member.lastName}</div>
-                    <div className="text-sm text-muted-foreground">{member.memberNumber}</div>
-                  </div>
-                ))
-              )}
+
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Member</TableHead>
+                    <TableHead>Member No.</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMembers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
+                        No members found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredMembers.map((member) => (
+                      <TableRow
+                        key={member.id}
+                        className="cursor-pointer hover:bg-accent"
+                        onClick={() => handleSelectMember(member)}
+                      >
+                        <TableCell className="font-medium">
+                          {member.firstName} {member.lastName}
+                        </TableCell>
+                        <TableCell>{member.memberNumber}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{member.status}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Member Selected - Show Transactions */}
       {selectedMember && (

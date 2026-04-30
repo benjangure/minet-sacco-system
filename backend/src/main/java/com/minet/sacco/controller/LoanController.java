@@ -18,6 +18,7 @@ import com.minet.sacco.service.GuarantorApprovalService;
 import com.minet.sacco.service.GuarantorTrackingService;
 import com.minet.sacco.service.NotificationService;
 import jakarta.validation.Valid;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -192,6 +193,52 @@ public class LoanController {
         }
     }
 
+    @PostMapping("/apply-on-behalf")
+    @PreAuthorize("hasRole('ROLE_LOAN_OFFICER')")
+    public ResponseEntity<ApiResponse<Loan>> applyForLoanOnBehalf(
+            @Valid @RequestBody LoanApplicationRequest request,
+            Authentication authentication) {
+        try {
+            User loanOfficer = userService.getUserByUsername(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Loan loan = loanService.applyForLoanOnBehalf(request, loanOfficer);
+            
+            return ResponseEntity.ok(ApiResponse.success("Loan application submitted successfully on behalf of member", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/validate-member-eligibility")
+    @PreAuthorize("hasRole('ROLE_LOAN_OFFICER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> validateMemberEligibility(
+            @RequestParam Long memberId,
+            @RequestParam BigDecimal loanAmount,
+            @RequestParam(required = false) BigDecimal selfGuaranteeAmount) {
+        try {
+            Map<String, Object> validation = loanService.validateMemberEligibilityForLoanOfficer(
+                memberId, loanAmount, selfGuaranteeAmount != null ? selfGuaranteeAmount : BigDecimal.ZERO);
+            return ResponseEntity.ok(ApiResponse.success("Member eligibility validated", validation));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/validate-guarantor-eligibility")
+    @PreAuthorize("hasRole('ROLE_LOAN_OFFICER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> validateGuarantorEligibility(
+            @RequestParam Long guarantorMemberId,
+            @RequestParam BigDecimal guaranteeAmount) {
+        try {
+            Map<String, Object> validation = loanService.validateGuarantorEligibilityForLoanOfficer(
+                guarantorMemberId, guaranteeAmount);
+            return ResponseEntity.ok(ApiResponse.success("Guarantor eligibility validated", validation));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     @GetMapping("/{loanId}/validate-approval")
     @PreAuthorize("hasRole('ROLE_CREDIT_COMMITTEE')")
     public ResponseEntity<ApiResponse<LoanApprovalValidationDTO>> validateApproval(@PathVariable Long loanId) {
@@ -235,6 +282,26 @@ public class LoanController {
         String notificationMessage = "Loan " + loan.getLoanNumber() + " for member " + 
             loan.getMember().getMemberNumber() + " has been disbursed";
         notificationService.notifyUsersByRole("LOAN_OFFICER", notificationMessage, "LOAN_DISBURSEMENT");
+        
+        // Send notification to member about loan disbursement
+        Optional<User> memberUserOpt = userService.getUserByMemberId(loan.getMember().getId());
+        if (memberUserOpt.isPresent()) {
+            String memberMessage = String.format(
+                "Your loan application for KES %,.2f has been approved and disbursed to your bank account (%s - %s). Loan Number: %s",
+                loan.getAmount(),
+                loan.getMember().getBankName(),
+                loan.getMember().getBankAccountNumber(),
+                loan.getLoanNumber()
+            );
+            notificationService.notifyUser(
+                memberUserOpt.get().getId(),
+                memberMessage,
+                "LOAN_DISBURSED",
+                loan.getId(),
+                loan.getMember().getId(),
+                "LOAN_DISBURSEMENT"
+            );
+        }
         
         return ResponseEntity.ok(ApiResponse.success("Loan disbursed successfully", loan));
     }
@@ -398,6 +465,7 @@ public class LoanController {
                 dto.setLastName(g.getMember().getLastName());
                 dto.setStatus(g.getStatus().toString());
                 dto.setGuaranteeAmount(g.getGuaranteeAmount());
+                dto.setPreviousGuaranteeAmount(g.getPreviousGuaranteeAmount());
                 dto.setFrozenPledge(g.getPledgeAmount());
                 dto.setSelfGuarantee(g.isSelfGuarantee());
                 dto.setCreatedAt(g.getCreatedAt());
@@ -442,6 +510,112 @@ public class LoanController {
             }
             
             return ResponseEntity.ok(ApiResponse.success("Member guarantees retrieved successfully", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Replace a rejected guarantor with a new one
+     * Only works when loan is in PENDING_GUARANTOR_REPLACEMENT status
+     */
+    @PostMapping("/{loanId}/replace-guarantor")
+    @PreAuthorize("hasRole('ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Loan>> replaceGuarantor(
+            @PathVariable Long loanId,
+            @RequestParam Long oldGuarantorId,
+            @RequestParam Long newGuarantorMemberId,
+            @RequestParam BigDecimal newGuaranteeAmount,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.replaceGuarantor(loanId, oldGuarantorId, newGuarantorMemberId, 
+                newGuaranteeAmount, user);
+            
+            Loan loan = loanService.getLoanById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Guarantor replaced successfully", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Reduce loan amount when guarantor rejects
+     * Loan moves back to PENDING_CREDIT_COMMITTEE for re-approval
+     */
+    @PostMapping("/{loanId}/reduce-amount")
+    @PreAuthorize("hasRole('ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Loan>> reduceLoanAmount(
+            @PathVariable Long loanId,
+            @RequestParam BigDecimal newAmount,
+            @RequestParam String reason,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.reduceLoanAmount(loanId, newAmount, reason, user);
+            
+            Loan loan = loanService.getLoanById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Loan amount reduced successfully", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Withdraw loan application when guarantor rejects
+     * Loan is marked as REJECTED and all guarantors marked as DECLINED
+     */
+    @PostMapping("/{loanId}/withdraw")
+    @PreAuthorize("hasRole('ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Loan>> withdrawLoanApplication(
+            @PathVariable Long loanId,
+            @RequestParam String reason,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.withdrawLoanApplication(loanId, reason, user);
+            
+            Loan loan = loanService.getLoanById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Loan application withdrawn successfully", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Reassign guarantors after loan amount reduction
+     * Member provides new guarantor assignments with new guarantee amounts
+     * Validates that total guarantees cover the new loan amount
+     * Creates new guarantor approval requests
+     */
+    @PostMapping("/{loanId}/reassign-guarantors")
+    @PreAuthorize("hasRole('ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Loan>> reassignGuarantors(
+            @PathVariable Long loanId,
+            @RequestBody List<Map<String, Object>> guarantorAssignments,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.reassignGuarantors(loanId, guarantorAssignments, user);
+            
+            Loan loan = loanService.getLoanById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Guarantors reassigned successfully", loan));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }

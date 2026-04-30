@@ -42,6 +42,11 @@ import MemberTransactionHistory from "./pages/MemberTransactionHistory";
 import TellerMemberContext from "./pages/TellerMemberContext";
 import CustomerSupportPortal from "./pages/CustomerSupportPortal";
 import AuditReports from "./pages/AuditReports";
+import DataMigration from "./pages/DataMigration";
+import DataMigrationMakerChecker from "./pages/DataMigrationMakerChecker";
+import SystemSettings from "./pages/SystemSettings";
+import MemberSuspension from "./pages/MemberSuspension";
+import MemberExit from "./pages/MemberExit";
 
 
 const queryClient = new QueryClient();
@@ -69,7 +74,7 @@ function RootRoute() {
   const isMobileApp = Capacitor.isNativePlatform();
   
   // Default to member portal for mobile app, staff login for web
-  return <Navigate to={isMobileApp ? "/member" : "/login"} replace />;
+  return <Navigate to={isMobileApp ? "/member/login" : "/login"} replace />;
 }
 
 const AppRoutes = () => (
@@ -79,6 +84,10 @@ const AppRoutes = () => (
     <Route path="/admin" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
     <Route path="/reset-password" element={<ResetPassword />} />
+    
+    {/* Member Login */}
+    <Route path="/member/login" element={<MemberLogin />} />
+    
     <Route path="/" element={<RootRoute />} />
     <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />
     <Route path="/members" element={<ProtectedRoute><AppLayout><Members /></AppLayout></ProtectedRoute>} />
@@ -92,20 +101,38 @@ const AppRoutes = () => (
     <Route path="/audit-reports" element={<ProtectedRoute><AppLayout><AuditReports /></AppLayout></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><AppLayout><Reports /></AppLayout></ProtectedRoute>} />
     <Route path="/bulk-processing" element={<ProtectedRoute><AppLayout><BulkProcessing /></AppLayout></ProtectedRoute>} />
-    <Route path="/kyc-approval" element={<ProtectedRoute><AppLayout><KycApproval /></AppLayout></ProtectedRoute>} />
-    <Route path="/kyc-upload" element={<ProtectedRoute><AppLayout><KycDocumentUpload /></AppLayout></ProtectedRoute>} />
-    <Route path="/kyc-upload-tracking" element={<ProtectedRoute><AppLayout><KycUploadTracking /></AppLayout></ProtectedRoute>} />
-    <Route path="/view-documents" element={<ProtectedRoute><AppLayout><ViewMemberDocuments /></AppLayout></ProtectedRoute>} />
-    <Route path="/admin/users" element={<ProtectedRoute><AppLayout><UserManagement /></AppLayout></ProtectedRoute>} />
-    <Route path="/admin/loan-products" element={<ProtectedRoute><AppLayout><LoanProducts /></AppLayout></ProtectedRoute>} />
-    <Route path="/admin/fund-configuration" element={<ProtectedRoute><AppLayout><FundConfiguration /></AppLayout></ProtectedRoute>} />
-    <Route path="/admin/loan-eligibility-rules" element={<ProtectedRoute><AppLayout><LoanEligibilityRules /></AppLayout></ProtectedRoute>} />
-    <Route path="/admin/audit-trail" element={<ProtectedRoute><AppLayout><AuditTrail /></AppLayout></ProtectedRoute>} />
-    <Route path="/settings" element={<ProtectedRoute><AppLayout><Settings /></AppLayout></ProtectedRoute>} />
-    <Route path="/guide" element={<ProtectedRoute><AppLayout><Guide /></AppLayout></ProtectedRoute>} />
+    <Route 
+      path="/member/my-guarantees" 
+      element={
+        <ProtectedRoute requiredRole="MEMBER">
+          <MyGuarantees />
+        </ProtectedRoute>
+      } 
+    />
+    <Route 
+      path="/member/loan-repayment-status/:requestId" 
+      element={
+        <ProtectedRoute requiredRole="MEMBER">
+          <MemberLoanRepaymentStatus />
+        </ProtectedRoute>
+      } 
+    />
+    <Route 
+      path="/member/settings" 
+      element={
+        <ProtectedRoute requiredRole="MEMBER">
+          <MemberSettings />
+        </ProtectedRoute>
+      } 
+    />
     
-    {/* Member Routes */}
-    <Route path="/member" element={<MemberLogin />} />
+    {/* Member Portal Routes */}
+    <Route 
+      path="/member" 
+      element={
+        <Navigate to="/member/login" replace />
+      } 
+    />
     <Route 
       path="/member/dashboard" 
       element={
@@ -139,26 +166,10 @@ const AppRoutes = () => (
       } 
     />
     <Route 
-      path="/member/my-guarantees" 
+      path="/member/transaction-history" 
       element={
         <ProtectedRoute requiredRole="MEMBER">
-          <MyGuarantees />
-        </ProtectedRoute>
-      } 
-    />
-    <Route 
-      path="/member/loan-repayment-status/:requestId" 
-      element={
-        <ProtectedRoute requiredRole="MEMBER">
-          <MemberLoanRepaymentStatus />
-        </ProtectedRoute>
-      } 
-    />
-    <Route 
-      path="/member/settings" 
-      element={
-        <ProtectedRoute requiredRole="MEMBER">
-          <MemberSettings />
+          <MemberTransactionHistory />
         </ProtectedRoute>
       } 
     />

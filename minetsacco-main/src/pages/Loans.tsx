@@ -56,6 +56,9 @@ interface Loan {
   approvalDate?: string;
   disbursementDate?: string;
   rejectionReason?: string;
+  memberEligibilityStatus?: string;
+  memberEligibilityErrors?: string;
+  memberEligibilityWarnings?: string;
   guarantors?: Array<{
     id: number;
     member: {
@@ -219,6 +222,9 @@ const Loans = () => {
   const [guarantorEmployeeIdInput, setGuarantorEmployeeIdInput] = useState("");
   const [guarantorLookupLoading, setGuarantorLookupLoading] = useState(false);
   const [guarantorLookupResult, setGuarantorLookupResult] = useState<Member | null>(null);
+  const [guarantorAmountInput, setGuarantorAmountInput] = useState("");
+  const [guarantorEligibilityMap, setGuarantorEligibilityMap] = useState<Record<number, any>>({});
+  const [guarantorAmountMap, setGuarantorAmountMap] = useState<Record<number, number>>({});
 
   const runPreCheck = async (memberId: string, amount: string, guarantorIds: number[]) => {
     if (!memberId || !amount || parseFloat(amount) <= 0) {
@@ -255,7 +261,16 @@ const Loans = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        setGuarantorLookupResult(data);
+        // Backend returns memberId, but we need id for consistency with Member interface
+        const member: Member = {
+          id: data.memberId,
+          memberNumber: data.memberNumber,
+          employeeId: data.employeeId,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          status: "ACTIVE"
+        };
+        setGuarantorLookupResult(member);
       } else {
         setGuarantorLookupResult(null);
         toast({ title: "Not Found", description: `No member found with employee ID: ${employeeId}`, variant: "destructive" });
@@ -266,6 +281,23 @@ const Loans = () => {
     } finally {
       setGuarantorLookupLoading(false);
     }
+  };
+
+  const checkGuarantorEligibility = async (guarantorId: number, guaranteeAmount: number) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/loans/validate-guarantor-eligibility?guarantorMemberId=${guarantorId}&guaranteeAmount=${guaranteeAmount}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${session?.token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setGuarantorEligibilityMap({...guarantorEligibilityMap, [guarantorId]: data.data});
+        return data.data;
+      }
+    } catch (error) {
+      console.error("Error checking guarantor eligibility:", error);
+    }
+    return null;
   };
 
   const handleProductChange = (productId: string) => {
@@ -306,6 +338,13 @@ const Loans = () => {
     }
 
     try {
+      // Build guarantor requests with amounts
+      const guarantorRequests = selectedGuarantors.map(guarantorId => ({
+        guarantorId: guarantorId,
+        guaranteeAmount: guarantorAmountMap[guarantorId] || 0,
+        selfGuarantee: false
+      }));
+
       const response = await fetch(`${API_BASE_URL}/loans/apply`, {
         method: "POST",
         headers: {
@@ -318,7 +357,7 @@ const Loans = () => {
           amount: parseFloat(form.amount),
           termMonths: parseInt(form.termMonths),
           purpose: form.purpose,
-          guarantorIds: selectedGuarantors,
+          guarantors: guarantorRequests,
         }),
       });
 
@@ -328,6 +367,8 @@ const Loans = () => {
         setForm({ memberId: "", loanProductId: "", amount: "", termMonths: "", purpose: "", guarantorIds: [] });
         setSelectedProduct(null);
         setSelectedGuarantors([]);
+        setGuarantorAmountMap({});
+        setGuarantorEligibilityMap({});
         fetchLoans();
       } else {
         const error = await response.json();
@@ -593,8 +634,8 @@ const Loans = () => {
                 <div className="space-y-2">
                   <Label>Guarantors (Optional - Max 3)</Label>
                   
-                  {/* Employee ID Lookup */}
-                  <div className="space-y-2 border rounded-md p-2 bg-slate-50">
+                  {/* Employee ID Lookup with Amount Input */}
+                  <div className="space-y-2 border rounded-md p-3 bg-slate-50">
                     <p className="text-xs font-medium text-muted-foreground">Add by Employee ID</p>
                     <div className="flex gap-2">
                       <Input
@@ -619,77 +660,156 @@ const Loans = () => {
                     </div>
                     
                     {guarantorLookupResult && (
-                      <div className="bg-white border border-green-200 rounded p-2 space-y-2">
-                        <p className="text-sm font-medium">
-                          {guarantorLookupResult.firstName} {guarantorLookupResult.lastName}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {guarantorLookupResult.employeeId} • {guarantorLookupResult.memberNumber}
-                        </p>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            if (selectedGuarantors.length < 3) {
-                              const updated = [...selectedGuarantors, guarantorLookupResult.id];
-                              setSelectedGuarantors(updated);
-                              runPreCheck(form.memberId, form.amount, updated);
-                              setGuarantorEmployeeIdInput("");
-                              setGuarantorLookupResult(null);
-                            } else {
-                              toast({ title: "Maximum Reached", description: "You can select a maximum of 3 guarantors", variant: "destructive" });
-                            }
-                          }}
-                          disabled={selectedGuarantors.includes(guarantorLookupResult.id)}
-                        >
-                          {selectedGuarantors.includes(guarantorLookupResult.id) ? "Already Added" : "Add as Guarantor"}
-                        </Button>
+                      <div className="bg-white border border-green-200 rounded p-3 space-y-3">
+                        <div>
+                          <p className="text-sm font-medium">
+                            {guarantorLookupResult.firstName} {guarantorLookupResult.lastName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {guarantorLookupResult.employeeId} • {guarantorLookupResult.memberNumber}
+                          </p>
+                        </div>
+                        
+                        {/* Guarantee Amount Input */}
+                        <div className="space-y-2">
+                          <Label className="text-xs">Guarantee Amount (KES)</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              type="number"
+                              placeholder="Enter amount to guarantee"
+                              value={guarantorAmountInput}
+                              onChange={(e) => {
+                                setGuarantorAmountInput(e.target.value);
+                                // Trigger live eligibility check when amount changes
+                                if (e.target.value && parseFloat(e.target.value) > 0 && guarantorLookupResult?.id) {
+                                  checkGuarantorEligibility(guarantorLookupResult.id, parseFloat(e.target.value));
+                                }
+                              }}
+                              min="0"
+                              step="1000"
+                              className="text-sm"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={async () => {
+                                if (!guarantorAmountInput || guarantorAmountInput.trim() === "" || isNaN(parseFloat(guarantorAmountInput)) || parseFloat(guarantorAmountInput) <= 0) {
+                                  toast({ title: "Error", description: "Please enter a valid amount", variant: "destructive" });
+                                  return;
+                                }
+                                
+                                const guaranteeAmount = parseFloat(guarantorAmountInput);
+                                const loanAmount = parseFloat(form.amount);
+                                
+                                if (!guarantorLookupResult || !guarantorLookupResult.id) {
+                                  toast({ title: "Error", description: "Please select a guarantor first", variant: "destructive" });
+                                  return;
+                                }
+                                
+                                // Calculate total guaranteed amount including this new guarantor
+                                const currentTotalGuaranteed = selectedGuarantors.reduce((sum, gId) => sum + (guarantorAmountMap[gId] || 0), 0);
+                                const newTotalGuaranteed = currentTotalGuaranteed + guaranteeAmount;
+                                
+                                // Validate total guaranteed amount doesn't exceed loan amount
+                                if (newTotalGuaranteed > loanAmount) {
+                                  toast({ 
+                                    title: "Exceeds Loan Amount", 
+                                    description: `Total guaranteed (KES ${newTotalGuaranteed.toLocaleString()}) cannot exceed loan amount (KES ${loanAmount.toLocaleString()})`, 
+                                    variant: "destructive" 
+                                  });
+                                  return;
+                                }
+                                
+                                // Check eligibility
+                                const eligibility = await checkGuarantorEligibility(guarantorLookupResult.id, guaranteeAmount);
+                                
+                                if (eligibility && eligibility.eligible) {
+                                  // Add guarantor with amount
+                                  const updated = [...selectedGuarantors, guarantorLookupResult.id];
+                                  setSelectedGuarantors(updated);
+                                  setGuarantorAmountMap({...guarantorAmountMap, [guarantorLookupResult.id]: guaranteeAmount});
+                                  setGuarantorEmployeeIdInput("");
+                                  setGuarantorAmountInput("");
+                                  setGuarantorLookupResult(null);
+                                  toast({ title: "Success", description: `${guarantorLookupResult.firstName} added as guarantor for KES ${guaranteeAmount.toLocaleString()}` });
+                                  runPreCheck(form.memberId, form.amount, updated);
+                                } else {
+                                  toast({ 
+                                    title: "Not Eligible", 
+                                    description: eligibility?.errors?.[0] || "This guarantor cannot guarantee this amount", 
+                                    variant: "destructive" 
+                                  });
+                                }
+                              }}
+                            >
+                              Add
+                            </Button>
+                          </div>
+                          
+                          {/* Live Eligibility Check */}
+                          {guarantorAmountInput && parseFloat(guarantorAmountInput) > 0 && (
+                            <div className="text-xs space-y-1">
+                              {guarantorEligibilityMap[guarantorLookupResult?.id] ? (
+                                guarantorEligibilityMap[guarantorLookupResult.id].eligible ? (
+                                  <div className="flex items-center gap-1 text-green-600">
+                                    <CheckCircle className="h-3 w-3" />
+                                    <span>✓ Eligible to guarantee KES {parseFloat(guarantorAmountInput).toLocaleString()}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1 text-red-600">
+                                    <XCircle className="h-3 w-3" />
+                                    <span>✗ {guarantorEligibilityMap[guarantorLookupResult.id].errors?.[0] || "Not eligible"}</span>
+                                  </div>
+                                )
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Selected Guarantors List */}
-                  <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-2">
-                    <p className="text-xs font-medium text-muted-foreground">Or select from list</p>
-                    {members.filter(m => m.id.toString() !== form.memberId).length === 0 ? (
-                      <div className="text-sm text-muted-foreground p-2">No other active members available</div>
-                    ) : (
-                      members
-                        .filter(m => m.id.toString() !== form.memberId)
-                        .map(m => (
-                          <label key={m.id} className="flex items-center gap-2 p-2 hover:bg-accent rounded cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={selectedGuarantors.includes(m.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  if (selectedGuarantors.length < 3) {
-                                    const updated = [...selectedGuarantors, m.id];
-                                    setSelectedGuarantors(updated);
-                                    runPreCheck(form.memberId, form.amount, updated);
-                                  } else {
-                                    toast({ title: "Maximum Reached", description: "You can select a maximum of 3 guarantors", variant: "destructive" });
-                                  }
-                                } else {
-                                  const updated = selectedGuarantors.filter(id => id !== m.id);
-                                  setSelectedGuarantors(updated);
-                                  runPreCheck(form.memberId, form.amount, updated);
-                                }
-                              }}
-                              disabled={selectedGuarantors.length >= 3 && !selectedGuarantors.includes(m.id)}
-                              className="rounded"
-                            />
-                            <span className="text-sm">
-                              {m.employeeId || m.memberNumber} — {m.firstName} {m.lastName}
-                            </span>
-                          </label>
-                        ))
-                    )}
-                  </div>
+                  {/* Added Guarantors List */}
                   {selectedGuarantors.length > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      {selectedGuarantors.length}/3 guarantor(s) selected
+                    <div className="space-y-2 border rounded-md p-3 bg-blue-50">
+                      <p className="text-xs font-medium text-muted-foreground">Added Guarantors ({selectedGuarantors.length}/3)</p>
+                      {selectedGuarantors.map((guarantorId) => {
+                        const guarantor = members.find(m => m.id === guarantorId);
+                        const amount = guarantorAmountMap[guarantorId] || 0;
+                        const eligibility = guarantorEligibilityMap[guarantorId];
+                        return (
+                          <div key={guarantorId} className="flex items-center justify-between bg-white p-2 rounded border border-blue-200">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{guarantor?.firstName} {guarantor?.lastName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {guarantor?.employeeId} • Guaranteeing: KES {amount.toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {eligibility?.eligible ? (
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-600" />
+                              )}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  const updated = selectedGuarantors.filter(id => id !== guarantorId);
+                                  setSelectedGuarantors(updated);
+                                  const newAmountMap = {...guarantorAmountMap};
+                                  delete newAmountMap[guarantorId];
+                                  setGuarantorAmountMap(newAmountMap);
+                                  runPreCheck(form.memberId, form.amount, updated);
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -2,7 +2,21 @@
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <!-- Allow cleartext traffic to all local network IPs -->
+        <domain includeSubdomains="true">192.168.0.34</domain>
+        <domain includeSubdomains="true">192.168.0.41</domain>
         <domain includeSubdomains="true">192.168.0.50</domain>
+        <domain includeSubdomains="true">192.168.0.195</domain>
+        <domain includeSubdomains="true">192.168.1.34</domain>
+        <domain includeSubdomains="true">192.168.1.50</domain>
+        <domain includeSubdomains="true">192.168.1.55</domain>
+        <domain includeSubdomains="true">192.168.1.195</domain>
+        <domain includeSubdomains="true">192.168.100.34</domain>
+        <domain includeSubdomains="true">192.168.100.41</domain>
+        <domain includeSubdomains="true">192.168.100.50</domain>
+        <domain includeSubdomains="true">192.168.100.56</domain>
+        <domain includeSubdomains="true">192.168.100.195</domain>
+        <domain includeSubdomains="true">10.0.0.34</domain>
+        <domain includeSubdomains="true">10.0.0.50</domain>
         <domain includeSubdomains="true">192.168.1.1</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>

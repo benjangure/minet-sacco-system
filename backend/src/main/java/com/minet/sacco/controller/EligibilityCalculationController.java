@@ -93,7 +93,8 @@ public class EligibilityCalculationController {
             @RequestBody HypotheticalLoanRequest request,
             Authentication authentication) {
         try {
-            log.debug("Calculating hypothetical eligibility - Loan: {}, Self-guarantee: {}",
+            log.debug("=== ELIGIBILITY CALCULATION REQUEST ===");
+            log.debug("Request - Loan Amount: {}, Self-Guarantee Amount: {}", 
                     request.getLoanAmount(), request.getSelfGuaranteeAmount());
 
             // Get user from authentication by username
@@ -138,6 +139,16 @@ public class EligibilityCalculationController {
             EligibilityCalculationService.EligibilityResult result = 
                 eligibilityCalculationService.calculateHypotheticalEligibility(
                     member, request.getLoanAmount(), request.getSelfGuaranteeAmount());
+
+            log.debug("=== ELIGIBILITY CALCULATION RESULT ===");
+            log.debug("True Savings: {}", result.getTrueSavings());
+            log.debug("Total Frozen: {}", result.getTotalFrozen());
+            log.debug("Available Savings: {}", result.getAvailableSavings());
+            log.debug("Gross Eligibility: {}", result.getGrossEligibility());
+            log.debug("Unguaranteed Outstanding: {}", result.getUnguaranteedOutstanding());
+            log.debug("Remaining Eligibility: {}", result.getRemainingEligibility());
+            log.debug("Self-Guaranteed Amount: {}", result.getSelfGuaranteedAmount());
+            log.debug("=== END ELIGIBILITY CALCULATION ===");
 
             return ResponseEntity.ok(new ApiResponse<>(true, "Hypothetical eligibility calculated", result));
         } catch (Exception e) {

@@ -38,7 +38,7 @@ public class GuarantorTrackingService {
     /**
      * Track pledge reduction on repayment
      * Calculates new frozen pledge based on outstanding balance
-     * Also unfreezes proportional savings for self-guarantors
+     * Also unfreezes proportional savings for self-guarantors and member
      */
     @Transactional
     public void trackPledgeReduction(Loan loan, BigDecimal repaymentAmount) {
@@ -50,31 +50,79 @@ public class GuarantorTrackingService {
 
         BigDecimal outstandingBalance = loan.getOutstandingBalance();
         BigDecimal originalLoanAmount = loan.getAmount();
+        BigDecimal originalPrincipal = loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : originalLoanAmount;
+        BigDecimal totalRepayable = loan.getTotalRepayable();
 
+        // Derive outstanding principal from outstanding balance.
+        // outstandingBalance starts at totalRepayable and decreases with each repayment.
+        // Amount repaid = totalRepayable - outstandingBalance
+        // Outstanding principal = originalPrincipal - amountRepaid
+        BigDecimal outstandingPrincipal;
+        if (totalRepayable != null && totalRepayable.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal amountRepaid = totalRepayable.subtract(outstandingBalance);
+            outstandingPrincipal = originalPrincipal.subtract(amountRepaid);
+        } else {
+            outstandingPrincipal = outstandingBalance;
+        }
+        if (outstandingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
+            outstandingPrincipal = BigDecimal.ZERO;
+        }
+
+        // Check if member has a self-guarantee
+        Guarantor memberSelfGuarantee = guarantors.stream()
+                .filter(g -> g.isSelfGuarantee() && g.getMember().getId().equals(loan.getMember().getId()))
+                .findFirst()
+                .orElse(null);
+
+        // If member has self-guarantee, unfreeze proportional savings based on outstanding principal
+        if (memberSelfGuarantee != null) {
+            BigDecimal pledgeBefore = memberSelfGuarantee.getPledgeAmount();
+            if (pledgeBefore != null && pledgeBefore.compareTo(BigDecimal.ZERO) > 0) {
+                // Kenyan SACCO formula: Remaining Frozen = Original Pledge × (Outstanding Principal / Original Principal)
+                BigDecimal newFrozenPledge = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
+                        pledgeBefore.multiply(outstandingPrincipal)
+                                .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :
+                        BigDecimal.ZERO;
+
+                BigDecimal pledgeReduction = pledgeBefore.subtract(newFrozenPledge);
+
+                // Unfreeze only when repayment reduces frozen amount
+                if (pledgeReduction.compareTo(BigDecimal.ZERO) > 0) {
+                    unfreezeProportionalSavings(memberSelfGuarantee, pledgeReduction);
+                }
+            }
+        }
+
+        // Process external guarantors
         for (Guarantor guarantor : guarantors) {
             if (guarantor.getStatus() != Guarantor.Status.ACTIVE) {
                 continue;
             }
 
-            BigDecimal originalPledge = guarantor.getPledgeAmount();
-            if (originalPledge == null || originalPledge.compareTo(BigDecimal.ZERO) == 0) {
+            // Skip member's self-guarantee (already processed above)
+            if (guarantor.isSelfGuarantee() && guarantor.getMember().getId().equals(loan.getMember().getId())) {
                 continue;
             }
 
-            // Calculate new frozen pledge: original_pledge × (outstanding / original_loan)
-            BigDecimal newFrozenPledge = originalPledge
-                    .multiply(outstandingBalance)
-                    .divide(originalLoanAmount, 2, java.math.RoundingMode.HALF_UP);
-
             BigDecimal pledgeBefore = guarantor.getPledgeAmount();
+            if (pledgeBefore == null || pledgeBefore.compareTo(BigDecimal.ZERO) == 0) {
+                continue;
+            }
+
+            // Kenyan SACCO formula: Remaining Frozen = Original Pledge × (Outstanding Principal / Original Principal)
+            BigDecimal newFrozenPledge = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
+                    pledgeBefore.multiply(outstandingPrincipal)
+                            .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :
+                    BigDecimal.ZERO;
+
             BigDecimal pledgeReduction = pledgeBefore.subtract(newFrozenPledge);
             
             // Update guarantor's frozen pledge
             guarantor.setPledgeAmount(newFrozenPledge);
             guarantorRepository.save(guarantor);
 
-            // Unfreeze proportional savings for self-guarantors
-            if (guarantor.isSelfGuarantee()) {
+            // Unfreeze proportional savings for ALL guarantors (self and external)
+            if (pledgeReduction.compareTo(BigDecimal.ZERO) > 0) {
                 unfreezeProportionalSavings(guarantor, pledgeReduction);
             }
 
@@ -214,7 +262,8 @@ public class GuarantorTrackingService {
             }
 
             String message = String.format(
-                    "Member %s has made a repayment on their loan. Your frozen guarantee has been reduced from KES %,.2f to KES %,.2f.",
+                    "Hi %s, %s has made a repayment on their loan. Your frozen guarantee has been reduced from KES %,.2f to KES %,.2f. Your savings are being progressively unfrozen as the loan is repaid.",
+                    guarantor.getMember().getFirstName(),
                     loan.getMember().getFirstName() + " " + loan.getMember().getLastName(),
                     pledgeBefore,
                     pledgeAfter
@@ -246,7 +295,7 @@ public class GuarantorTrackingService {
             }
 
             String message = String.format(
-                    "Member %s has defaulted on their loan. Your account has been debited KES %,.2f (your proportional share of the default).",
+                    "Alert: %s has defaulted on their loan. Your account has been debited KES %,.2f (your proportional share of the default). Please contact the office for more information.",
                     loan.getMember().getFirstName() + " " + loan.getMember().getLastName(),
                     debitAmount
             );
@@ -278,7 +327,7 @@ public class GuarantorTrackingService {
                 guarantor.setPledgeAmount(BigDecimal.ZERO);
                 guarantorRepository.save(guarantor);
 
-                if (guarantor.isSelfGuarantee() && frozenAmount != null && frozenAmount.compareTo(BigDecimal.ZERO) > 0) {
+                if (frozenAmount != null && frozenAmount.compareTo(BigDecimal.ZERO) > 0) {
                     unfreezeProportionalSavings(guarantor, frozenAmount);
                 }
 
@@ -300,8 +349,10 @@ public class GuarantorTrackingService {
             }
 
             String message = String.format(
-                    "Member %s has fully repaid their loan. Your guarantee has been released and your savings are now unfrozen.",
-                    loan.getMember().getFirstName() + " " + loan.getMember().getLastName()
+                    "Excellent news %s! %s has fully repaid their loan. Your guarantee has been completely released and all your frozen savings (KES %,.2f) are now unfrozen and available for withdrawal.",
+                    guarantor.getMember().getFirstName(),
+                    loan.getMember().getFirstName() + " " + loan.getMember().getLastName(),
+                    guarantor.getPledgeAmount() != null ? guarantor.getPledgeAmount() : BigDecimal.ZERO
             );
 
             notificationService.notifyUser(

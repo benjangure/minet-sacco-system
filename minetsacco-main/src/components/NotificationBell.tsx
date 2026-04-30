@@ -1,22 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, X, Check, CheckCheck } from 'lucide-react';
 import { notificationService, Notification } from '../services/notificationService';
+import { useAuth } from '@/contexts/AuthContext';
+import { API_BASE_URL } from '@/config/api';
 
 export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const { session, role } = useAuth();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    // Check for staff session or member token
+    const staffSession = localStorage.getItem('session');
+    const memberToken = localStorage.getItem('token');
+    const token = staffSession ? JSON.parse(staffSession)?.token : memberToken;
+    
     if (token) {
       loadUnreadCount();
       // Poll for unread count every 10 seconds
-      const interval = setInterval(loadUnreadCount, 10000);
+      const interval = setInterval(() => {
+        loadUnreadCount();
+      }, 10000);
       return () => clearInterval(interval);
     }
-  }, []);
+  }, [session, role]);
 
   const loadUnreadCount = async () => {
     try {
@@ -27,6 +36,7 @@ export const NotificationBell: React.FC = () => {
     }
   };
 
+  
   const loadNotifications = async () => {
     setLoading(true);
     try {
@@ -96,10 +106,16 @@ export const NotificationBell: React.FC = () => {
     return date.toLocaleDateString();
   };
 
-  // Don't render if no token
-  if (!localStorage.getItem('token')) {
+  // Don't render if no token (check both staff session and member token)
+  const staffSession = localStorage.getItem('session');
+  const memberToken = localStorage.getItem('token');
+  const token = staffSession ? JSON.parse(staffSession)?.token : memberToken;
+  
+  if (!token) {
     return null;
   }
+
+  const totalBadgeCount = unreadCount;
 
   return (
     <div className="relative">
@@ -109,9 +125,9 @@ export const NotificationBell: React.FC = () => {
         title="Notifications"
       >
         <Bell size={24} />
-        {unreadCount > 0 && (
+        {totalBadgeCount > 0 && (
           <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full">
-            {unreadCount > 99 ? '99+' : unreadCount}
+            {totalBadgeCount > 99 ? '99+' : totalBadgeCount}
           </span>
         )}
       </button>
@@ -129,6 +145,7 @@ export const NotificationBell: React.FC = () => {
             </button>
           </div>
 
+          
           {/* Notifications List */}
           <div className="flex-1 overflow-y-auto">
             {loading ? (

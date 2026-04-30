@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake, Settings } from 'lucide-react';
+import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/images/logo.png';
@@ -39,9 +39,6 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
         break;
       case 'notifications':
         navigate('/member/dashboard?tab=notifications');
-        break;
-      case 'settings':
-        navigate('/member/settings');
         break;
       default:
         navigate('/member/dashboard');
@@ -123,14 +120,6 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
 
           {/* Logout Button */}
           <div className="pt-4 border-t border-white/20 space-y-2">
-            <Button
-              onClick={() => handleMenuClick('settings')}
-              variant="ghost"
-              className="w-full justify-start gap-3 text-white hover:bg-white/10"
-            >
-              <Settings className="h-5 w-5" />
-              Settings
-            </Button>
             <Button
               onClick={onLogout}
               variant="ghost"

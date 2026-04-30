@@ -46,6 +46,12 @@ public class BulkTransactionItem {
     @JsonIgnoreProperties({"member", "loanProduct", "repayments", "guarantors", "createdBy", "approvedBy", "disbursedBy"})
     private Loan loan;
 
+    @Column(name = "loan_repayment_payment_method", length = 20)
+    private String loanRepaymentPaymentMethod = "SALARY_DEDUCTION";
+
+    @Column(name = "loan_repayment_reference_number", length = 50)
+    private String loanRepaymentReferenceNumber;
+
     @Column(name = "benevolent_fund_amount", precision = 15, scale = 2)
     private BigDecimal benevolentFundAmount = BigDecimal.ZERO;
 
@@ -149,4 +155,10 @@ public class BulkTransactionItem {
 
     public BigDecimal getEmergencyFundAmount() { return emergencyFundAmount; }
     public void setEmergencyFundAmount(BigDecimal emergencyFundAmount) { this.emergencyFundAmount = emergencyFundAmount; }
+
+    public String getLoanRepaymentPaymentMethod() { return loanRepaymentPaymentMethod; }
+    public void setLoanRepaymentPaymentMethod(String loanRepaymentPaymentMethod) { this.loanRepaymentPaymentMethod = loanRepaymentPaymentMethod; }
+
+    public String getLoanRepaymentReferenceNumber() { return loanRepaymentReferenceNumber; }
+    public void setLoanRepaymentReferenceNumber(String loanRepaymentReferenceNumber) { this.loanRepaymentReferenceNumber = loanRepaymentReferenceNumber; }
 }

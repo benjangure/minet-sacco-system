@@ -38,8 +38,8 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
       if (normalizedTokenRole !== normalizedRequiredRole) {
         // Show error message based on role mismatch
         const errorMsg = requiredRole === 'MEMBER' 
-          ? 'This is the member portal. Staff accounts cannot access this area. Please use the staff login.'
-          : 'This is the staff portal. Member accounts cannot access this area. Please use the member login.';
+          ? 'This is member portal. Staff accounts cannot access this area. Please use staff login.'
+          : 'This is staff portal. Member accounts cannot access this area. Please use member login.';
         
         // Store error message and redirect
         localStorage.setItem('accessError', errorMsg);

@@ -122,7 +122,7 @@ public class AuthController {
      * Health check endpoint for APK to verify backend connectivity
      * No authentication required - used by APK settings to test connection
      */
-    @GetMapping("/health")
+    @GetMapping("/auth/health")
     public ResponseEntity<?> healthCheck() {
         return ResponseEntity.ok(new ApiResponse(true, "Backend is healthy", null));
     }

@@ -37,7 +37,7 @@ public class LoanRepayment {
 
     @NotNull
     @ManyToOne
-    @JoinColumn(name = "recorded_by")
+    @JoinColumn(name = "created_by")
     private User recordedBy;
 
     @CreationTimestamp
@@ -47,6 +47,7 @@ public class LoanRepayment {
     private LocalDateTime updatedAt;
 
     public enum PaymentMethod {
+        SALARY_DEDUCTION,
         CASH,
         MPESA,
         BANK_TRANSFER,

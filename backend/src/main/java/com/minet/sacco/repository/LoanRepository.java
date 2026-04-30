@@ -76,4 +76,6 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
     Long countByYearAndDisbursed(@Param("year") int year);
 
     List<Loan> findByMemberIdAndStatus(Long memberId, Loan.Status status);
+
+    List<Loan> findByMemberIdAndStatusIn(Long memberId, java.util.List<Loan.Status> statuses);
 }

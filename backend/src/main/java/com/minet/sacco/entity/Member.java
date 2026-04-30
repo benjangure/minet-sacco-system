@@ -112,6 +112,16 @@ public class Member {
     private LocalDateTime exitDate;
     private String exitReason; // RESIGNED, RETIRED, TERMINATED, DECEASED, OTHER
 
+    // Migration tracking
+    @Column(name = "consecutive_months_counter")
+    private Integer consecutiveMonthsCounter = 0;
+
+    @Column(name = "migration_status")
+    private String migrationStatus = "ACTIVE"; // ACTIVE or MIGRATED
+
+    @Column(name = "is_legacy_member")
+    private Boolean isLegacyMember = false;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -237,4 +247,13 @@ public class Member {
 
     public String getExitReason() { return exitReason; }
     public void setExitReason(String exitReason) { this.exitReason = exitReason; }
+
+    public Integer getConsecutiveMonthsCounter() { return consecutiveMonthsCounter; }
+    public void setConsecutiveMonthsCounter(Integer consecutiveMonthsCounter) { this.consecutiveMonthsCounter = consecutiveMonthsCounter; }
+
+    public String getMigrationStatus() { return migrationStatus; }
+    public void setMigrationStatus(String migrationStatus) { this.migrationStatus = migrationStatus; }
+
+    public Boolean getIsLegacyMember() { return isLegacyMember; }
+    public void setIsLegacyMember(Boolean isLegacyMember) { this.isLegacyMember = isLegacyMember; }
 }

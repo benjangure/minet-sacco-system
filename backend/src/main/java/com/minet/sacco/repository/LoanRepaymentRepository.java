@@ -23,4 +23,7 @@ public interface LoanRepaymentRepository extends JpaRepository<LoanRepayment, Lo
 
     @Query("SELECT COUNT(lr) FROM LoanRepayment lr WHERE lr.loan.id = :loanId")
     Long countRepaymentsByLoanId(@Param("loanId") Long loanId);
+
+    @Query("SELECT lr FROM LoanRepayment lr WHERE lr.loan.member.id = :memberId ORDER BY lr.paymentDate DESC")
+    List<LoanRepayment> findByMemberIdOrderByPaymentDateDesc(@Param("memberId") Long memberId);
 }

@@ -2,41 +2,44 @@
 
 ## 🎯 What This System Does
 
-The Minet SACCO System automates bulk financial processing for employee savings and loans.
+The Minet SACCO System is a comprehensive member savings and loan management platform for employee SACCOs.
 
-**Main Features:**
-- **Bulk Monthly Contributions** - Process 500+ contributions in 3 minutes
-- **Bulk Member Registration** - Register 100+ employees in 5 minutes
-- Automatic validation and error detection
-- Secure approval workflow (Maker-Checker)
-- Complete audit trail for compliance
+**Core Features:**
+- **Member Management** - Register, approve, and manage members
+- **Savings Management** - Deposits, withdrawals, account tracking
+- **Loan Management** - Applications, approvals, disbursements, repayments
+- **Loan Officer Application** ✨ NEW - Apply for loans on behalf of members with live eligibility checking
+- **Guarantor Management** - Up to 3 guarantors per loan with eligibility validation
+- **Bulk Processing** - Process 500+ members/loans/repayments in minutes
+- **Reports & Analytics** - P&L reports, member reports, loan portfolio analysis
+- **Audit Trail** - Complete compliance logging of all actions
+- **Mobile App** - Android app for member self-service
 
-**Time Savings:** 
-- Contributions: 16 hours → 3 minutes (99.7% faster)
-- Member Registration: 8 hours → 5 minutes (99.4% faster)
+**Key Improvements:**
+- Live eligibility checking for members and guarantors
+- Real-time validation prevents errors
+- Faster loan processing (hours instead of days)
+- Better member experience with self-service portal
 
 ---
 
 ## 📚 Documentation
 
-### For Users
-- **[OPERATING_GUIDE.md](OPERATING_GUIDE.md)** - How to use the system (START HERE)
-  - User roles and responsibilities
-  - Step-by-step daily operations
-  - Troubleshooting guide
-  - Quick reference
+### Quick Start
+- **[backend/QUICKSTART.md](backend/QUICKSTART.md)** - Get the system running in 5 minutes
+- **[backend/README.md](backend/README.md)** - Backend setup and configuration
 
-### For Administrators
-- **[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)** - Technical details
-  - Database schema
-  - API endpoints
-  - Processing flow
-  - Security implementation
+### User Guides
+- **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Complete step-by-step usage guide (START HERE)
+- **[PRESENTATION_SUMMARY.md](PRESENTATION_SUMMARY.md)** - Loan officer feature overview
 
-### For Setup
-- **[backend/QUICKSTART.md](backend/QUICKSTART.md)** - Installation and setup
-- **[backend/BULK_PROCESSING_EXCEL_TEMPLATE.md](backend/BULK_PROCESSING_EXCEL_TEMPLATE.md)** - Contributions template guide
-- **[backend/BULK_MEMBER_REGISTRATION_TEMPLATE.md](backend/BULK_MEMBER_REGISTRATION_TEMPLATE.md)** - Member registration template guide
+### System Documentation
+- **[SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)** - Complete system overview and features
+- **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - Project file organization
+- **[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md)** - System architecture and design patterns
+
+### Feature Documentation
+- **[GUARANTOR_REJECTION_HANDLING.md](GUARANTOR_REJECTION_HANDLING.md)** - Guarantor rejection workflow (planned feature)
 
 ---
 
@@ -46,7 +49,7 @@ The Minet SACCO System automates bulk financial processing for employee savings 
 ```bash
 # Backend
 cd backend
-./mvnw spring-boot:run
+mvn spring-boot:run
 
 # Frontend (in another terminal)
 cd minetsacco-main
@@ -54,25 +57,22 @@ npm install
 npm run dev
 ```
 
-### 2. Login
-- URL: http://localhost:3000
-- Default Admin: admin / admin123
-- (Change password on first login)
+### 2. Access the System
+- **Staff Portal:** http://localhost:3000
+- **Member Portal:** http://localhost:3000/member
+- **API Documentation:** http://localhost:8080/swagger-ui/index.html
 
-### 3. Configure Funds
-- Login as ADMIN
-- Go to Settings
-- Enable/disable optional funds
-- Only enabled funds appear in Excel template
+### 3. Default Login Credentials
+- Username: `admin`
+- Password: `admin123`
 
-### 4. Create Users
-- As ADMIN, create TREASURER and APPROVER accounts
-- Share credentials with team members
-
-### 5. Process Contributions
-- TREASURER: Download template, fill data, upload
-- APPROVER: Review and approve
-- System: Processes automatically
+### 4. First Steps
+1. Login as ADMIN
+2. Create staff users (TREASURER, LOAN_OFFICER, CREDIT_COMMITTEE, TELLER)
+3. Register members (manual or bulk)
+4. Configure loan products
+5. Set eligibility rules
+6. Start processing loans
 
 ---
 
@@ -80,151 +80,183 @@ npm run dev
 
 | Role | Responsibility | Key Actions |
 |------|-----------------|-------------|
-| **ADMIN** | System configuration | Configure funds, manage users |
-| **TREASURER** | Bulk uploads | Upload files, validate data |
-| **APPROVER** | Bulk authorization | Review and approve submissions |
-| **AUDITOR** | Compliance monitoring | View logs, generate reports |
-
-**Maker-Checker Rule:** TREASURER uploads, APPROVER approves (must be different person)
+| **ADMIN** | System configuration | Manage users, configure products, set rules |
+| **TREASURER** | Financial operations | Process deposits, approve withdrawals, disburse loans |
+| **LOAN_OFFICER** | Loan processing | Apply for loans, review applications, recommend approval |
+| **CREDIT_COMMITTEE** | Loan approval | Approve/reject loan applications |
+| **TELLER** | Member transactions | Register members, process deposits |
+| **AUDITOR** | Compliance monitoring | View audit trail, generate reports |
+| **MEMBER** | Self-service | Apply for loans, make deposits, view accounts |
 
 ---
 
 ## ✅ System Capabilities
 
 ### What It CAN Do
-✅ Process 500+ contributions in 3 minutes
-✅ Register 100+ members in 5 minutes
-✅ Automatic validation and error detection
-✅ Maker-Checker approval workflow
-✅ Configurable optional funds
-✅ Individual member management
-✅ Individual loan management
-✅ Complete audit trail
-✅ Role-based access control
+✅ Member registration (manual and bulk)
+✅ Savings management (deposits, withdrawals)
+✅ Loan applications (member and loan officer)
+✅ Live eligibility checking
+✅ Guarantor management (up to 3 per loan)
+✅ Loan approval workflow
+✅ Loan disbursement
+✅ Loan repayment (individual and bulk)
+✅ Bulk processing (members, loans, repayments)
+✅ Reports and analytics
+✅ Audit trail and compliance
+✅ Mobile app (Android)
+✅ Notifications (email)
 
-### What It CANNOT Do
-❌ Bulk loan applications (not implemented)
-❌ Bulk loan disbursements (not implemented)
-❌ Mobile app (web-only)
-❌ SMS notifications (email only)
+### Planned Features
+🔄 Guarantor rejection handling (3 options)
+🔄 Advanced member financial scoring
+🔄 Integration with M-Pesa API
+🔄 SMS notifications
+🔄 Advanced analytics and ML predictions
 
 ---
 
 ## 📊 System Status
 
-**Version:** 1.0
-**Status:** Production Ready for Bulk Contributions & Member Registration
-**Completion:** 70% (core features complete)
+**Version:** 1.0 (April 2026)
+**Status:** Production Ready
+**Completion:** 85% (core features complete, guarantor rejection handling planned)
 
 ### Completed Features
-- ✅ Bulk monthly contributions
-- ✅ Bulk member registration
-- ✅ Configurable funds
-- ✅ Security & compliance
-- ✅ Individual member/loan processing
-- ✅ Role definitions
-- ✅ Audit logging
+- ✅ Member management
+- ✅ Savings management
+- ✅ Loan management
+- ✅ Loan officer application feature
+- ✅ Live eligibility checking
+- ✅ Guarantor management
+- ✅ Bulk processing
+- ✅ Reports & analytics
+- ✅ Audit trail
+- ✅ Mobile app
+- ✅ Notifications
 
-### Not Implemented
-- ❌ Bulk loan applications
-- ❌ Bulk loan disbursements
-- ❌ Settings UI (API only)
+### In Progress
+- 🔄 Guarantor rejection handling (design complete, implementation pending)
 
 ---
 
 ## 🔧 Technology Stack
 
-**Backend:** Java Spring Boot, MySQL, Apache POI
-**Frontend:** React, TypeScript, Tailwind CSS
-**Security:** JWT, BCrypt, Role-based access control
+**Backend:** 
+- Java 21
+- Spring Boot 3.2
+- PostgreSQL
+- JWT Authentication
+- Flyway Migrations
+
+**Frontend:** 
+- React 18+
+- TypeScript
+- Tailwind CSS
+- Shadcn/ui Components
+- Vite Build Tool
+
+**Mobile:**
+- Capacitor
+- Android Native
+- Same React codebase
 
 ---
 
 ## 📖 How to Use
 
 ### For First-Time Users
-1. Read [OPERATING_GUIDE.md](OPERATING_GUIDE.md) - Complete user guide
+1. Read [USAGE_GUIDE.md](USAGE_GUIDE.md) - Complete step-by-step guide
 2. Follow [backend/QUICKSTART.md](backend/QUICKSTART.md) - Setup instructions
 3. Test with sample data
 
 ### For Administrators
-1. Read [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) - Technical details
-2. Configure database and environment
-3. Create user accounts
-4. Configure funds
+1. Read [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md) - System overview
+2. Read [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - Project organization
+3. Configure database and environment
+4. Create user accounts
+5. Configure loan products and eligibility rules
 
 ### For Developers
 1. Clone repository
 2. Follow [backend/QUICKSTART.md](backend/QUICKSTART.md)
-3. Review [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)
-4. Check API endpoints in code
+3. Review [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) - Architecture and design patterns
+4. Check API endpoints in Swagger UI
+5. Review code in `backend/src/main/java/com/minet/sacco/`
 
 ---
 
 ## 🎓 Daily Workflow Example
 
-### Monthly Contribution Processing
+### Loan Application Processing
 
-**Monday 9:00 AM - TREASURER**
+**Morning - Loan Officer**
 ```
-1. Receive employee data from HR
-2. Download Excel template from system
-3. Fill in employee contributions
-4. Upload file to system
-5. Review validation results
-6. Submit for approval
-```
-
-**Monday 10:00 AM - APPROVER**
-```
-1. Login to system
-2. View pending submission
-3. Review details (500 records, KES 2.5M)
-4. Click "Approve"
-5. System processes automatically
+1. Login to staff portal
+2. Click "New Loan Application"
+3. Select member to apply for
+4. Enter loan details (product, amount, term)
+5. Search for guarantors by employee ID
+6. System shows live eligibility (✓ or ✗)
+7. Add up to 3 guarantors
+8. Submit application
 ```
 
-**Monday 10:01 AM - System**
+**Mid-Morning - Credit Committee**
 ```
-1. Process 500 contributions
-2. Create/update accounts
-3. Record transactions
-4. Update balances
-5. Send confirmation email
+1. Login to staff portal
+2. View pending loan applications
+3. Review member and guarantor details
+4. Click "Approve" or "Reject"
+5. Add approval comments
 ```
 
-**Next Day - AUDITOR**
+**Afternoon - Treasurer**
 ```
-1. Review audit logs
-2. Verify Maker-Checker rule followed
-3. Confirm all records processed
-4. Generate compliance report
+1. View approved loans
+2. Click "Disburse Loan"
+3. Confirm amount and account
+4. System transfers funds
+5. Loan status changes to ACTIVE
+```
+
+**Next Day - Guarantor**
+```
+1. Receives notification
+2. Logs into member portal
+3. Views guarantee request
+4. Clicks "Approve" or "Reject"
+5. Loan proceeds if all approve
 ```
 
 ---
 
 ## 🔐 Security Features
 
-- **Maker-Checker Workflow** - Prevents fraud (cannot approve own submission)
-- **Role-Based Access Control** - Each role has specific permissions
-- **Audit Logging** - Complete history of all actions
-- **Password Encryption** - BCrypt hashing
 - **JWT Authentication** - Secure token-based login
+- **Role-Based Access Control** - Each role has specific permissions
+- **Password Encryption** - BCrypt hashing
+- **Audit Logging** - Complete history of all actions
 - **Data Validation** - Automatic error detection
+- **CORS Configuration** - Secure cross-origin requests
+- **SQL Injection Prevention** - Parameterized queries
+- **XSS Protection** - Input sanitization
 
 ---
 
 ## 📞 Support
 
 ### For Questions
-1. Check [OPERATING_GUIDE.md](OPERATING_GUIDE.md)
-2. Review system help tooltips
-3. Contact system administrator
+1. Check [USAGE_GUIDE.md](USAGE_GUIDE.md)
+2. Review [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)
+3. Check system help tooltips
+4. Contact system administrator
 
 ### For Issues
 1. Note the error message
-2. Check [OPERATING_GUIDE.md](OPERATING_GUIDE.md) troubleshooting section
-3. Contact IT support
+2. Check [USAGE_GUIDE.md](USAGE_GUIDE.md) troubleshooting section
+3. Review audit trail for details
+4. Contact IT support
 
 ---
 
@@ -233,12 +265,15 @@ npm run dev
 ```
 .
 ├── README.md (this file)
-├── OPERATING_GUIDE.md (user guide)
-├── SYSTEM_ARCHITECTURE.md (technical details)
-├── SYSTEM_RESTRUCTURING_PLAN.md (implementation notes)
+├── SYSTEM_OVERVIEW.md (system overview)
+├── PROJECT_STRUCTURE.md (project organization)
+├── SYSTEM_DESIGN.md (architecture and design)
+├── USAGE_GUIDE.md (user guide)
+├── PRESENTATION_SUMMARY.md (loan officer feature)
+├── GUARANTOR_REJECTION_HANDLING.md (planned feature)
 ├── backend/
 │   ├── QUICKSTART.md (setup guide)
-│   ├── BULK_PROCESSING_EXCEL_TEMPLATE.md (template guide)
+│   ├── README.md (backend documentation)
 │   ├── pom.xml (dependencies)
 │   └── src/
 │       └── main/
@@ -247,15 +282,21 @@ npm run dev
 │           │   ├── service/ (business logic)
 │           │   ├── entity/ (database models)
 │           │   ├── repository/ (database access)
-│           │   └── security/ (authentication)
+│           │   ├── dto/ (data transfer objects)
+│           │   ├── security/ (authentication)
+│           │   └── config/ (configuration)
 │           └── resources/
 │               ├── application.properties (config)
 │               └── db/migration/ (database migrations)
 └── minetsacco-main/
     ├── package.json (dependencies)
+    ├── vite.config.ts (build config)
+    ├── capacitor.config.ts (mobile config)
     └── src/
         ├── pages/ (screens)
         ├── components/ (UI components)
+        ├── contexts/ (state management)
+        ├── services/ (API services)
         └── App.tsx (main app)
 ```
 
@@ -264,42 +305,55 @@ npm run dev
 ## 🎯 Next Steps
 
 ### Immediate (Today)
-1. Fix database error (delete REGISTRATION_FEE)
-2. Restart backend
-3. Test login with each role
-4. Test bulk processing workflow
+1. Follow [backend/QUICKSTART.md](backend/QUICKSTART.md) to setup
+2. Test login with default credentials
+3. Create staff user accounts
+4. Configure loan products
 
 ### Short Term (This Week)
-1. Create user accounts for team
-2. Configure funds
-3. Test with sample data
-4. Train team on system
+1. Register test members
+2. Configure eligibility rules
+3. Test loan application workflow
+4. Test guarantor approval workflow
 
 ### Medium Term (This Month)
-1. Process first real bulk contribution
+1. Process first real loan application
 2. Verify audit trail
 3. Generate compliance report
-4. Document any issues
+4. Train staff on system
+
+### Long Term (Next Quarter)
+1. Implement guarantor rejection handling
+2. Add advanced analytics
+3. Integrate with M-Pesa API
+4. Deploy to production
 
 ---
 
 ## 📈 Performance
 
-- **Upload:** < 2 seconds for 100 records
-- **Validation:** < 1 second for 100 records
-- **Processing:** < 30 seconds for 100 records
-- **Total:** < 3 minutes for 500 records
+- **Member Registration:** < 5 minutes for 100 members (bulk)
+- **Loan Application:** < 2 minutes (with live eligibility checking)
+- **Loan Approval:** < 1 minute
+- **Loan Disbursement:** < 1 minute
+- **Bulk Repayment:** < 3 minutes for 100 repayments
 
 ---
 
 ## 📝 Version History
 
-**v1.0 (March 2026)**
+**v1.0 (April 2026)**
 - Initial release
-- Bulk monthly contributions
-- Configurable funds
-- Maker-Checker workflow
+- Member management
+- Savings management
+- Loan management
+- Loan officer application feature
+- Live eligibility checking
+- Guarantor management
+- Bulk processing
+- Reports & analytics
 - Audit logging
+- Mobile app
 - Role-based access control
 
 ---
@@ -316,5 +370,5 @@ For support or questions, contact your system administrator.
 
 ---
 
-**System Status: Production Ready for Bulk Contributions** ✅
+**System Status: Production Ready** ✅
 

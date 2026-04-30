@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Download } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = import.meta.env.VITE_NATIVE_BACKEND_URL || "http://localhost:8080/api";
 
 interface AuditLog {
   id: number;

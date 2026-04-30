@@ -30,6 +30,9 @@ public class AccountService {
     @Autowired
     private TransactionRepository transactionRepository;
 
+    @Autowired
+    private MemberSuspensionService memberSuspensionService;
+
     public List<Account> getAllAccounts() {
         return accountRepository.findAll();
     }
@@ -98,6 +101,11 @@ public class AccountService {
 
         Account account = accountRepository.findByMemberIdAndAccountType(request.getMemberId(), accountType)
                 .orElseThrow(() -> new RuntimeException("Account not found"));
+
+        // Check if member is suspended
+        if (memberSuspensionService.isMemberSuspended(request.getMemberId())) {
+            throw new RuntimeException("Member is suspended and cannot withdraw funds");
+        }
 
         // Check sufficient balance
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
