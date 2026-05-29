@@ -16,13 +16,16 @@ public class LoanNumberGenerationService {
      * Generate a unique loan number with year-specific counter
      * Format: LN-YYYY-NNNNN (e.g., LN-2026-00001)
      * 
+     * Counts loans that are DISBURSED or REPAID (both have been assigned loan numbers)
+     * 
      * @param loan the loan to generate number for
      * @return unique loan number
      */
     public String generateLoanNumber(Loan loan) {
         int year = LocalDateTime.now().getYear();
         
-        // Count loans disbursed in current year
+        // Count loans that are DISBURSED or REPAID in current year
+        // Both statuses have been assigned loan numbers
         long yearCount = loanRepository.countByYearAndDisbursed(year);
         
         // Generate number with year-specific counter

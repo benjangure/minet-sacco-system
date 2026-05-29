@@ -157,7 +157,8 @@ export default function MemberLogin() {
             </CardHeader>
 
             <CardContent className="space-y-6">
-              {/* Settings Toggle Button */}
+              {/* Backend Settings Toggle Button - Commented out for production deployment */}
+              {/* 
               <Button
                 type="button"
                 variant="outline"
@@ -170,8 +171,8 @@ export default function MemberLogin() {
                 {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
 
-              {/* Settings Panel */}
-              {showSettings && (
+              {/* Settings Panel - Commented out for production */}
+              {/* {showSettings && (
                 <div className="space-y-4 p-4 bg-muted rounded-lg border">
                   <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground">Current Backend</Label>
@@ -229,6 +230,7 @@ export default function MemberLogin() {
                   </div>
                 </div>
               )}
+              */}
 
               <form onSubmit={handleLogin} className="space-y-4">
                 {accessError && (
@@ -299,6 +301,8 @@ export default function MemberLogin() {
         </div>
       </div>
 
+      {/* BackendConnectionManager component commented out for production deployment */}
+      {/* 
       <BackendConnectionManager 
         showOnMount={false}
         onConnectionSuccess={() => {
@@ -308,6 +312,7 @@ export default function MemberLogin() {
           setTempUrl(currentUrl);
         }}
       />
+      */}
     </>
   );
 }

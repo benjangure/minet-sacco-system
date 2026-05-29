@@ -13,10 +13,13 @@ export interface Notification {
 }
 
 const getAuthHeaders = () => {
-  // Token is stored in the session object in localStorage
+  // Token can be stored in two places:
+  // 1. Staff users: localStorage.session.token
+  // 2. Member users: localStorage.token
   let token = null;
   
   try {
+    // First try to get token from session (staff users)
     const session = localStorage.getItem('session');
     if (session) {
       const parsedSession = JSON.parse(session);
@@ -24,6 +27,11 @@ const getAuthHeaders = () => {
     }
   } catch (e) {
     console.warn('Failed to parse session from localStorage');
+  }
+  
+  // If no token found in session, try member token
+  if (!token) {
+    token = localStorage.getItem('token');
   }
   
   if (!token) {
@@ -78,6 +86,7 @@ const getApiBaseUrlDynamic = (): string => {
 const getNotificationsPath = (): string => {
   let userRole = null;
   
+  // First try to get role from session (staff users)
   try {
     const session = localStorage.getItem('session');
     if (session) {
@@ -86,6 +95,15 @@ const getNotificationsPath = (): string => {
     }
   } catch (e) {
     console.warn('Failed to parse session from localStorage');
+  }
+  
+  // If no role found in session, check if this is a member (member token exists)
+  if (!userRole) {
+    const memberToken = localStorage.getItem('token');
+    if (memberToken) {
+      // This is a member user
+      userRole = 'MEMBER';
+    }
   }
   
   // Staff roles use /api/notifications, members use /api/member/notifications

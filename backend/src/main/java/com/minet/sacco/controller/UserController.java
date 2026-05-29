@@ -2,6 +2,7 @@ package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.DeletionApprovalDTO;
+import com.minet.sacco.dto.PasswordChangeRequestDTO;
 import com.minet.sacco.dto.UserDTO;
 import com.minet.sacco.dto.UserDeletionRequestDTO;
 import com.minet.sacco.entity.User;
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -30,6 +32,9 @@ public class UserController {
 
     @Autowired
     private UserDeletionRequestRepository deletionRequestRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     // Role hierarchy: what roles each role can create
     private static final List<String> ADMIN_CAN_CREATE = Arrays.asList("ADMIN", "TREASURER", "LOAN_OFFICER", "CREDIT_COMMITTEE", "AUDITOR");
@@ -343,6 +348,52 @@ public class UserController {
     public ResponseEntity<ApiResponse<Object>> getActivityLogByAction(@PathVariable String action) {
         return ResponseEntity.ok(ApiResponse.success("Activity log retrieved successfully", 
                 userService.getActivityLogByAction(action)));
+    }
+
+    /**
+     * Staff user changes their own password (self-service)
+     * Requires verification of current password
+     */
+    @PutMapping("/change-password")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR', 'ROLE_TELLER', 'ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<String>> changeOwnPassword(
+            @Valid @RequestBody PasswordChangeRequestDTO request,
+            Authentication authentication) {
+        
+        try {
+            // Get current user
+            String username = authentication.getName();
+            User currentUser = userService.getUserByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            // Verify current password matches
+            if (!passwordEncoder.matches(request.getCurrentPassword(), currentUser.getPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Current password is incorrect"));
+            }
+            
+            // Validate new password differs from current
+            if (passwordEncoder.matches(request.getNewPassword(), currentUser.getPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("New password must be different from current password"));
+            }
+            
+            // Validate password confirmation matches
+            if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("New passwords do not match"));
+            }
+            
+            // Change password
+            userService.changePassword(currentUser.getId(), request.getNewPassword(), 
+                                      "Self-service password change by user");
+            
+            return ResponseEntity.ok(ApiResponse.success("Password changed successfully"));
+            
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Failed to change password: " + e.getMessage()));
+        }
     }
 }
 

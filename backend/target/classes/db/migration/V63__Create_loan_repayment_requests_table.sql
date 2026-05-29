@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS loan_repayment_requests (
     status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     description TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    approved_at TIMESTAMP,
+    approved_at TIMESTAMP NULL DEFAULT NULL,
     approved_by VARCHAR(255),
     confirmed_amount DECIMAL(19, 2),
     rejection_reason TEXT,

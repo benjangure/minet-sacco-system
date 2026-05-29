@@ -14,7 +14,11 @@
     "pwa:generate": "node create-pwa-assets.js",
     "icons:generate": "node generate-android-icons.js",
     "apk:sync": "npm run build && npx cap sync android",
-    "apk:build": "cd android && ./gradlew assembleRelease && cd .."
+    "apk:build": "cd android && ./gradlew assembleRelease && cd ..",
+    "ios:sync": "npm run build && npx cap sync ios",
+    "ios:build": "npm run build && npx cap sync ios && cd ios && xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -destination generic/platform=iOS -archivePath App.xcarchive archive && cd ..",
+    "ios:run": "npm run build && npx cap sync ios && npx cap run ios",
+    "ios:open": "npx cap open ios"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^8.0.0",
@@ -22,6 +26,7 @@
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",
     "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "^8.3.0",
     "@capacitor/splash-screen": "^8.0.1",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",

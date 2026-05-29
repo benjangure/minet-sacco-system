@@ -222,8 +222,14 @@ export default function MemberDashboard() {
   const [guarantorDialogOpen, setGuarantorDialogOpen] = useState(false);
   const [repaymentFormOpen, setRepaymentFormOpen] = useState(false);
   const [depositRequestOpen, setDepositRequestOpen] = useState(false);
-  const [mpesaDepositOpen, setMpesaDepositOpen] = useState(false);
-  const [mpesaWithdrawOpen, setMpesaWithdrawOpen] = useState(false);
+  // // const [mpesaDepositOpen, setMpesaDepositOpen] = useState(false); // TODO: MPesa deposit not implemented
+  // const [mpesaWithdrawOpen, setMpesaWithdrawOpen] = useState(false); // TODO: MPesa withdraw not implemented
+  
+  // Dummy variables to prevent TypeScript errors for commented MPesa functionality
+  const [mpesaDepositOpen] = useState(false);
+  const [setMpesaDepositOpen] = useState(() => {});
+  const [mpesaWithdrawOpen] = useState(false);
+  const [setMpesaWithdrawOpen] = useState(() => {});
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [eligibility, setEligibility] = useState<any>(null);
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
@@ -436,20 +442,18 @@ export default function MemberDashboard() {
         const allLoans = response.data || [];
         
         // Debug: Log all loan data to identify the issue
-        console.log('All loans from backend:', allLoans.map(l => ({
-          id: l.id,
-          loanNumber: l.loanNumber,
-          status: l.status,
-          outstandingBalance: l.outstandingBalance,
-          amount: l.amount,
-          totalRepayable: l.totalRepayable
-        })));
+        console.log('=== ALL LOANS FROM BACKEND API ===');
+        allLoans.forEach(l => {
+        });
+        console.log('=== END LOANS ===');
         
-        // Exclude fully repaid loans and only show active/pending loans
-        const loans = allLoans.filter((l: any) => 
-          ['DISBURSED', 'ACTIVE', 'PENDING', 'PENDING_GUARANTOR_APPROVAL', 'PENDING_LOAN_OFFICER_REVIEW', 'PENDING_CREDIT_COMMITTEE', 'PENDING_TREASURER', 'APPROVED', 'PENDING_GUARANTOR_REPLACEMENT', 'PENDING_GUARANTOR_REASSIGNMENT'].includes(l.status) &&
-          l.outstandingBalance > 0 // Only show loans with outstanding balance
-        );
+        // Show all loans including repaid ones for complete loan history
+        // Sort by disbursement date (most recent first), then by application date
+        const loans = allLoans.sort((a: any, b: any) => {
+          const dateA = a.disbursementDate || a.applicationDate;
+          const dateB = b.disbursementDate || b.applicationDate;
+          return new Date(dateB).getTime() - new Date(dateA).getTime();
+        });
         
         console.log('Filtered loans (should exclude fully repaid):', loans.map(l => ({
           id: l.id,
@@ -549,9 +553,9 @@ export default function MemberDashboard() {
 
   return (
     <MemberLayout memberName={dashboard?.firstName || 'Member'} onLogout={handleLogout} unreadNotifications={unreadNotifications}>
-      <div className="space-y-4 max-w-7xl mx-auto">
+      <div className="space-y-4 max-w-7xl mx-auto px-4 lg:px-0">
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-foreground">Welcome, {dashboard?.firstName}!</h1>
+          <h1 className="text-3xl lg:text-4xl font-bold text-foreground">Welcome, {dashboard?.firstName}!</h1>
           <p className="text-muted-foreground">Member #{dashboard?.memberNumber}</p>
         </div>
 
@@ -631,9 +635,9 @@ export default function MemberDashboard() {
             <div>
               <h2 className="text-base md:text-lg font-semibold text-foreground mb-3 md:mb-4">Quick Actions</h2>
               <div className="grid gap-2 md:gap-3 md:grid-cols-2 lg:grid-cols-3">
-                <Card 
-                  className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setMpesaDepositOpen(true)}
+                {/* MPesa Cards - TODO: Not Implemented - Completely hidden */}
+                {/* <Card className="border-none shadow-sm cursor-not-allowed hover:shadow-md transition-shadow"
+                  // TODO: MPesa deposit not implemented
                 >
                   <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                     <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Deposit via M-Pesa</CardTitle>
@@ -645,8 +649,8 @@ export default function MemberDashboard() {
                 </Card>
 
                 <Card 
-                  className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setMpesaWithdrawOpen(true)}
+                  className="border-none shadow-sm cursor-not-allowed hover:shadow-md transition-shadow"
+                  // TODO: MPesa withdraw not implemented
                 >
                   <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                     <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Withdraw via M-Pesa</CardTitle>
@@ -655,7 +659,7 @@ export default function MemberDashboard() {
                   <CardContent>
                     <p className="text-muted-foreground text-xs md:text-sm">Withdraw from savings account</p>
                   </CardContent>
-                </Card>
+                </Card> */}
 
                 <Card 
                   className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow"
@@ -1041,11 +1045,11 @@ export default function MemberDashboard() {
               </Card>
             ) : activeLoans.filter(l => l.status !== 'PENDING_GUARANTOR_REPLACEMENT' && l.status !== 'PENDING_GUARANTOR_REASSIGNMENT').length > 0 && (
               <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-foreground">Your Active Loans</h3>
+                <h3 className="text-lg font-semibold text-foreground">Your Loans</h3>
                 {activeLoans
                   .filter(l => l.status !== 'PENDING_GUARANTOR_REPLACEMENT' && l.status !== 'PENDING_GUARANTOR_REASSIGNMENT')
                   .map((loan) => (
-                    <Card key={loan.id} className="border-blue-200">
+                    <Card key={loan.id} className={loan.status === 'REPAID' ? 'border-gray-300 bg-gray-50' : 'border-blue-200'}>
                       <CardHeader 
                         className="cursor-pointer hover:bg-gray-50 transition-colors"
                         onClick={() => toggleLoanExpansion(loan.id)}
@@ -1057,7 +1061,11 @@ export default function MemberDashboard() {
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              loan.status === 'APPROVED' || loan.status === 'DISBURSED' || loan.status === 'ACTIVE' 
+                              loan.status === 'REPAID'
+                                ? 'bg-gray-200 text-gray-800'
+                                : loan.status === 'DEFAULTED'
+                                ? 'bg-red-100 text-red-800'
+                                : loan.status === 'APPROVED' || loan.status === 'DISBURSED' || loan.status === 'ACTIVE' 
                                 ? 'bg-green-50 text-green-700' 
                                 : loan.status === 'REJECTED'
                                 ? 'bg-red-50 text-red-700'
@@ -1065,6 +1073,8 @@ export default function MemberDashboard() {
                             }`}>
                               {loan.status === 'DISBURSED' ? 'Disbursed' :
                               loan.status === 'ACTIVE' ? 'Active' :
+                              loan.status === 'REPAID' ? 'Fully Repaid' :
+                              loan.status === 'DEFAULTED' ? 'Defaulted' :
                               loan.status === 'PENDING' ? 'Pending' :
                               loan.status === 'PENDING_GUARANTOR_APPROVAL' ? 'Pending Guarantor Approval' :
                               loan.status === 'PENDING_LOAN_OFFICER_REVIEW' ? 'Pending Loan Officer Review' :
@@ -1109,23 +1119,45 @@ export default function MemberDashboard() {
                           {/* Repayment Progress */}
                           <div className="border-t pt-4">
                             <p className="text-sm font-semibold mb-3">Repayment Progress</p>
+                            {(() => {
+                              // DEBUG: Log the raw loan object to see what the frontend is receiving
+                              console.log(`[DEBUG] Loan ${loan.id} (${loan.loanNumber}) - Raw API Data:`, {
+                                id: loan.id,
+                                loanNumber: loan.loanNumber,
+                                status: loan.status,
+                                amount: loan.amount,
+                                totalInterest: (loan as any).totalInterest,
+                                totalRepayable: loan.totalRepayable,
+                                outstandingBalance: loan.outstandingBalance,
+                                calculatedRepaid: loan.totalRepayable - loan.outstandingBalance,
+                                calculatedPercentage: ((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100
+                              });
+                              return null;
+                            })()}
                             <div className="space-y-3">
                               <div>
                                 <div className="flex justify-between text-sm mb-1">
                                   <span className="text-muted-foreground">Progress</span>
                                   <span className="font-medium">
-                                    {formatCurrency(loan.totalRepayable - loan.outstandingBalance)} / {formatCurrency(loan.totalRepayable)}
+                                    {formatCurrency(Math.max(0, loan.totalRepayable - loan.outstandingBalance))} / {formatCurrency(loan.totalRepayable)}
                                   </span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
                                   <div 
-                                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                                    style={{ width: `${Math.min(((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100, 100)}%` }}
+                                    className={`h-2 rounded-full transition-all duration-300 ${
+                                      loan.status === 'REPAID' ? 'bg-green-600' : 'bg-green-600'
+                                    }`}
+                                    style={{ width: `${Math.min(Math.max(0, ((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100), 100)}%` }}
                                   />
                                 </div>
                                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                                  <span>{Math.round(((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100)}% repaid</span>
-                                  <span>{formatCurrency(loan.outstandingBalance)} remaining</span>
+                                  <span>{Math.max(0, Math.round(((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100))}% repaid</span>
+                                  <span>
+                                    {loan.status === 'REPAID' 
+                                      ? '✓ Fully Repaid' 
+                                      : formatCurrency(loan.outstandingBalance) + ' remaining'
+                                    }
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -1251,21 +1283,21 @@ export default function MemberDashboard() {
           onSuccess={fetchDashboard}
         />
 
-        {/* M-Pesa Deposit */}
-        <MpesaTransaction
+        {/* M-Pesa Deposit - TODO: Not Implemented */}
+        {/* <MpesaTransaction
           open={mpesaDepositOpen}
           onOpenChange={setMpesaDepositOpen}
           type="deposit"
           onSuccess={fetchDashboard}
-        />
+        /> */}
 
-        {/* M-Pesa Withdraw */}
-        <MpesaTransaction
+        {/* M-Pesa Withdraw - TODO: Not Implemented */}
+        {/* <MpesaTransaction
           open={mpesaWithdrawOpen}
           onOpenChange={setMpesaWithdrawOpen}
           type="withdraw"
           onSuccess={fetchDashboard}
-        />
+        /> */}
       </div>
     </MemberLayout>
   );

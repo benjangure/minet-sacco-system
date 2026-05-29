@@ -1,10 +1,14 @@
 package com.minet.sacco.service;
 
+import com.minet.sacco.entity.Account;
 import com.minet.sacco.entity.Loan;
 import com.minet.sacco.entity.LoanRepayment;
+import com.minet.sacco.entity.Transaction;
 import com.minet.sacco.entity.User;
+import com.minet.sacco.repository.AccountRepository;
 import com.minet.sacco.repository.LoanRepository;
 import com.minet.sacco.repository.LoanRepaymentRepository;
+import com.minet.sacco.repository.TransactionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +25,12 @@ public class LoanRepaymentService {
 
     @Autowired
     private LoanRepository loanRepository;
+
+    @Autowired
+    private AccountRepository accountRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
 
     @Autowired
     private GuarantorTrackingService guarantorTrackingService;
@@ -73,6 +83,21 @@ public class LoanRepaymentService {
         }
 
         loanRepository.save(loan);
+
+        // Create transaction record so repayment appears in Member Transaction History
+        accountRepository.findByMemberIdAndAccountType(loan.getMember().getId(), Account.AccountType.SAVINGS)
+                .ifPresent(account -> {
+                    Transaction transaction = new Transaction();
+                    transaction.setAccount(account);
+                    transaction.setTransactionType(Transaction.TransactionType.LOAN_REPAYMENT);
+                    transaction.setAmount(amount);
+                    transaction.setDescription("Loan repayment - Loan #" + loan.getLoanNumber() +
+                            " - Method: " + paymentMethod +
+                            (referenceNumber != null && !referenceNumber.isEmpty() ? " - Ref: " + referenceNumber : ""));
+                    transaction.setTransactionDate(paymentDate != null ? paymentDate : LocalDateTime.now());
+                    transaction.setCreatedBy(recordedBy);
+                    transactionRepository.save(transaction);
+                });
 
         // Update guarantor pledge tracking (reduce pledge for self-guarantors)
         guarantorTrackingService.trackPledgeReduction(loan, amount);

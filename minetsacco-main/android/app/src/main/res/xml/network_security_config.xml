@@ -13,6 +13,7 @@
         <domain includeSubdomains="true">192.168.100.34</domain>
         <domain includeSubdomains="true">192.168.100.41</domain>
         <domain includeSubdomains="true">192.168.100.50</domain>
+        <domain includeSubdomains="true">192.168.100.54</domain>
         <domain includeSubdomains="true">192.168.100.56</domain>
         <domain includeSubdomains="true">192.168.100.195</domain>
         <domain includeSubdomains="true">10.0.0.34</domain>
@@ -21,4 +22,9 @@
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
     </domain-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
 </network-security-config>

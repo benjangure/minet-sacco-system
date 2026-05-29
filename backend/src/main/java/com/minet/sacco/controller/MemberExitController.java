@@ -1,8 +1,11 @@
 package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
+import com.minet.sacco.entity.Member;
 import com.minet.sacco.entity.MemberExit;
 import com.minet.sacco.entity.User;
+import com.minet.sacco.repository.MemberRepository;
+import com.minet.sacco.repository.UserRepository;
 import com.minet.sacco.service.MemberExitService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -20,14 +23,20 @@ public class MemberExitController {
     @Autowired
     private MemberExitService memberExitService;
 
+    @Autowired
+    private MemberRepository memberRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
     /**
      * Initiate member exit
-     * Only ADMIN and CREDIT_COMMITTEE can initiate exits
+     * Credit Committee initiates member exit (acting as HR), Treasurer approves
      */
     @PostMapping("/{memberId}/exit")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CREDIT_COMMITTEE')")
+    @PreAuthorize("hasRole('CREDIT_COMMITTEE')")
     public ResponseEntity<ApiResponse<MemberExit>> initiateMemberExit(
-            @PathVariable Long memberId,
+            @PathVariable String memberId,
             @RequestBody Map<String, String> request,
             Authentication authentication) {
 
@@ -38,12 +47,33 @@ public class MemberExitController {
                         .body(new ApiResponse<>(false, "Exit reason is required", null));
             }
 
-            User user = (User) authentication.getPrincipal();
-            MemberExit exit = memberExitService.initiateMemberExit(memberId, exitReason, user);
+            // Find member by employee ID
+            Member member = memberRepository.findByEmployeeId(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found with employee ID: " + memberId));
+
+            String username = authentication.getName();
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+            MemberExit exit = memberExitService.initiateMemberExit(member.getId(), exitReason, user);
 
             return ResponseEntity.ok(new ApiResponse<>(true, "Member exit initiated successfully", exit));
 
         } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Get all exits (for reports)
+     */
+    @GetMapping("/exits/all")
+    @PreAuthorize("hasRole('TREASURER') or hasRole('CREDIT_COMMITTEE') or hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<MemberExit>>> getAllExits() {
+        try {
+            List<MemberExit> all = memberExitService.getAllExits();
+            return ResponseEntity.ok(new ApiResponse<>(true, "All exits retrieved", all));
+        } catch (Exception e) {
             return ResponseEntity.badRequest()
                     .body(new ApiResponse<>(false, e.getMessage(), null));
         }
@@ -57,11 +87,16 @@ public class MemberExitController {
     @PreAuthorize("hasRole('TREASURER')")
     public ResponseEntity<ApiResponse<MemberExit>> approveMemberExit(
             @PathVariable Long exitId,
+            @RequestBody Map<String, String> request,
             Authentication authentication) {
 
         try {
-            User user = (User) authentication.getPrincipal();
-            MemberExit exit = memberExitService.approveMemberExit(exitId, user);
+            String approvalNotes = request.get("approvalNotes");
+
+            String username = authentication.getName();
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+            MemberExit exit = memberExitService.approveMemberExit(exitId, approvalNotes, user);
 
             return ResponseEntity.ok(new ApiResponse<>(true, "Member exit approved successfully", exit));
 
@@ -75,9 +110,13 @@ public class MemberExitController {
      * Get exit summary for member
      */
     @GetMapping("/{memberId}/exit/summary")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getExitSummary(@PathVariable Long memberId) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getExitSummary(@PathVariable String memberId) {
         try {
-            Map<String, Object> summary = memberExitService.calculateExitSummary(memberId);
+            // Find member by employee ID
+            Member member = memberRepository.findByEmployeeId(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found with employee ID: " + memberId));
+            
+            Map<String, Object> summary = memberExitService.calculateExitSummary(member.getId());
             return ResponseEntity.ok(new ApiResponse<>(true, "Exit summary calculated", summary));
 
         } catch (RuntimeException e) {
@@ -119,12 +158,51 @@ public class MemberExitController {
     }
 
     /**
+     * Approve member exit (Treasurer approval)
+     * Only TREASURER and ADMIN can approve exits
+     */
+    @PostMapping("/{memberId}/approve-exit")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TREASURER')")
+    public ResponseEntity<ApiResponse<MemberExit>> approveMemberExit(
+            @PathVariable String memberId,
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
+
+        try {
+            String approvalNotes = request.get("approvalNotes");
+            
+            // Find member by employee ID
+            Member member = memberRepository.findByEmployeeId(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found with employee ID: " + memberId));
+
+            // Get pending exit
+            MemberExit pendingExit = memberExitService.getPendingExit(member.getId())
+                    .orElseThrow(() -> new RuntimeException("No pending exit found for member"));
+
+            String username = authentication.getName();
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+            MemberExit approvedExit = memberExitService.approveMemberExit(pendingExit.getId(), approvalNotes, user);
+
+            return ResponseEntity.ok(new ApiResponse<>(true, "Member exit approved successfully", approvedExit));
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        }
+    }
+
+    /**
      * Get exit record for member
      */
     @GetMapping("/{memberId}/exit")
-    public ResponseEntity<ApiResponse<MemberExit>> getMemberExit(@PathVariable Long memberId) {
+    public ResponseEntity<ApiResponse<MemberExit>> getMemberExit(@PathVariable String memberId) {
         try {
-            return memberExitService.getMemberExit(memberId)
+            // Find member by employee ID
+            Member member = memberRepository.findByEmployeeId(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found with employee ID: " + memberId));
+            
+            return memberExitService.getMemberExit(member.getId())
                     .map(exit -> ResponseEntity.ok(new ApiResponse<>(true, "Exit record retrieved", exit)))
                     .orElseGet(() -> ResponseEntity.ok(new ApiResponse<>(true, "No exit record found", null)));
 

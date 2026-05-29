@@ -10,6 +10,7 @@ import java.util.Optional;
 @Repository
 public interface MemberExitRepository extends JpaRepository<MemberExit, Long> {
     Optional<MemberExit> findByMemberId(Long memberId);
+    Optional<MemberExit> findByMemberIdAndStatus(Long memberId, String status);
     List<MemberExit> findByApprovedByIsNull();
     List<MemberExit> findByApprovedByIsNotNull();
 }

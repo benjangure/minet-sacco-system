@@ -9,6 +9,7 @@ import com.itextpdf.layout.element.Paragraph;
 import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.minet.sacco.dto.ProfitLossReportDTO;
+import com.minet.sacco.dto.WithdrawalMonitoringReportDTO;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
@@ -900,5 +901,179 @@ public class ReportExportService {
         } catch (Exception e) {
             throw new Exception("Error generating Profit & Loss PDF: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Export Withdrawal Monitoring Report to Excel
+     */
+    public byte[] exportWithdrawalMonitoringToExcel(WithdrawalMonitoringReportDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Withdrawal Monitoring");
+            
+            // Header
+            Row headerRow = sheet.createRow(0);
+            headerRow.createCell(0).setCellValue("Withdrawal Monitoring Report");
+            
+            // Summary Section
+            int rowNum = 2;
+            Row summaryHeaderRow = sheet.createRow(rowNum++);
+            summaryHeaderRow.createCell(0).setCellValue("SUMMARY");
+            
+            Row totalWithdrawalsRow = sheet.createRow(rowNum++);
+            totalWithdrawalsRow.createCell(0).setCellValue("Total Withdrawals:");
+            totalWithdrawalsRow.createCell(1).setCellValue(report.getSummaryTotals().getTotalWithdrawals());
+            
+            Row totalAmountRow = sheet.createRow(rowNum++);
+            totalAmountRow.createCell(0).setCellValue("Total Amount Withdrawn:");
+            totalAmountRow.createCell(1).setCellValue(report.getSummaryTotals().getTotalAmountWithdrawn().doubleValue());
+            
+            rowNum++; // Blank row
+            
+            Row methodHeaderRow = sheet.createRow(rowNum++);
+            methodHeaderRow.createCell(0).setCellValue("By Withdrawal Method");
+            methodHeaderRow.createCell(1).setCellValue("Count");
+            methodHeaderRow.createCell(2).setCellValue("Amount");
+            
+            Row mpesaRow = sheet.createRow(rowNum++);
+            mpesaRow.createCell(0).setCellValue("M-Pesa");
+            mpesaRow.createCell(1).setCellValue(report.getSummaryTotals().getMpesaSummary().getCount());
+            mpesaRow.createCell(2).setCellValue(report.getSummaryTotals().getMpesaSummary().getAmount().doubleValue());
+            
+            Row manualRow = sheet.createRow(rowNum++);
+            manualRow.createCell(0).setCellValue("Manual Cash");
+            manualRow.createCell(1).setCellValue(report.getSummaryTotals().getManualCashSummary().getCount());
+            manualRow.createCell(2).setCellValue(report.getSummaryTotals().getManualCashSummary().getAmount().doubleValue());
+            
+            Row bankRow = sheet.createRow(rowNum++);
+            bankRow.createCell(0).setCellValue("Bank Transfer");
+            bankRow.createCell(1).setCellValue(report.getSummaryTotals().getBankTransferSummary().getCount());
+            bankRow.createCell(2).setCellValue(report.getSummaryTotals().getBankTransferSummary().getAmount().doubleValue());
+            
+            rowNum += 2; // Blank rows
+            
+            // Column headers for transactions
+            Row colHeaderRow = sheet.createRow(rowNum++);
+            colHeaderRow.createCell(0).setCellValue("Transaction ID");
+            colHeaderRow.createCell(1).setCellValue("Member Number");
+            colHeaderRow.createCell(2).setCellValue("Member Name");
+            colHeaderRow.createCell(3).setCellValue("Account Type");
+            colHeaderRow.createCell(4).setCellValue("Withdrawal Amount");
+            colHeaderRow.createCell(5).setCellValue("Date");
+            colHeaderRow.createCell(6).setCellValue("Method");
+            colHeaderRow.createCell(7).setCellValue("Processed By");
+            colHeaderRow.createCell(8).setCellValue("Status");
+            colHeaderRow.createCell(9).setCellValue("Balance Before");
+            colHeaderRow.createCell(10).setCellValue("Balance After");
+            
+            // Data rows
+            for (WithdrawalMonitoringReportDTO.WithdrawalTransaction transaction : report.getWithdrawalTransactions()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(transaction.getTransactionId());
+                row.createCell(1).setCellValue(transaction.getMemberNumber());
+                row.createCell(2).setCellValue(transaction.getMemberName());
+                row.createCell(3).setCellValue(transaction.getAccountType());
+                row.createCell(4).setCellValue(transaction.getWithdrawalAmount().doubleValue());
+                row.createCell(5).setCellValue(transaction.getTransactionDate().toString());
+                row.createCell(6).setCellValue(transaction.getWithdrawalMethod());
+                row.createCell(7).setCellValue(transaction.getProcessedBy());
+                row.createCell(8).setCellValue(transaction.getTransactionStatus());
+                row.createCell(9).setCellValue(transaction.getAccountBalanceBefore().doubleValue());
+                row.createCell(10).setCellValue(transaction.getAccountBalanceAfter().doubleValue());
+            }
+            
+            // Auto-size columns
+            for (int i = 0; i < 11; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Export Withdrawal Monitoring Report to PDF
+     */
+    public byte[] exportWithdrawalMonitoringToPdf(WithdrawalMonitoringReportDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "WITHDRAWAL MONITORING REPORT");
+            document.add(new Paragraph("Generated: " + LocalDateTime.now().format(DATETIME_FORMATTER))
+                .setFontSize(10).setFontColor(ColorConstants.GRAY));
+            document.add(new Paragraph(""));
+            
+            // Summary section
+            document.add(new Paragraph("SUMMARY").setBold().setFontSize(12));
+            Table summaryTable = new Table(2);
+            summaryTable.setWidth(300);
+            addSummaryRow(summaryTable, "Total Withdrawals:", String.valueOf(report.getSummaryTotals().getTotalWithdrawals()));
+            addSummaryRow(summaryTable, "Total Amount:", "KES " + formatCurrency(report.getSummaryTotals().getTotalAmountWithdrawn()));
+            document.add(summaryTable);
+            document.add(new Paragraph(""));
+            
+            // By Method section
+            document.add(new Paragraph("BY WITHDRAWAL METHOD").setBold().setFontSize(12));
+            Table methodTable = new Table(3);
+            methodTable.setWidth(400);
+            addHeaderCell(methodTable, "Method");
+            addHeaderCell(methodTable, "Count");
+            addHeaderCell(methodTable, "Amount");
+            
+            addMethodRow(methodTable, "M-Pesa", report.getSummaryTotals().getMpesaSummary());
+            addMethodRow(methodTable, "Manual Cash", report.getSummaryTotals().getManualCashSummary());
+            addMethodRow(methodTable, "Bank Transfer", report.getSummaryTotals().getBankTransferSummary());
+            
+            document.add(methodTable);
+            document.add(new Paragraph(""));
+            
+            // Transactions table
+            document.add(new Paragraph("WITHDRAWAL TRANSACTIONS").setBold().setFontSize(12));
+            Table table = new Table(11);
+            table.setWidth(100);
+            addHeaderCell(table, "ID");
+            addHeaderCell(table, "Member #");
+            addHeaderCell(table, "Name");
+            addHeaderCell(table, "Account");
+            addHeaderCell(table, "Amount");
+            addHeaderCell(table, "Date");
+            addHeaderCell(table, "Method");
+            addHeaderCell(table, "By");
+            addHeaderCell(table, "Status");
+            addHeaderCell(table, "Before");
+            addHeaderCell(table, "After");
+            
+            for (WithdrawalMonitoringReportDTO.WithdrawalTransaction transaction : report.getWithdrawalTransactions()) {
+                table.addCell(new Cell().add(new Paragraph(String.valueOf(transaction.getTransactionId())).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getMemberNumber()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getMemberName()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getAccountType()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(transaction.getWithdrawalAmount())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getTransactionDate().toLocalDate().toString()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getWithdrawalMethod()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getProcessedBy()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getTransactionStatus()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(transaction.getAccountBalanceBefore())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(transaction.getAccountBalanceAfter())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+            }
+            
+            document.add(table);
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate PDF: " + e.getMessage(), e);
+        }
+        
+        return baos.toByteArray();
+    }
+
+    private void addMethodRow(Table table, String method, WithdrawalMonitoringReportDTO.MethodSummary summary) {
+        table.addCell(new Cell().add(new Paragraph(method).setFontSize(9)));
+        table.addCell(new Cell().add(new Paragraph(String.valueOf(summary.getCount())).setFontSize(9).setTextAlignment(TextAlignment.CENTER)));
+        table.addCell(new Cell().add(new Paragraph(formatCurrency(summary.getAmount())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
     }
 }

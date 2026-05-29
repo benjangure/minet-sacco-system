@@ -935,8 +935,13 @@ export default function BulkProcessing() {
               "Employer": "Minet Insurance",
               "Bank Name": "KCB Bank",
               "Bank Account": "1234567890",
+              "Bank Branch": "Upperhill",
               "Next of Kin": "Jane Doe",
               "NOK Phone": "0723456789",
+              "NOK Relationship": "Spouse",
+              "Date Joined": "01/01/2020",
+              "Opening Savings Balance": "50000",
+              "Opening Shares Balance": "3000",
             },
             {
               "First Name": "Jane",
@@ -950,8 +955,13 @@ export default function BulkProcessing() {
               "Employer": "Minet Insurance",
               "Bank Name": "Equity Bank",
               "Bank Account": "2345678901",
+              "Bank Branch": "Westlands",
               "Next of Kin": "John Smith",
               "NOK Phone": "0734567890",
+              "NOK Relationship": "Sibling",
+              "Date Joined": "15/03/2019",
+              "Opening Savings Balance": "120000",
+              "Opening Shares Balance": "3000",
             },
             {
               "First Name": "Peter",
@@ -965,46 +975,17 @@ export default function BulkProcessing() {
               "Employer": "Minet Insurance",
               "Bank Name": "NCBA Bank",
               "Bank Account": "3456789012",
+              "Bank Branch": "",
               "Next of Kin": "Mary Kamau",
               "NOK Phone": "0745678901",
+              "NOK Relationship": "Parent",
+              "Date Joined": "",
+              "Opening Savings Balance": "0",
+              "Opening Shares Balance": "3000",
             },
           ];
           filename = "Member_Registration_Template.xlsx";
           sheetName = "Members";
-          break;
-
-        case "LOAN_APPLICATIONS":
-          data = [
-            {
-              "Member Number": "M-2026-001",
-              "Loan Product": "Personal Loan",
-              "Amount": 50000,
-              "Term Months": 12,
-              "Purpose": "Business",
-              "Guarantor 1": "M-2026-002",
-              "Guarantor 2": "M-2026-003",
-            },
-            {
-              "Member Number": "M-2026-002",
-              "Loan Product": "Business Loan",
-              "Amount": 100000,
-              "Term Months": 24,
-              "Purpose": "Expansion",
-              "Guarantor 1": "M-2026-001",
-              "Guarantor 2": "M-2026-004",
-            },
-            {
-              "Member Number": "M-2026-003",
-              "Loan Product": "Emergency Loan",
-              "Amount": 25000,
-              "Term Months": 6,
-              "Purpose": "Medical",
-              "Guarantor 1": "M-2026-004",
-              "Guarantor 2": "",
-            },
-          ];
-          filename = "Loan_Applications_Template.xlsx";
-          sheetName = "Loans";
           break;
 
         default:
@@ -1117,10 +1098,9 @@ export default function BulkProcessing() {
         </CardHeader>
         <CardContent className="text-xs space-y-2 py-3 px-4">
           <Tabs value={batchType} onValueChange={setBatchType} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 h-8">
+            <TabsList className="grid w-full grid-cols-2 h-8">
               <TabsTrigger value="MONTHLY_CONTRIBUTIONS" className="text-xs">Monthly</TabsTrigger>
               <TabsTrigger value="MEMBER_REGISTRATION" className="text-xs">Members</TabsTrigger>
-              <TabsTrigger value="LOAN_APPLICATIONS" className="text-xs">Loan Migration</TabsTrigger>
             </TabsList>
 
             <TabsContent value="MONTHLY_CONTRIBUTIONS" className="mt-2">
@@ -1181,56 +1161,29 @@ export default function BulkProcessing() {
             <TabsContent value="MEMBER_REGISTRATION" className="mt-2">
               <div className="grid md:grid-cols-2 gap-2">
                 <div>
-                  <p className="font-semibold text-blue-900 mb-1">Columns:</p>
+                  <p className="font-semibold text-blue-900 mb-1">Columns (18 total):</p>
                   <ul className="space-y-0.5 text-blue-800">
                     <li>• First Name, Last Name, Email</li>
                     <li>• Phone (10 digits)</li>
-                    <li>• National ID (8 digits)</li>
-                    <li>• Date of Birth (YYYY-MM-DD)</li>
-                    <li>• Department, Employer</li>
-                    <li>• Bank details, Next of Kin</li>
+                    <li>• National ID (8 digits) — used as initial password</li>
+                    <li>• Date of Birth (YYYY-MM-DD or DD/MM/YYYY)</li>
+                    <li>• Department, Employee ID, Employer</li>
+                    <li>• Bank Name, Bank Account, Bank Branch (optional)</li>
+                    <li>• Next of Kin, NOK Phone, NOK Relationship (optional)</li>
+                    <li>• Date Joined (optional, DD/MM/YYYY — defaults to today)</li>
+                    <li>• Opening Savings Balance (optional — defaults to 0)</li>
+                    <li>• Opening Shares Balance (optional — defaults to 3000)</li>
                   </ul>
                 </div>
                 <div>
                   <p className="font-semibold text-blue-900 mb-1">Rules:</p>
                   <ul className="space-y-0.5 text-blue-800">
-                    <li>• Members created as ACTIVE</li>
-                    <li>• Member numbers auto-assigned</li>
-                    <li>• Email &amp; ID must be unique</li>
-                    <li>• Phone must be valid</li>
+                    <li>• Members created as ACTIVE immediately</li>
+                    <li>• Employee ID becomes member number &amp; login username</li>
+                    <li>• National ID is the initial login password</li>
+                    <li>• Email &amp; National ID must be unique</li>
                     <li>• Member must be 18+</li>
-                    <li>• Max file size: 5MB</li>
-                  </ul>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="LOAN_APPLICATIONS" className="mt-2">
-              <Alert className="mb-2 border-amber-200 bg-amber-50 py-2">
-                <Info className="h-4 w-4 text-amber-600" />
-                <AlertDescription className="text-amber-800 text-xs">
-                  <strong>Historical Data Migration Only.</strong> Use this to import existing loans during system digitization. Once the member mobile app is live, members will apply directly through the app.
-                </AlertDescription>
-              </Alert>
-              <div className="grid md:grid-cols-2 gap-2">
-                <div>
-                  <p className="font-semibold text-blue-900 mb-1">Columns:</p>
-                  <ul className="space-y-0.5 text-blue-800">
-                    <li>• <strong>Member Number:</strong> M-YYYY-XXXXX</li>
-                    <li>• <strong>Loan Product:</strong> Product name</li>
-                    <li>• <strong>Amount:</strong> Numbers only</li>
-                    <li>• <strong>Purpose:</strong> Loan purpose</li>
-                    <li>• <strong>Guarantor 1 &amp; 2:</strong> Member numbers</li>
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-semibold text-blue-900 mb-1">Rules:</p>
-                  <ul className="space-y-0.5 text-blue-800">
-                    <li>• Member must be APPROVED</li>
-                    <li>• Product must exist &amp; active</li>
-                    <li>• Amount within product limits</li>
-                    <li>• Guarantors must be APPROVED</li>
-                    <li>• At least 1 guarantor required</li>
+                    <li>• Opening balances create "Migration Opening Balance" transactions</li>
                     <li>• Max file size: 5MB</li>
                   </ul>
                 </div>
@@ -1270,7 +1223,6 @@ export default function BulkProcessing() {
                   <SelectContent>
                     <SelectItem value="MONTHLY_CONTRIBUTIONS">Monthly Contributions</SelectItem>
                     <SelectItem value="MEMBER_REGISTRATION">Member Registration</SelectItem>
-                    <SelectItem value="LOAN_APPLICATIONS">Loan Migration (Historical Data)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-600">
@@ -1998,134 +1950,6 @@ export default function BulkProcessing() {
                           ))}
                         </TableBody>
                       </Table>
-                    )}
-                    {selectedBatch?.batchType === "LOAN_APPLICATIONS" && (
-                      <div className="space-y-4">
-                        {/* Individual Approval Only - No Bulk Approve */}
-                        {user?.role === "CREDIT_COMMITTEE" && (
-                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                            <p className="font-semibold">Individual Approval Required</p>
-                            <p className="text-xs mt-1">Each loan must be approved individually by clicking the checkmark icon. This ensures enhanced verification and due diligence.</p>
-                          </div>
-                        )}
-
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              {user?.role === "CREDIT_COMMITTEE" && (
-                                <TableHead className="w-12">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedLoanItemIds.size === loanItems.filter(item => item.status === "PENDING").length && loanItems.filter(item => item.status === "PENDING").length > 0}
-                                    onChange={toggleAllLoanItemsSelection}
-                                    className="rounded"
-                                  />
-                                </TableHead>
-                              )}
-                              <TableHead>Row</TableHead>
-                              <TableHead>Member</TableHead>
-                              <TableHead>Loan Product</TableHead>
-                              <TableHead>Amount</TableHead>
-                              <TableHead>Interest</TableHead>
-                              <TableHead>Total Repayable</TableHead>
-                              <TableHead>Monthly</TableHead>
-                              <TableHead>Purpose</TableHead>
-                              <TableHead>Guarantor 1</TableHead>
-                              <TableHead>Guarantor 2</TableHead>
-                              <TableHead>Status</TableHead>
-                              <TableHead>Error</TableHead>
-                              <TableHead className="whitespace-nowrap">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {loanItems.map((item) => (
-                              <TableRow key={item.id}>
-                                {user?.role === "CREDIT_COMMITTEE" && (
-                                  <TableCell>
-                                    {item.status === "PENDING" && (
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedLoanItemIds.has(item.id)}
-                                        onChange={() => toggleLoanItemSelection(item.id)}
-                                        className="rounded"
-                                      />
-                                    )}
-                                  </TableCell>
-                                )}
-                                <TableCell>{item.rowNumber}</TableCell>
-                                <TableCell className="font-medium">{item.memberNumber}</TableCell>
-                                <TableCell>{item.loanProductName}</TableCell>
-                                <TableCell className="text-xs">{formatCurrency(item.amount)}</TableCell>
-                                <TableCell className="text-xs">{item.totalInterest ? formatCurrency(item.totalInterest) : "-"}</TableCell>
-                                <TableCell className="text-xs">{item.totalRepayable ? formatCurrency(item.totalRepayable) : "-"}</TableCell>
-                                <TableCell className="text-xs">{item.monthlyRepayment ? formatCurrency(item.monthlyRepayment) : "-"}</TableCell>
-                                <TableCell className="text-xs">{item.purpose}</TableCell>
-                                <TableCell className="text-xs">{item.guarantor1 || "-"}</TableCell>
-                                <TableCell className="text-xs">{item.guarantor2 || "-"}</TableCell>
-                                <TableCell>
-                                  {item.status === "SUCCESS" ? (
-                                    <Badge className="bg-green-100 text-green-800">Success</Badge>
-                                  ) : item.status === "FAILED" ? (
-                                    <Badge className="bg-red-100 text-red-800">Failed</Badge>
-                                  ) : item.status === "APPROVED" ? (
-                                    <Badge className="bg-green-100 text-green-800">Approved</Badge>
-                                  ) : item.status === "FLAGGED" ? (
-                                    <Badge className="bg-orange-100 text-orange-800">Flagged</Badge>
-                                  ) : item.status === "CONDITIONAL_APPROVAL" ? (
-                                    <Badge className="bg-yellow-100 text-yellow-800">Conditional</Badge>
-                                  ) : item.status === "REJECTED" ? (
-                                    <Badge className="bg-red-100 text-red-800">Rejected</Badge>
-                                  ) : (
-                                    <Badge className="bg-gray-100 text-gray-800">Pending</Badge>
-                                  )}
-                                </TableCell>
-                                <TableCell className="max-w-xs truncate text-xs" title={item.errorMessage}>
-                                  {item.errorMessage || "-"}
-                                </TableCell>
-                                <TableCell>
-                                  {user?.role === "CREDIT_COMMITTEE" && (item.status === "Pending" || item.status === "PENDING") && (
-                                    <div className="flex gap-1">
-                                      <Button 
-                                        variant="outline" 
-                                        size="sm" 
-                                        onClick={() => validateLoanGuarantors(item.id)}
-                                        disabled={loading}
-                                        className="text-xs"
-                                        title="View member and guarantor eligibility"
-                                      >
-                                        <Eye className="h-3 w-3" />
-                                      </Button>
-                                      <Button 
-                                        variant="outline" 
-                                        size="sm" 
-                                        onClick={() => handleApproveLoanItem(item.id)}
-                                        disabled={loading}
-                                        className="text-xs text-green-600 hover:text-green-700"
-                                        title="Approve this loan"
-                                      >
-                                        <CheckCircle className="h-3 w-3" />
-                                      </Button>
-                                      <Button 
-                                      variant="outline" 
-                                      size="sm" 
-                                      onClick={() => {
-                                        setSelectedLoanItemId(item.id);
-                                        setRejectLoanItemDialogOpen(true);
-                                      }}
-                                      disabled={loading}
-                                      className="text-xs text-red-600 hover:text-red-700"
-                                      title="Reject this loan"
-                                    >
-                                      <XCircle className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                      </div>
                     )}
                   </div>
               </Card>

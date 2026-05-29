@@ -25,6 +25,9 @@ public class MemberSuspensionService {
     @Autowired
     private AuditService auditService;
 
+    @Autowired
+    private NotificationService notificationService;
+
     /**
      * Suspend a member
      */
@@ -43,14 +46,23 @@ public class MemberSuspensionService {
         suspension.setMember(member);
         suspension.setReason(reason);
         suspension.setSuspendedBy(suspendedBy);
-        suspension.setIsActive(true);
+        suspension.setIsActive(false);
+        suspension.setStatus("PENDING");
 
         MemberSuspension saved = memberSuspensionRepository.save(suspension);
 
-        auditService.logAction(suspendedBy, "MEMBER_SUSPENDED",
+        auditService.logAction(suspendedBy, "MEMBER_SUSPENSION_INITIATED",
                 "Member", memberId,
                 "Member: " + member.getEmployeeId() + ", Reason: " + reason,
-                "Member suspended", "SUCCESS");
+                "Credit Committee (acting as HR) initiated suspension - pending Treasurer approval", "SUCCESS");
+
+        // Notify Treasurers about pending suspension
+        notificationService.notifyUsersByRole("TREASURER",
+                "Member suspension pending approval: " + member.getFirstName() + " " + member.getLastName() + " (" + member.getEmployeeId() + ")",
+                "SUSPENSION_PENDING",
+                null,
+                memberId,
+                "MEMBER_SUSPENSION");
 
         return saved;
     }
@@ -96,6 +108,73 @@ public class MemberSuspensionService {
      */
     public List<MemberSuspension> getSuspensionHistory(Long memberId) {
         return memberSuspensionRepository.findByMemberId(memberId);
+    }
+
+    /**
+     * Get pending suspensions (for Treasurer approval)
+     */
+    public List<MemberSuspension> getPendingSuspensions() {
+        return memberSuspensionRepository.findByStatus("PENDING");
+    }
+
+    /**
+     * Validate suspension (Credit Committee approval)
+     */
+    @Transactional
+    public MemberSuspension validateSuspension(Long suspensionId, String validationNotes, User validatedBy) {
+        MemberSuspension suspension = memberSuspensionRepository.findById(suspensionId)
+                .orElseThrow(() -> new RuntimeException("Suspension not found"));
+
+        // Add validation information and approve suspension
+        suspension.setValidationNotes(validationNotes);
+        suspension.setValidatedBy(validatedBy);
+        suspension.setValidatedAt(LocalDateTime.now());
+        suspension.setStatus("APPROVED");
+        suspension.setIsActive(true);
+
+        // Update member status to SUSPENDED
+        Member member = suspension.getMember();
+        member.setStatus(Member.Status.SUSPENDED);
+        memberRepository.save(member);
+
+        MemberSuspension saved = memberSuspensionRepository.save(suspension);
+
+        // Log validation
+        auditService.logAction(validatedBy, "SUSPENSION_APPROVED",
+                "MemberSuspension", suspensionId,
+                "Suspension approved: " + validationNotes,
+                "Treasurer approved member suspension", "SUCCESS");
+
+        return saved;
+    }
+
+    /**
+     * Reactivate a member
+     */
+    @Transactional
+    public String reactivateMember(Long memberId, User reactivatedBy) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+
+        // Check if member has active suspension
+        Optional<MemberSuspension> suspension = memberSuspensionRepository.findByMemberIdAndIsActiveTrue(memberId);
+        if (!suspension.isPresent()) {
+            return "Member is not currently suspended";
+        }
+
+        // Deactivate the suspension
+        MemberSuspension activeSuspension = suspension.get();
+        activeSuspension.setIsActive(false);
+        activeSuspension.setLiftedAt(LocalDateTime.now());
+        memberSuspensionRepository.save(activeSuspension);
+
+        // Log the reactivation
+        auditService.logAction(reactivatedBy, "MEMBER_REACTIVATED",
+                "Member", memberId, 
+                "Member " + member.getFirstName() + " " + member.getLastName() + " reactivated",
+                "Suspension lifted and member reactivated", "SUCCESS");
+
+        return "Member reactivated successfully";
     }
 
     /**

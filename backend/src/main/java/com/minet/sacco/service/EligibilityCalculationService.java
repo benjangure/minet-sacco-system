@@ -74,10 +74,8 @@ public class EligibilityCalculationService {
         BigDecimal grossEligibility = availableSavings.multiply(MULTIPLIER);
         log.debug("Gross eligibility: {}", grossEligibility);
 
-        // Get all active loans
+        // Get all active loans (only DISBURSED, not REPAID - fully repaid loans should not show as self-guaranteed)
         List<Loan> activeLoans = loanRepository.findByMemberIdAndStatus(member.getId(), Loan.Status.DISBURSED);
-        List<Loan> activeLoans2 = loanRepository.findByMemberIdAndStatus(member.getId(), Loan.Status.REPAID);
-        activeLoans.addAll(activeLoans2);
 
         // CRITICAL: Only deduct EXTERNAL guarantee portion of outstanding (Rule 5)
         // Self-guaranteed portion is already frozen, so don't deduct it again (Rule 4)
@@ -161,10 +159,8 @@ public class EligibilityCalculationService {
         BigDecimal grossEligibility = availableSavings.multiply(MULTIPLIER);
         log.debug("Gross Eligibility: {} × {} = {}", availableSavings, MULTIPLIER, grossEligibility);
 
-        // Get all active loans plus this new one
+        // Get all active loans (only DISBURSED, not REPAID - fully repaid loans should not show as self-guaranteed)
         List<Loan> activeLoans = loanRepository.findByMemberIdAndStatus(member.getId(), Loan.Status.DISBURSED);
-        List<Loan> activeLoans2 = loanRepository.findByMemberIdAndStatus(member.getId(), Loan.Status.REPAID);
-        activeLoans.addAll(activeLoans2);
 
         // Calculate unguaranteed outstanding (external guarantees only)
         BigDecimal unguaranteedOutstanding = calculateUnguaranteedOutstanding(activeLoans);
@@ -223,8 +219,8 @@ public class EligibilityCalculationService {
         BigDecimal frozenSelfGuarantee = BigDecimal.ZERO;
         
         for (Loan loan : memberLoans) {
-            // Only count DISBURSED and REPAID loans (active guarantees)
-            if (loan.getStatus() != Loan.Status.DISBURSED && loan.getStatus() != Loan.Status.REPAID) {
+            // Only count DISBURSED loans (not REPAID - fully repaid loans should not show as self-guaranteed)
+            if (loan.getStatus() != Loan.Status.DISBURSED) {
                 continue;
             }
             
@@ -311,7 +307,8 @@ public class EligibilityCalculationService {
         BigDecimal frozenSelfGuaranteeOnly = BigDecimal.ZERO;
         
         for (Loan loan : memberLoans) {
-            if (loan.getStatus() != Loan.Status.DISBURSED && loan.getStatus() != Loan.Status.REPAID) {
+            // Only count DISBURSED loans (not REPAID - fully repaid loans should not show as self-guaranteed)
+            if (loan.getStatus() != Loan.Status.DISBURSED) {
                 continue;
             }
             
@@ -377,8 +374,8 @@ public class EligibilityCalculationService {
         BigDecimal frozenSelfGuarantee = BigDecimal.ZERO;
         
         for (Loan loan : selfGuaranteedLoans) {
-            // Only count DISBURSED and REPAID loans (active guarantees)
-            if (loan.getStatus() != Loan.Status.DISBURSED && loan.getStatus() != Loan.Status.REPAID) {
+            // Only count DISBURSED loans (not REPAID - fully repaid loans should not show as self-guaranteed)
+            if (loan.getStatus() != Loan.Status.DISBURSED) {
                 continue;
             }
             

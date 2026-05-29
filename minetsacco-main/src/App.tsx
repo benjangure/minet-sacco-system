@@ -17,11 +17,12 @@ import Savings from "./pages/Savings";
 import Reports from "./pages/Reports";
 import UserManagement from "./pages/UserManagement";
 import Settings from "./pages/Settings";
-import Guide from "./pages/Guide";
+// import Guide from "./pages/Guide"; // TODO: User guide not yet implemented
 import LoanProducts from "./pages/LoanProducts";
 import FundConfiguration from "./pages/FundConfiguration";
 import LoanEligibilityRules from "./pages/LoanEligibilityRules";
 import BulkProcessing from "./pages/BulkProcessing";
+import LoanMigration from "./pages/LoanMigration";
 import KycApproval from "./pages/KycApproval";
 import KycDocumentUpload from "./pages/KycDocumentUpload";
 import KycUploadTracking from "./pages/KycUploadTracking";
@@ -42,9 +43,8 @@ import MemberTransactionHistory from "./pages/MemberTransactionHistory";
 import TellerMemberContext from "./pages/TellerMemberContext";
 import CustomerSupportPortal from "./pages/CustomerSupportPortal";
 import AuditReports from "./pages/AuditReports";
-import DataMigration from "./pages/DataMigration";
-import DataMigrationMakerChecker from "./pages/DataMigrationMakerChecker";
-import SystemSettings from "./pages/SystemSettings";
+// import DataMigration from "./pages/DataMigration"; // TODO: Old data migration page - replaced by Loan Migration
+// import DataMigrationMakerChecker from "./pages/DataMigrationMakerChecker"; // TODO: Not in use
 import MemberSuspension from "./pages/MemberSuspension";
 import MemberExit from "./pages/MemberExit";
 
@@ -101,6 +101,31 @@ const AppRoutes = () => (
     <Route path="/audit-reports" element={<ProtectedRoute><AppLayout><AuditReports /></AppLayout></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><AppLayout><Reports /></AppLayout></ProtectedRoute>} />
     <Route path="/bulk-processing" element={<ProtectedRoute><AppLayout><BulkProcessing /></AppLayout></ProtectedRoute>} />
+    <Route path="/loan-migration" element={<ProtectedRoute><AppLayout><LoanMigration /></AppLayout></ProtectedRoute>} />
+    
+    {/* Admin Routes */}
+    <Route path="/admin/users" element={<ProtectedRoute><AppLayout><UserManagement /></AppLayout></ProtectedRoute>} />
+    <Route path="/admin/loan-products" element={<ProtectedRoute><AppLayout><LoanProducts /></AppLayout></ProtectedRoute>} />
+    <Route path="/admin/fund-configuration" element={<ProtectedRoute><AppLayout><FundConfiguration /></AppLayout></ProtectedRoute>} />
+    <Route path="/admin/loan-eligibility-rules" element={<ProtectedRoute><AppLayout><LoanEligibilityRules /></AppLayout></ProtectedRoute>} />
+    <Route path="/admin/audit-trail" element={<ProtectedRoute><AppLayout><AuditTrail /></AppLayout></ProtectedRoute>} />
+    {/* <Route path="/admin/data-migration" element={<ProtectedRoute><AppLayout><DataMigration /></AppLayout></ProtectedRoute>} /> */}
+    {/* TODO: Old data migration replaced by /loan-migration */}
+    <Route path="/admin/member-suspension" element={<ProtectedRoute><AppLayout><MemberSuspension /></AppLayout></ProtectedRoute>} />
+    <Route path="/admin/member-exit" element={<ProtectedRoute><AppLayout><MemberExit /></AppLayout></ProtectedRoute>} />
+    <Route path="/settings" element={<ProtectedRoute><AppLayout><Settings /></AppLayout></ProtectedRoute>} />
+    {/* <Route path="/guide" element={<ProtectedRoute><AppLayout><Guide /></AppLayout></ProtectedRoute>} /> */}
+    {/* TODO: User guide not yet implemented */}
+    
+    {/* KYC Routes */}
+    <Route path="/kyc-approval" element={<ProtectedRoute><AppLayout><KycApproval /></AppLayout></ProtectedRoute>} />
+    <Route path="/kyc-document-upload" element={<ProtectedRoute><AppLayout><KycDocumentUpload /></AppLayout></ProtectedRoute>} />
+    <Route path="/kyc-upload" element={<ProtectedRoute><AppLayout><KycDocumentUpload /></AppLayout></ProtectedRoute>} />
+    <Route path="/kyc-upload-tracking" element={<ProtectedRoute><AppLayout><KycUploadTracking /></AppLayout></ProtectedRoute>} />
+    <Route path="/view-documents" element={<ProtectedRoute><AppLayout><ViewMemberDocuments /></AppLayout></ProtectedRoute>} />
+    {/* <Route path="/data-migration-maker-checker" element={<ProtectedRoute><AppLayout><DataMigrationMakerChecker /></AppLayout></ProtectedRoute>} /> */}
+    {/* TODO: Not in use */}
+    
     <Route 
       path="/member/my-guarantees" 
       element={

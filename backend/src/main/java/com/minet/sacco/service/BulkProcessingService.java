@@ -157,9 +157,23 @@ public class BulkProcessingService {
         if (!allErrors.isEmpty()) {
             throw new RuntimeException(String.join("; ", allErrors));
         }
-        
+
+        // Calculate total amount = sum of all opening savings + opening shares balances
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        for (BulkMemberItem item : items) {
+            if (item.getOpeningSavingsBalance() != null) {
+                totalAmount = totalAmount.add(item.getOpeningSavingsBalance());
+            }
+            if (item.getOpeningSharesBalance() != null) {
+                totalAmount = totalAmount.add(item.getOpeningSharesBalance());
+            } else {
+                // Default shares is 3000 if not provided
+                totalAmount = totalAmount.add(new BigDecimal("3000.00"));
+            }
+        }
+
         batch.setTotalRecords(items.size());
-        batch.setTotalAmount(BigDecimal.ZERO);
+        batch.setTotalAmount(totalAmount);
         
         // For member registration, auto-approve and process immediately (no approval needed)
         batch.setStatus("APPROVED");
@@ -175,7 +189,7 @@ public class BulkProcessingService {
         }
 
         auditService.logAction(batch.getUploadedBy(), "BULK_UPLOAD", "BulkBatch", batch.getId(),
-            "Uploaded member registration batch: " + batch.getBatchNumber() + " with " + items.size() + " records", null, null);
+            "Uploaded member registration batch: " + batch.getBatchNumber() + " with " + items.size() + " records. Total opening balances: KES " + totalAmount, null, null);
 
         // Auto-process member registration immediately
         processApprovedBatch(batch);
@@ -702,9 +716,14 @@ public class BulkProcessingService {
 
     @Transactional
     private void processMemberItem(BulkMemberItem item) {
-        // Check if member already exists
+        // Check if member already exists by national ID
         if (memberRepository.findByNationalId(item.getNationalId()).isPresent()) {
             throw new RuntimeException("Member with national ID already exists: " + item.getNationalId());
+        }
+        // Also check by employee ID to prevent duplicates
+        if (item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
+                && memberRepository.findByMemberNumber(item.getEmployeeId()).isPresent()) {
+            throw new RuntimeException("Member with Employee ID already exists: " + item.getEmployeeId());
         }
 
         Member member = new Member();
@@ -715,31 +734,50 @@ public class BulkProcessingService {
         member.setNationalId(item.getNationalId());
         member.setDateOfBirth(item.getDateOfBirth());
         member.setDepartment(item.getDepartment());
-        member.setEmployeeId(item.getEmployeeId()); // Store employee ID properly
-        member.setEmploymentStatus("PERMANENT"); // Default employment status
+        member.setEmployeeId(item.getEmployeeId());
+        member.setEmploymentStatus("PERMANENT");
         member.setEmployer(item.getEmployer());
         member.setBankName(item.getBank());
         member.setBankAccountNumber(item.getBankAccount());
+        member.setBankBranch(item.getBankBranch());
         member.setNextOfKinName(item.getNextOfKin());
         member.setNextOfKinPhone(item.getNokPhone());
-        // Use employeeId as memberNumber (the identifier)
+        member.setNextOfKinRelationship(item.getNokRelationship());
+
+        // Use employeeId as memberNumber
         String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
             ? item.getEmployeeId()
             : generateMemberNumber();
         member.setMemberNumber(identifier);
-        // Members are ACTIVE immediately upon bulk upload (digitalization of existing members)
+
+        // Members are ACTIVE immediately upon bulk upload
         member.setStatus(Member.Status.ACTIVE);
         member.setApprovedAt(LocalDateTime.now());
-        member.setCreatedAt(LocalDateTime.now());
+
+        // Use date joined from template if provided, otherwise default to now
+        if (item.getDateJoined() != null) {
+            member.setCreatedAt(item.getDateJoined().atStartOfDay());
+        } else {
+            member.setCreatedAt(LocalDateTime.now());
+        }
 
         member = memberRepository.save(member);
-        
-        // Create default accounts (Savings and Shares) automatically
-        createDefaultAccounts(member);
 
-        // Create mobile app login credentials: username = memberNumber, default password = nationalId
+        // Determine opening balances - defaults: savings=0, shares=3000
+        BigDecimal openingSavings = item.getOpeningSavingsBalance() != null
+            ? item.getOpeningSavingsBalance()
+            : BigDecimal.ZERO;
+        BigDecimal openingShares = item.getOpeningSharesBalance() != null
+            ? item.getOpeningSharesBalance()
+            : new BigDecimal("3000.00");
+
+        // Create accounts with opening balances and transaction records
+        User systemUser = item.getBatch().getUploadedBy();
+        createDefaultAccountsWithOpeningBalances(member, openingSavings, openingShares, systemUser);
+
+        // Create mobile app login credentials
         createMemberLoginCredentials(member);
-        
+
         item.setMember(member);
     }
 
@@ -778,21 +816,50 @@ public class BulkProcessingService {
     }
 
     private void createDefaultAccounts(Member member) {
+        createDefaultAccountsWithOpeningBalances(member, BigDecimal.ZERO, new BigDecimal("3000.00"), null);
+    }
+
+    private void createDefaultAccountsWithOpeningBalances(Member member, BigDecimal openingSavings, BigDecimal openingShares, User createdBy) {
         // Create Savings Account
         Account savingsAccount = new Account();
         savingsAccount.setMember(member);
         savingsAccount.setAccountType(Account.AccountType.SAVINGS);
-        savingsAccount.setBalance(BigDecimal.ZERO);
+        savingsAccount.setBalance(openingSavings != null ? openingSavings : BigDecimal.ZERO);
         savingsAccount.setCreatedAt(LocalDateTime.now());
-        accountRepository.save(savingsAccount);
+        savingsAccount = accountRepository.save(savingsAccount);
+
+        // Create opening balance transaction for savings if > 0
+        if (openingSavings != null && openingSavings.compareTo(BigDecimal.ZERO) > 0) {
+            Transaction savingsTx = new Transaction();
+            savingsTx.setAccount(savingsAccount);
+            savingsTx.setTransactionType(Transaction.TransactionType.DEPOSIT);
+            savingsTx.setAmount(openingSavings);
+            savingsTx.setDescription("Migration Opening Balance");
+            savingsTx.setTransactionDate(member.getCreatedAt() != null ? member.getCreatedAt() : LocalDateTime.now());
+            savingsTx.setCreatedBy(createdBy);
+            transactionRepository.save(savingsTx);
+        }
 
         // Create Shares Account
         Account sharesAccount = new Account();
         sharesAccount.setMember(member);
         sharesAccount.setAccountType(Account.AccountType.SHARES);
-        sharesAccount.setBalance(BigDecimal.ZERO);
+        sharesAccount.setBalance(openingShares != null ? openingShares : new BigDecimal("3000.00"));
         sharesAccount.setCreatedAt(LocalDateTime.now());
-        accountRepository.save(sharesAccount);
+        sharesAccount = accountRepository.save(sharesAccount);
+
+        // Create opening balance transaction for shares if > 0
+        BigDecimal sharesBalance = openingShares != null ? openingShares : new BigDecimal("3000.00");
+        if (sharesBalance.compareTo(BigDecimal.ZERO) > 0) {
+            Transaction sharesTx = new Transaction();
+            sharesTx.setAccount(sharesAccount);
+            sharesTx.setTransactionType(Transaction.TransactionType.DEPOSIT);
+            sharesTx.setAmount(sharesBalance);
+            sharesTx.setDescription("Migration Opening Balance - Shares");
+            sharesTx.setTransactionDate(member.getCreatedAt() != null ? member.getCreatedAt() : LocalDateTime.now());
+            sharesTx.setCreatedBy(createdBy);
+            transactionRepository.save(sharesTx);
+        }
     }
 
     @Transactional

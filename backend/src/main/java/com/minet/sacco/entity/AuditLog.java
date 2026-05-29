@@ -1,6 +1,7 @@
 package com.minet.sacco.entity;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.LocalDateTime;
 
 @Entity
@@ -19,7 +20,11 @@ public class AuditLog {
 
     @ManyToOne
     @JoinColumn(name = "user_id")
+    @JsonIgnore
     private User user; // Who performed the action
+
+    @Column(length = 50)
+    private String username; // Username for JSON serialization
 
     @Column(length = 50)
     private String action; // APPROVE, REJECT, DISBURSE, CREATE, UPDATE, DELETE, etc.
@@ -60,7 +65,15 @@ public class AuditLog {
     public void setId(Long id) { this.id = id; }
 
     public User getUser() { return user; }
-    public void setUser(User user) { this.user = user; }
+    public void setUser(User user) { 
+        this.user = user;
+        if (user != null) {
+            this.username = user.getUsername();
+        }
+    }
+
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
 
     public String getAction() { return action; }
     public void setAction(String action) { this.action = action; }

@@ -33,6 +33,17 @@ public class BulkMemberItem {
     private String bankAccount;
     private String nextOfKin;
     private String nokPhone;
+    private String nokRelationship;
+    private String bankBranch;
+
+    @Column(name = "date_joined")
+    private LocalDate dateJoined;
+
+    @Column(name = "opening_shares_balance")
+    private java.math.BigDecimal openingSharesBalance;
+
+    @Column(name = "opening_savings_balance")
+    private java.math.BigDecimal openingSavingsBalance;
 
     @ManyToOne
     @JoinColumn(name = "member_id")
@@ -80,6 +91,16 @@ public class BulkMemberItem {
     public void setNextOfKin(String nextOfKin) { this.nextOfKin = nextOfKin; }
     public String getNokPhone() { return nokPhone; }
     public void setNokPhone(String nokPhone) { this.nokPhone = nokPhone; }
+    public String getNokRelationship() { return nokRelationship; }
+    public void setNokRelationship(String nokRelationship) { this.nokRelationship = nokRelationship; }
+    public String getBankBranch() { return bankBranch; }
+    public void setBankBranch(String bankBranch) { this.bankBranch = bankBranch; }
+    public LocalDate getDateJoined() { return dateJoined; }
+    public void setDateJoined(LocalDate dateJoined) { this.dateJoined = dateJoined; }
+    public java.math.BigDecimal getOpeningSharesBalance() { return openingSharesBalance; }
+    public void setOpeningSharesBalance(java.math.BigDecimal openingSharesBalance) { this.openingSharesBalance = openingSharesBalance; }
+    public java.math.BigDecimal getOpeningSavingsBalance() { return openingSavingsBalance; }
+    public void setOpeningSavingsBalance(java.math.BigDecimal openingSavingsBalance) { this.openingSavingsBalance = openingSavingsBalance; }
     public Member getMember() { return member; }
     public void setMember(Member member) { this.member = member; }
     public String getStatus() { return status; }

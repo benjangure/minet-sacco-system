@@ -33,6 +33,16 @@ public class MemberExitService {
     @Autowired
     private AuditService auditService;
 
+    @Autowired
+    private NotificationService notificationService;
+
+    /**
+     * Get all exits (for reports)
+     */
+    public List<MemberExit> getAllExits() {
+        return memberExitRepository.findAll();
+    }
+
     /**
      * Initiate member exit
      */
@@ -86,13 +96,22 @@ public class MemberExitService {
         exit.setSharesRefund(sharesRefund);
         exit.setTotalPayout(totalPayout);
         exit.setIsActiveGuarantor(activeGuarantorCount > 0);
+        exit.setStatus("PENDING");
 
         MemberExit saved = memberExitRepository.save(exit);
 
         auditService.logAction(initiatedBy, "MEMBER_EXIT_INITIATED",
                 "Member", memberId,
                 "Exit reason: " + exitReason + ", Total payout: " + totalPayout,
-                "Member exit initiated", "SUCCESS");
+                "Credit Committee (acting as HR) initiated member exit - pending Treasurer approval", "SUCCESS");
+
+        // Notify Treasurers about pending exit
+        notificationService.notifyUsersByRole("TREASURER",
+                "Member exit pending approval: " + member.getFirstName() + " " + member.getLastName() + " (" + member.getEmployeeId() + ")",
+                "EXIT_PENDING",
+                null,
+                memberId,
+                "MEMBER_EXIT");
 
         return saved;
     }
@@ -188,5 +207,43 @@ public class MemberExitService {
                 "isActiveGuarantor", activeGuarantorCount > 0,
                 "activeGuarantorCount", activeGuarantorCount
         );
+    }
+
+    /**
+     * Approve member exit (Treasurer approval)
+     */
+    @Transactional
+    public MemberExit approveMemberExit(Long exitId, String approvalNotes, User approvedBy) {
+        MemberExit exit = memberExitRepository.findById(exitId)
+                .orElseThrow(() -> new RuntimeException("Exit not found"));
+
+        // Add approval information
+        exit.setApprovalNotes(approvalNotes);
+        exit.setApprovedBy(approvedBy);
+        exit.setApprovedAt(LocalDateTime.now());
+        exit.setStatus("APPROVED");
+        exit.setExitDate(LocalDateTime.now());
+
+        // Update member status to EXITED
+        Member member = exit.getMember();
+        member.setStatus(Member.Status.EXITED);
+        memberRepository.save(member);
+
+        MemberExit saved = memberExitRepository.save(exit);
+
+        // Log approval
+        auditService.logAction(approvedBy, "MEMBER_EXIT_APPROVED",
+                "MemberExit", exitId,
+                "Member exit approved: " + approvalNotes,
+                "Treasurer approved member exit", "SUCCESS");
+
+        return saved;
+    }
+
+    /**
+     * Get pending exit for member
+     */
+    public Optional<MemberExit> getPendingExit(Long memberId) {
+        return memberExitRepository.findByMemberIdAndStatus(memberId, "PENDING");
     }
 }

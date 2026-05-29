@@ -308,16 +308,27 @@ public class MemberController {
         
         List<Transaction> transactions;
         
-        // If no date range provided, get all transactions
-        if (startDate == null || endDate == null) {
+        boolean hasDateRange = startDate != null && endDate != null;
+        boolean hasTypeFilter = transactionType != null && !transactionType.isEmpty();
+
+        if (!hasDateRange && !hasTypeFilter) {
+            // No filters — return all transactions
             transactions = transactionRepository.findByAccountMemberIdOrderByTransactionDateDesc(memberId);
+        } else if (!hasDateRange) {
+            // Type filter only — no date range
+            try {
+                Transaction.TransactionType type = Transaction.TransactionType.valueOf(transactionType.toUpperCase());
+                transactions = transactionRepository.findByMemberIdAndType(memberId, type);
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Invalid transaction type: " + transactionType));
+            }
         } else {
-            // Parse dates
+            // Date range provided (with or without type filter)
             LocalDateTime start = LocalDate.parse(startDate).atStartOfDay();
             LocalDateTime end = LocalDate.parse(endDate).atTime(23, 59, 59);
             
-            // If transaction type filter provided
-            if (transactionType != null && !transactionType.isEmpty()) {
+            if (hasTypeFilter) {
                 try {
                     Transaction.TransactionType type = Transaction.TransactionType.valueOf(transactionType.toUpperCase());
                     transactions = transactionRepository.findByMemberIdAndTypeAndDateRange(memberId, type, start, end);

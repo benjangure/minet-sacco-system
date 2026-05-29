@@ -44,6 +44,7 @@ interface Member {
   photoPath?: string;
   applicationLetterPath?: string;
   kraPinPath?: string;
+  memberStatus?: string;
 }
 
 const statusColors: Record<string, string> = {
@@ -83,29 +84,52 @@ const Members = () => {
       if (statusFilter !== "all") {
         url = `${API_BASE_URL}/members/status/${statusFilter}`;
       }
-      
+
       const response = await fetch(url, {
         headers: {
           "Authorization": `Bearer ${session?.token}`,
         },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         let membersList = data.data || [];
-        
+
+        // Fetch member status for each member
+        let membersWithStatus = await Promise.all(
+          membersList.map(async (member: Member) => {
+            try {
+              const statusResponse = await fetch(`${API_BASE_URL}/members/${member.employeeId || member.memberNumber}/status`, {
+                headers: {
+                  "Authorization": `Bearer ${session?.token}`,
+                },
+              });
+              if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                return { ...member, memberStatus: statusData.data?.status || "ACTIVE" };
+              }
+            } catch (err) {
+              // If status fetch fails, default to ACTIVE
+              return { ...member, memberStatus: "ACTIVE" };
+            }
+            return { ...member, memberStatus: "ACTIVE" };
+          })
+        );
+
         // Client-side search filter
         if (search) {
-          membersList = membersList.filter((m: Member) =>
+          membersWithStatus = membersWithStatus.filter((m: Member) =>
             m.firstName?.toLowerCase().includes(search.toLowerCase()) ||
             m.lastName?.toLowerCase().includes(search.toLowerCase()) ||
             m.employeeId?.toLowerCase().includes(search.toLowerCase()) ||
             m.memberNumber?.toLowerCase().includes(search.toLowerCase()) ||
-            m.nationalId?.toLowerCase().includes(search.toLowerCase())
+            m.nationalId?.toLowerCase().includes(search.toLowerCase()) ||
+            m.email?.toLowerCase().includes(search.toLowerCase()) ||
+            m.phone?.toLowerCase().includes(search.toLowerCase())
           );
         }
         
-        setMembers(membersList);
+        setMembers(membersWithStatus);
       }
     } catch (error) {
       console.error("Error fetching members:", error);
@@ -767,16 +791,17 @@ const Members = () => {
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Department</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Reg. Status</TableHead>
+                <TableHead>Member Status</TableHead>
                 <TableHead>Applied</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
               ) : members.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No members found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No members found</TableCell></TableRow>
               ) : members.map(member => (
                 <TableRow key={member.id}>
                   <TableCell className="font-mono text-sm">{member.employeeId || member.memberNumber || "—"}</TableCell>
@@ -784,7 +809,17 @@ const Members = () => {
                   <TableCell>{member.phone}</TableCell>
                   <TableCell>{member.department || "—"}</TableCell>
                   <TableCell><Badge className={statusColors[member.status]}>{member.status}</Badge></TableCell>
-                  <TableCell>{member.dateOfBirth ? member.dateOfBirth : new Date(member.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <Badge className={
+                      member.memberStatus === "ACTIVE" ? "bg-green-100 text-green-800" :
+                      member.memberStatus === "SUSPENDED" ? "bg-red-100 text-red-800" :
+                      member.memberStatus === "EXITED" ? "bg-gray-100 text-gray-800" :
+                      "bg-green-100 text-green-800"
+                    }>
+                      {member.memberStatus || "ACTIVE"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{new Date(member.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" onClick={() => setViewMember(member)} title="View Details">

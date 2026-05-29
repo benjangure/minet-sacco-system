@@ -35,10 +35,24 @@ public class MemberSuspension {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
+    @ManyToOne
+    @JoinColumn(name = "validated_by")
+    private User validatedBy;
+
+    @Column(name = "validation_notes", columnDefinition = "TEXT")
+    private String validationNotes;
+
+    @Column(name = "validated_at")
+    private LocalDateTime validatedAt;
+
+    @Column(name = "status")
+    private String status = "PENDING";
+
     @PrePersist
     protected void onCreate() {
         suspendedAt = LocalDateTime.now();
-        isActive = true;
+        isActive = false;
+        status = "PENDING";
     }
 
     // Getters and Setters
@@ -65,4 +79,16 @@ public class MemberSuspension {
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
+    public User getValidatedBy() { return validatedBy; }
+    public void setValidatedBy(User validatedBy) { this.validatedBy = validatedBy; }
+
+    public String getValidationNotes() { return validationNotes; }
+    public void setValidationNotes(String validationNotes) { this.validationNotes = validationNotes; }
+
+    public LocalDateTime getValidatedAt() { return validatedAt; }
+    public void setValidatedAt(LocalDateTime validatedAt) { this.validatedAt = validatedAt; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 }

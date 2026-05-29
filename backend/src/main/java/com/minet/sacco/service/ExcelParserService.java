@@ -162,8 +162,25 @@ public class ExcelParserService {
                 item.setEmployer(getCellValueAsString(row.getCell(8)));
                 item.setBank(getCellValueAsString(row.getCell(9)));
                 item.setBankAccount(getCellValueAsString(row.getCell(10)));
-                item.setNextOfKin(getCellValueAsString(row.getCell(11)));
-                item.setNokPhone(getCellValueAsString(row.getCell(12)));
+                item.setBankBranch(getCellValueAsString(row.getCell(11)));
+                item.setNextOfKin(getCellValueAsString(row.getCell(12)));
+                item.setNokPhone(getCellValueAsString(row.getCell(13)));
+                item.setNokRelationship(getCellValueAsString(row.getCell(14)));
+
+                // Parse date joined (optional - defaults to today if blank)
+                Cell dateJoinedCell = row.getCell(15);
+                if (dateJoinedCell != null) {
+                    java.time.LocalDate parsedDateJoined = parseDateCell(dateJoinedCell);
+                    if (parsedDateJoined != null) {
+                        item.setDateJoined(parsedDateJoined);
+                    }
+                }
+
+                // Opening savings balance (col 16, optional - defaults to 0 if blank)
+                item.setOpeningSavingsBalance(getCellValueAsBigDecimal(row.getCell(16)));
+
+                // Opening shares balance (col 17, optional - defaults to 3000 if blank)
+                item.setOpeningSharesBalance(getCellValueAsBigDecimal(row.getCell(17)));
                 
                 if (item.getFirstName() != null && !item.getFirstName().trim().isEmpty()) {
                     items.add(item);
@@ -285,6 +302,74 @@ public class ExcelParserService {
         return items;
     }
     
+    public List<com.minet.sacco.entity.LoanMigrationItem> parseLoanMigration(MultipartFile file) throws IOException {
+        List<com.minet.sacco.entity.LoanMigrationItem> items = new ArrayList<>();
+
+        try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
+            Sheet sheet = workbook.getSheetAt(0);
+
+            int rowNumber = 1;
+            for (Row row : sheet) {
+                if (row.getRowNum() == 0) continue; // skip header
+
+                // Skip completely empty rows
+                String employeeId = getCellValueAsString(row.getCell(0));
+                if (employeeId == null || employeeId.trim().isEmpty()) continue;
+
+                com.minet.sacco.entity.LoanMigrationItem item = new com.minet.sacco.entity.LoanMigrationItem();
+                item.setRowNumber(rowNumber++);
+
+                // Col 0: Employee ID
+                item.setEmployeeId(employeeId.trim());
+                // Col 1: Loan Number (optional - for preserving historical loan numbers)
+                String loanNumber = getCellValueAsString(row.getCell(1));
+                if (loanNumber != null && !loanNumber.trim().isEmpty()) {
+                    item.setLoanNumber(loanNumber.trim());
+                }
+                // Col 2: Loan Product Name
+                item.setLoanProductName(getCellValueAsString(row.getCell(2)));
+                // Col 3: Principal Amount
+                item.setPrincipalAmount(getCellValueAsBigDecimal(row.getCell(3)));
+                // Col 4: Term (Months)
+                item.setTermMonths(getCellValueAsInteger(row.getCell(4)));
+                // Col 5: Interest Rate (optional)
+                BigDecimal rate = getCellValueAsBigDecimal(row.getCell(5));
+                if (rate != null && rate.compareTo(BigDecimal.ZERO) > 0) {
+                    item.setInterestRate(rate);
+                }
+                // Col 6: Disbursement Date
+                item.setDisbursementDate(parseDateCell(row.getCell(6)));
+                // Col 7: Loan Status
+                String status = getCellValueAsString(row.getCell(7));
+                item.setLoanStatus(status != null ? status.trim().toUpperCase() : null);
+                // Col 8: Outstanding Balance
+                item.setOutstandingBalance(getCellValueAsBigDecimal(row.getCell(8)));
+                // Col 9: Guarantorship Type
+                String gType = getCellValueAsString(row.getCell(9));
+                item.setGuarantorshipType(gType != null ? gType.trim().toUpperCase() : null);
+                // Col 10-21: Guarantors (6 pairs of Employee ID + Pledge Amount)
+                item.setGuarantor1EmployeeId(getCellValueAsString(row.getCell(10)));
+                item.setGuarantor1PledgeAmount(getCellValueAsBigDecimal(row.getCell(11)));
+                item.setGuarantor2EmployeeId(getCellValueAsString(row.getCell(12)));
+                item.setGuarantor2PledgeAmount(getCellValueAsBigDecimal(row.getCell(13)));
+                item.setGuarantor3EmployeeId(getCellValueAsString(row.getCell(14)));
+                item.setGuarantor3PledgeAmount(getCellValueAsBigDecimal(row.getCell(15)));
+                item.setGuarantor4EmployeeId(getCellValueAsString(row.getCell(16)));
+                item.setGuarantor4PledgeAmount(getCellValueAsBigDecimal(row.getCell(17)));
+                item.setGuarantor5EmployeeId(getCellValueAsString(row.getCell(18)));
+                item.setGuarantor5PledgeAmount(getCellValueAsBigDecimal(row.getCell(19)));
+                item.setGuarantor6EmployeeId(getCellValueAsString(row.getCell(20)));
+                item.setGuarantor6PledgeAmount(getCellValueAsBigDecimal(row.getCell(21)));
+                // Col 22: Purpose (optional)
+                item.setPurpose(getCellValueAsString(row.getCell(22)));
+
+                items.add(item);
+            }
+        }
+
+        return items;
+    }
+
     private String getCellValueAsString(Cell cell) {
         if (cell == null) return null;
         

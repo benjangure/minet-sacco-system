@@ -101,7 +101,8 @@ const Index = () => {
         const disbursedLoans = loansData.filter((l: any) => l.status === "DISBURSED");
         const totalDisbursedPrincipal = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0);
         const totalDisbursedOutstanding = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.outstandingBalance || 0), 0);
-        const repaidPortion = Math.max(0, totalDisbursedPrincipal - totalDisbursedOutstanding);
+        
+        // Calculate outstanding interest more accurately
         const totalDisbursedOutstandingInterest = disbursedLoans.reduce((sum: number, l: any) => {
           const outstanding = Number(l.outstandingBalance || 0);
           const totalRepayable = Number(l.totalRepayable || 0);
@@ -110,10 +111,15 @@ const Index = () => {
           const interestRatio = Math.min(1, Math.max(0, totalInterest / totalRepayable));
           return sum + (outstanding * interestRatio);
         }, 0);
+        
+        // Outstanding principal = outstanding balance minus outstanding interest
         const totalDisbursedOutstandingPrincipal = Math.max(
           0,
           totalDisbursedOutstanding - totalDisbursedOutstandingInterest
         );
+        
+        // Repaid = Total Disbursed - Outstanding Balance
+        const totalRepaidAmount = Math.max(0, totalDisbursedPrincipal - totalDisbursedOutstanding);
 
         setStats({
           totalMembers: membersData.length,
@@ -137,10 +143,11 @@ const Index = () => {
           totalDisbursedOutstandingInterest,
         });
 
+        // Pie chart breakdown: Outstanding Principal + Outstanding Interest + Repaid
         setLoanPortfolioBreakdown([
           { name: "Outstanding Principal", value: totalDisbursedOutstandingPrincipal },
           { name: "Outstanding Interest (Est.)", value: totalDisbursedOutstandingInterest },
-          { name: "Repaid", value: repaidPortion },
+          { name: "Repaid", value: totalRepaidAmount },
         ]);
 
         // Members by status for pie chart

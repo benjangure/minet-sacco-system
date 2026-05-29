@@ -46,6 +46,8 @@ export const BackendConnectionManager: React.FC<BackendConnectionManagerProps> =
         const suggestedIP = await getSuggestedIP();
         const baseSuggestions = [
           suggestedIP,
+          '192.168.0.70',
+          '192.168.100.54',
           '192.168.0.34',
           '192.168.0.41',
           '192.168.0.195',
@@ -66,6 +68,8 @@ export const BackendConnectionManager: React.FC<BackendConnectionManagerProps> =
         console.warn('Failed to load suggestions:', error);
         // Fallback to static suggestions
         const fallbackSuggestions = [
+          '192.168.0.70',
+          '192.168.100.54',
           '192.168.0.34',
           '192.168.0.41',
           '192.168.0.195',

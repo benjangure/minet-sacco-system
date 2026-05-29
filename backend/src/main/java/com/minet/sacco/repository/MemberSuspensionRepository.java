@@ -12,4 +12,5 @@ public interface MemberSuspensionRepository extends JpaRepository<MemberSuspensi
     Optional<MemberSuspension> findByMemberIdAndIsActiveTrue(Long memberId);
     List<MemberSuspension> findByMemberId(Long memberId);
     List<MemberSuspension> findByIsActiveTrue();
+    List<MemberSuspension> findByStatus(String status);
 }

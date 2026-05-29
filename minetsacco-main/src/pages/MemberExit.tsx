@@ -15,6 +15,8 @@ interface ExitRecord {
   totalPayout: number;
   approvedBy?: { firstName: string; lastName: string };
   approvedAt?: string;
+  initiatedBy?: { firstName: string; lastName: string };
+  status?: string;
   createdAt: string;
 }
 
@@ -35,20 +37,24 @@ export default function MemberExit() {
   const { role } = useAuth();
   const [pendingExits, setPendingExits] = useState<ExitRecord[]>([]);
   const [approvedExits, setApprovedExits] = useState<ExitRecord[]>([]);
+  const [allExits, setAllExits] = useState<ExitRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showInitiateForm, setShowInitiateForm] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [memberId, setMemberId] = useState('');
   const [exitReason, setExitReason] = useState('');
   const [exitSummary, setExitSummary] = useState<ExitSummary | null>(null);
 
   // Check permissions
-  const canInitiate = role && ['admin', 'credit_committee'].includes(role.toLowerCase());
+  const canManageExits = role && ['credit_committee', 'treasurer'].includes(role.toLowerCase());
+  const canInitiate = role && role.toLowerCase() === 'credit_committee';
   const canApprove = role && role.toLowerCase() === 'treasurer';
 
   useEffect(() => {
     fetchExits();
+    fetchAllExits();
   }, []);
 
   const fetchExits = async () => {
@@ -64,6 +70,17 @@ export default function MemberExit() {
       setError('Failed to load exits');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAllExits = async () => {
+    try {
+      const response = await api.get('/members/exits/all');
+      if (response.data.success) {
+        setAllExits(response.data.data);
+      }
+    } catch (err: any) {
+      setError('Failed to load all exits');
     }
   };
 
@@ -96,7 +113,13 @@ export default function MemberExit() {
       return;
     }
 
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmExit = async () => {
     setLoading(true);
+    setShowConfirmDialog(false);
+    
     try {
       const response = await api.post(`/members/${memberId}/exit`, {
         exitReason,
@@ -107,12 +130,11 @@ export default function MemberExit() {
         setPendingExits([...pendingExits, response.data.data]);
         setMemberId('');
         setExitReason('');
-        setExitSummary(null);
         setShowInitiateForm(false);
         setTimeout(() => setSuccess(''), 3000);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to initiate exit');
+      setError(err.response?.data?.message || 'Failed to initiate member exit');
     } finally {
       setLoading(false);
     }
@@ -126,7 +148,9 @@ export default function MemberExit() {
 
     setLoading(true);
     try {
-      const response = await api.post(`/members/exit/${exitId}/approve`);
+      const response = await api.post(`/members/exit/${exitId}/approve`, {
+        approvalNotes: 'Approved by Treasurer'
+      });
 
       if (response.data.success) {
         setSuccess('Member exit approved successfully');
@@ -149,7 +173,7 @@ export default function MemberExit() {
     );
   }
 
-  if (!canInitiate && !canApprove) {
+  if (!canManageExits) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Member Exit Management</h1>
@@ -157,7 +181,7 @@ export default function MemberExit() {
           <AlertCircle className="w-6 h-6 text-red-600 mt-0.5 flex-shrink-0" />
           <div>
             <p className="text-red-800 font-semibold">Access Denied</p>
-            <p className="text-red-700 text-sm mt-1">Only Admin, Credit Committee, and Treasurer can manage member exits.</p>
+            <p className="text-red-700 text-sm mt-1">Only Credit Committee and Treasurer can manage member exits.</p>
           </div>
         </div>
       </div>
@@ -217,10 +241,10 @@ export default function MemberExit() {
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">Member ID</label>
               <input
-                type="number"
+                type="text"
                 value={memberId}
                 onChange={(e) => setMemberId(e.target.value)}
-                placeholder="Enter member ID"
+                placeholder="Enter member ID (e.g., EMP001)"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
@@ -398,6 +422,55 @@ export default function MemberExit() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {exit.approvedAt ? new Date(exit.approvedAt).toLocaleDateString() : '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* All Exits Report */}
+      {allExits.length > 0 && (
+        <div className="bg-white rounded-lg shadow overflow-hidden mt-6">
+          <div className="p-6 border-b bg-blue-50">
+            <h2 className="text-xl font-semibold text-blue-800">All Exits Report</h2>
+          </div>
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Member</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Employee ID</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Reason</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Total Payout</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Initiated By</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {allExits.map((exit) => (
+                <tr key={exit.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    {exit.member.firstName} {exit.member.lastName}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{exit.member.employeeId}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{exit.exitReason}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-green-600">
+                    KES {exit.totalPayout.toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">
+                    {exit.initiatedBy ? `${exit.initiatedBy.firstName} ${exit.initiatedBy.lastName}` : '-'}
+                  </td>
+                  <td className="px-6 py-4 text-sm">
+                    <span className={`px-2 py-1 rounded ${
+                      exit.status === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {exit.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">
+                    {new Date(exit.createdAt).toLocaleDateString()}
                   </td>
                 </tr>
               ))}

@@ -71,9 +71,11 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
                                      @Param("endDate") LocalDateTime endDate);
 
     @Query("SELECT COUNT(l) FROM Loan l " +
-           "WHERE l.status = 'DISBURSED' " +
+           "WHERE (l.status = 'DISBURSED' OR l.status = 'REPAID') " +
            "AND YEAR(l.disbursementDate) = :year")
     Long countByYearAndDisbursed(@Param("year") int year);
+
+    boolean existsByLoanNumberAndIdNot(String loanNumber, Long loanId);
 
     List<Loan> findByMemberIdAndStatus(Long memberId, Loan.Status status);
 

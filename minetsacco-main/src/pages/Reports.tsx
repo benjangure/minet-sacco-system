@@ -16,8 +16,13 @@ const Reports = () => {
   const { toast } = useToast();
 
   // Check if user has permission to view reports
+  const canViewFinancialReports = user && ["ADMIN", "TREASURER", "AUDITOR"].includes(user.role);
+  const canViewGuarantorReport = user && ["ADMIN", "TREASURER", "AUDITOR", "LOAN_OFFICER"].includes(user.role);
+  const canViewLoanEligibilityReport = user && ["ADMIN", "TREASURER", "AUDITOR", "LOAN_OFFICER", "CUSTOMER_SUPPORT"].includes(user.role);
+  const canViewWithdrawalMonitoringReport = user && ["ADMIN", "TREASURER", "AUDITOR"].includes(user.role);
+
   useEffect(() => {
-    if (user && !["ADMIN", "TREASURER", "AUDITOR"].includes(user.role)) {
+    if (user && !canViewFinancialReports && !canViewGuarantorReport && !canViewLoanEligibilityReport && !canViewWithdrawalMonitoringReport) {
       toast({
         title: "Access Denied",
         description: "You don't have permission to view reports",
@@ -49,6 +54,13 @@ const Reports = () => {
 
   // SASRA Report filters
   const [sasraReportDate, setSasraReportDate] = useState(new Date().toISOString().split("T")[0]);
+
+  // Withdrawal Monitoring filters
+  const [wmStartDate, setWmStartDate] = useState("");
+  const [wmEndDate, setWmEndDate] = useState("");
+  const [wmMemberNumber, setWmMemberNumber] = useState("");
+  const [wmWithdrawalMethod, setWmWithdrawalMethod] = useState("");
+  const [wmTransactionStatus, setWmTransactionStatus] = useState("");
 
   const handleExportExcel = async () => {
     try {
@@ -88,13 +100,22 @@ const Reports = () => {
         }
         url += `/profit-loss/export/excel?startDate=${startDate}&endDate=${endDate}`;
       } else if (reportType === "par") {
-        url += `/reports/sasra/par/export/excel?asAtDate=${sasraReportDate}`;
+        url += `/sasra/par/export/excel?asAtDate=${sasraReportDate}`;
       } else if (reportType === "capital-adequacy") {
-        url += `/reports/sasra/capital-adequacy/export/excel?asAtDate=${sasraReportDate}`;
+        url += `/sasra/capital-adequacy/export/excel?asAtDate=${sasraReportDate}`;
       } else if (reportType === "provision-bad-debts") {
-        url += `/reports/sasra/provision-bad-debts/export/excel?asAtDate=${sasraReportDate}`;
+        url += `/sasra/provision-bad-debts/export/excel?asAtDate=${sasraReportDate}`;
       } else if (reportType === "sasra-compliance") {
-        url += `/reports/sasra/compliance/export/excel?asAtDate=${sasraReportDate}`;
+        url += `/sasra/compliance/export/excel?asAtDate=${sasraReportDate}`;
+      } else if (reportType === "withdrawal-monitoring") {
+        if (!wmStartDate || !wmEndDate) {
+          toast({ title: "Error", description: "Start and end dates are required", variant: "destructive" });
+          return;
+        }
+        url += `/withdrawal-monitoring/export/excel?startDate=${wmStartDate}&endDate=${wmEndDate}`;
+        if (wmMemberNumber) url += `&memberNumber=${wmMemberNumber}`;
+        if (wmWithdrawalMethod) url += `&withdrawalMethod=${wmWithdrawalMethod}`;
+        if (wmTransactionStatus) url += `&transactionStatus=${wmTransactionStatus}`;
       }
 
       const response = await fetch(url, {
@@ -158,13 +179,22 @@ const Reports = () => {
         }
         url += `/profit-loss/export/pdf?startDate=${startDate}&endDate=${endDate}`;
       } else if (reportType === "par") {
-        url += `/reports/sasra/par/export/pdf?asAtDate=${sasraReportDate}`;
+        url += `/sasra/par/export/pdf?asAtDate=${sasraReportDate}`;
       } else if (reportType === "capital-adequacy") {
-        url += `/reports/sasra/capital-adequacy/export/pdf?asAtDate=${sasraReportDate}`;
+        url += `/sasra/capital-adequacy/export/pdf?asAtDate=${sasraReportDate}`;
       } else if (reportType === "provision-bad-debts") {
-        url += `/reports/sasra/provision-bad-debts/export/pdf?asAtDate=${sasraReportDate}`;
+        url += `/sasra/provision-bad-debts/export/pdf?asAtDate=${sasraReportDate}`;
       } else if (reportType === "sasra-compliance") {
-        url += `/reports/sasra/compliance/export/pdf?asAtDate=${sasraReportDate}`;
+        url += `/sasra/compliance/export/pdf?asAtDate=${sasraReportDate}`;
+      } else if (reportType === "withdrawal-monitoring") {
+        if (!wmStartDate || !wmEndDate) {
+          toast({ title: "Error", description: "Start and end dates are required", variant: "destructive" });
+          return;
+        }
+        url += `/withdrawal-monitoring/export/pdf?startDate=${wmStartDate}&endDate=${wmEndDate}`;
+        if (wmMemberNumber) url += `&memberNumber=${wmMemberNumber}`;
+        if (wmWithdrawalMethod) url += `&withdrawalMethod=${wmWithdrawalMethod}`;
+        if (wmTransactionStatus) url += `&transactionStatus=${wmTransactionStatus}`;
       }
 
       const response = await fetch(url, {
@@ -192,11 +222,11 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
-      {user && !["ADMIN", "TREASURER", "AUDITOR"].includes(user.role) ? (
+      {user && !canViewFinancialReports && !canViewGuarantorReport && !canViewLoanEligibilityReport && !canViewWithdrawalMonitoringReport ? (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-6">
             <p className="text-red-800">
-              <strong>Access Denied:</strong> You don't have permission to view reports. Only Admin, Treasurer, and Auditor roles can access reports.
+              <strong>Access Denied:</strong> You don't have permission to view reports. Contact your administrator for access.
             </p>
           </CardContent>
         </Card>
@@ -219,16 +249,33 @@ const Reports = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cashbook">Cashbook Report</SelectItem>
-                    <SelectItem value="trial-balance">Trial Balance</SelectItem>
-                    <SelectItem value="balance-sheet">Balance Sheet</SelectItem>
-                    <SelectItem value="member-statement">Member Statement</SelectItem>
-                    <SelectItem value="loan-register">Loan Register</SelectItem>
-                    <SelectItem value="profit-loss">Profit & Loss Report</SelectItem>
-                    <SelectItem value="par">Portfolio At Risk (PAR)</SelectItem>
-                    <SelectItem value="capital-adequacy">Capital Adequacy</SelectItem>
-                    <SelectItem value="provision-bad-debts">Provision for Bad Debts</SelectItem>
-                    <SelectItem value="sasra-compliance">SASRA Compliance Report</SelectItem>
+                    {canViewFinancialReports && (
+                      <>
+                        <SelectItem value="cashbook">Cashbook Report</SelectItem>
+                        <SelectItem value="trial-balance">Trial Balance</SelectItem>
+                        <SelectItem value="balance-sheet">Balance Sheet</SelectItem>
+                        <SelectItem value="profit-loss">Profit & Loss Report</SelectItem>
+                        <SelectItem value="par">Portfolio At Risk (PAR)</SelectItem>
+                        <SelectItem value="capital-adequacy">Capital Adequacy</SelectItem>
+                        <SelectItem value="provision-bad-debts">Provision for Bad Debts</SelectItem>
+                        <SelectItem value="sasra-compliance">SASRA Compliance Report</SelectItem>
+                      </>
+                    )}
+                    {(canViewFinancialReports || canViewGuarantorReport || canViewLoanEligibilityReport) && (
+                      <>
+                        <SelectItem value="member-statement">Member Statement</SelectItem>
+                        <SelectItem value="loan-register">Loan Register</SelectItem>
+                      </>
+                    )}
+                    {canViewGuarantorReport && (
+                      <SelectItem value="guarantor-report">Guarantor Report</SelectItem>
+                    )}
+                    {canViewLoanEligibilityReport && (
+                      <SelectItem value="loan-eligibility-report">Loan Eligibility Report</SelectItem>
+                    )}
+                    {canViewWithdrawalMonitoringReport && (
+                      <SelectItem value="withdrawal-monitoring">Withdrawal Monitoring Report</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -402,6 +449,53 @@ const Reports = () => {
                       {reportType === "provision-bad-debts" && "Provision for Bad Debts report as at selected date"}
                       {reportType === "sasra-compliance" && "SASRA Regulatory Compliance report as at selected date"}
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Withdrawal Monitoring Filters */}
+              {reportType === "withdrawal-monitoring" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Withdrawal Monitoring Filters</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Start Date *</label>
+                      <Input type="date" value={wmStartDate} onChange={(e) => setWmStartDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">End Date *</label>
+                      <Input type="date" value={wmEndDate} onChange={(e) => setWmEndDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Member Number</label>
+                      <Input placeholder="e.g., M001" value={wmMemberNumber} onChange={(e) => setWmMemberNumber(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Withdrawal Method</label>
+                      <Select value={wmWithdrawalMethod} onValueChange={setWmWithdrawalMethod}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="M_PESA">M-Pesa</SelectItem>
+                          <SelectItem value="MANUAL_CASH">Manual Cash</SelectItem>
+                          <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Transaction Status</label>
+                      <Select value={wmTransactionStatus} onValueChange={setWmTransactionStatus}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="COMPLETED">Completed</SelectItem>
+                          <SelectItem value="PENDING">Pending</SelectItem>
+                          <SelectItem value="FAILED">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
               )}

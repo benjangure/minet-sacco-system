@@ -341,6 +341,21 @@ public class BulkValidationService {
                 errors.add("Row " + rowNumber + ": NOK phone '" + nokPhone + "' must be 9-15 characters");
             }
         }
+
+        // Validate opening savings balance (optional, must be >= 0 if provided)
+        if (item.getOpeningSavingsBalance() != null && item.getOpeningSavingsBalance().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            errors.add("Row " + rowNumber + ": Opening savings balance cannot be negative");
+        }
+
+        // Validate opening shares balance (optional, must be >= 0 if provided)
+        if (item.getOpeningSharesBalance() != null && item.getOpeningSharesBalance().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            errors.add("Row " + rowNumber + ": Opening shares balance cannot be negative");
+        }
+
+        // Validate date joined (optional, must not be in the future)
+        if (item.getDateJoined() != null && item.getDateJoined().isAfter(LocalDate.now())) {
+            errors.add("Row " + rowNumber + ": Date joined cannot be in the future (" + item.getDateJoined() + ")");
+        }
         
         return errors;
     }

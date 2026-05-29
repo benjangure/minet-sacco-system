@@ -6,8 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileCheck, AlertCircle, Loader2, Users, Eye, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { downloadAndOpenFile } from "@/utils/downloadHelper";
+import { getBackendUrl } from "@/config/api";
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = `${getBackendUrl()}/api`;
 
 interface Member {
   id: number;

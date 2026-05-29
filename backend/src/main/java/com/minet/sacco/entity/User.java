@@ -45,6 +45,7 @@ public class User {
 
     public enum Role {
         ADMIN,              // System configuration and user management
+        HR,                 // Human Resources - member exit/suspension initiation
         TREASURER,          // Financial transactions and bulk uploads
         LOAN_OFFICER,       // Loan processing
         CREDIT_COMMITTEE,   // Loan approval and bulk approval (Checker)

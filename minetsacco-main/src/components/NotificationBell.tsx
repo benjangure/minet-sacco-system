@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Bell, X, Check, CheckCheck } from 'lucide-react';
 import { notificationService, Notification } from '../services/notificationService';
 import { useAuth } from '@/contexts/AuthContext';
-import { API_BASE_URL } from '@/config/api';
 
 export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { session, role } = useAuth();
 
   useEffect(() => {
@@ -39,11 +39,15 @@ export const NotificationBell: React.FC = () => {
   
   const loadNotifications = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const data = await notificationService.getNotifications();
+      // Load only unread notifications to match the bell badge count
+      const data = await notificationService.getUnreadNotifications();
       setNotifications(data);
     } catch (error) {
-      console.error('Failed to load notifications:', error);
+      console.error('Failed to load unread notifications:', error);
+      setNotifications([]);
+      setError('Unable to load notifications. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -51,6 +55,7 @@ export const NotificationBell: React.FC = () => {
 
   const handleBellClick = () => {
     if (!isOpen) {
+      setError(null);
       loadNotifications();
       loadUnreadCount();
     }
@@ -145,12 +150,15 @@ export const NotificationBell: React.FC = () => {
             </button>
           </div>
 
-          
           {/* Notifications List */}
           <div className="flex-1 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center h-32">
                 <p className="text-gray-500">Loading...</p>
+              </div>
+            ) : error ? (
+              <div className="flex items-center justify-center h-32 p-4">
+                <p className="text-red-600 text-center text-sm">{error}</p>
               </div>
             ) : notifications.length === 0 ? (
               <div className="flex items-center justify-center h-32">

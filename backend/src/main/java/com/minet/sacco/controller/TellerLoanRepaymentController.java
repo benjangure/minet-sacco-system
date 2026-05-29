@@ -181,8 +181,11 @@ public class TellerLoanRepaymentController {
                     repaymentRequest.getMember().getId(), Account.AccountType.SAVINGS).orElse(null));
             transaction.setTransactionType(Transaction.TransactionType.LOAN_REPAYMENT);
             transaction.setAmount(confirmedAmount);
-            transaction.setDescription("Loan repayment (Bank Transfer) - " + repaymentRequest.getDescription());
+            transaction.setDescription("Loan repayment - Loan #" + loan.getLoanNumber() +
+                    " - Method: " + repaymentRequest.getPaymentMethod() +
+                    " - " + repaymentRequest.getDescription());
             transaction.setTransactionDate(LocalDateTime.now());
+            transaction.setCreatedBy(userRepository.findByUsername(username).orElse(null));
             transactionRepository.save(transaction);
 
             // Track pledge reduction for guarantors (proportional to repayment)

@@ -10,10 +10,13 @@ import com.minet.sacco.service.UserService;
 import com.minet.sacco.service.NotificationService;
 import com.minet.sacco.service.GuarantorTrackingService;
 import com.minet.sacco.service.DepositRequestService;
+import com.minet.sacco.service.EmailService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.multipart.MultipartFile;
@@ -54,6 +57,12 @@ public class MemberPortalController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private EmailService emailService;
 
     /**
      * Get current authenticated member
@@ -125,10 +134,12 @@ public class MemberPortalController {
             );
             Integer pendingCount = pendingLoans.size();
             
-            // Get recent transactions (last 5 regular transactions)
+            // Get recent transactions (last 5 regular transactions, excluding LOAN_REPAYMENT to avoid duplicates)
+            // Loan repayments are added separately from LoanRepayment records
             List<Transaction> recentTransactions = transactionRepository
                 .findByAccountMemberIdOrderByTransactionDateDesc(member.getId())
                 .stream()
+                .filter(t -> t.getTransactionType() != Transaction.TransactionType.LOAN_REPAYMENT)
                 .limit(5)
                 .collect(Collectors.toList());
             
@@ -870,6 +881,20 @@ public class MemberPortalController {
             Member member = getCurrentMember();
             List<com.minet.sacco.entity.LoanRepaymentRequest> requests = loanRepaymentRequestRepository.findByMemberId(member.getId());
             return ResponseEntity.ok(requests);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get all loan repayments for member
+     */
+    @GetMapping("/loan-repayments")
+    public ResponseEntity<?> getLoanRepayments() {
+        try {
+            Member member = getCurrentMember();
+            List<LoanRepayment> repayments = loanRepaymentRepository.findByMemberIdOrderByPaymentDateDesc(member.getId());
+            return ResponseEntity.ok(repayments);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
@@ -1923,5 +1948,60 @@ public class MemberPortalController {
      */
     private String formatCurrency(BigDecimal amount) {
         return "KES " + String.format("%,.2f", amount);
+    }
+
+    /**
+     * Member changes their own password
+     * Requires verification of current password (National ID for first time)
+     */
+    @PutMapping("/change-password")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<String>> changeMemberPassword(
+            @Valid @RequestBody PasswordChangeRequestDTO request,
+            Authentication authentication) {
+        
+        try {
+            // Get current user from authentication
+            String username = authentication.getName();
+            User memberUser = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            // Verify current password matches
+            if (!passwordEncoder.matches(request.getCurrentPassword(), memberUser.getPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Current password is incorrect. For first login, use your National ID."));
+            }
+            
+            // Validate new password differs from current
+            if (passwordEncoder.matches(request.getNewPassword(), memberUser.getPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("New password must be different from current password"));
+            }
+            
+            // Validate password confirmation matches
+            if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("New passwords do not match"));
+            }
+            
+            // Update password in database
+            memberUser.setPassword(passwordEncoder.encode(request.getNewPassword()));
+            memberUser.setUpdatedAt(java.time.LocalDateTime.now());
+            userRepository.save(memberUser);
+            
+            // Send confirmation email
+            emailService.sendPasswordChangeConfirmation(memberUser);
+            
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Password changed successfully. You can now log in with your new password."));
+            
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to change member password: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to change password: " + e.getMessage()));
+        }
     }
 }

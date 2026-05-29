@@ -14,7 +14,7 @@ import logo from '@/assets/images/logo.png';
 
 const allMainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
-  { title: "Members", url: "/members", icon: Users, roles: ["admin", "treasurer", "loan_officer", "teller", "customer_support"] },
+  { title: "Members", url: "/members", icon: Users, roles: ["admin", "treasurer", "loan_officer", "teller", "customer_support", "credit_committee"] },
   { title: "Loans", url: "/loans", icon: Landmark, roles: ["admin", "loan_officer", "credit_committee", "treasurer"] },
   { title: "Loan Repayments", url: "/loan-repayment-recording", icon: CheckCircle2, roles: ["teller", "treasurer"] },
   { title: "Savings", url: "/savings", icon: PiggyBank, roles: ["admin", "treasurer", "teller"] },
@@ -22,6 +22,7 @@ const allMainItems = [
   { title: "Teller Member Context", url: "/teller-member-context", icon: Users, roles: ["teller"] },
   { title: "Customer Support", url: "/customer-support-portal", icon: FileText, roles: ["customer_support"] },
   { title: "Bulk Processing", url: "/bulk-processing", icon: Upload, roles: ["treasurer", "credit_committee"] },
+  { title: "Loan Migration", url: "/loan-migration", icon: Database, roles: ["treasurer", "admin"] },
   { title: "Reports", url: "/reports", icon: FileText, roles: ["admin", "treasurer", "auditor"] },
 ];
 
@@ -39,12 +40,11 @@ const allAdminItems = [
   { title: "Loan Eligibility Rules", url: "/admin/loan-eligibility-rules", icon: Settings, roles: ["admin"] },
   { title: "Audit Trail", url: "/admin/audit-trail", icon: BarChart3, roles: ["admin", "auditor"] },
   { title: "Audit Reports", url: "/audit-reports", icon: BarChart3, roles: ["admin", "auditor"] },
-  { title: "Data Migration", url: "/admin/data-migration", icon: Database, roles: ["admin", "treasurer"] },
-  { title: "System Settings", url: "/admin/system-settings", icon: Sliders, roles: ["admin"] },
-  { title: "Member Suspension", url: "/admin/member-suspension", icon: Ban, roles: ["admin", "credit_committee"] },
-  { title: "Member Exit", url: "/admin/member-exit", icon: LogOutIcon, roles: ["admin", "credit_committee"] },
-  { title: "Settings", url: "/settings", icon: Settings, roles: ["admin"] },
-  { title: "User Guide", url: "/guide", icon: HelpCircle, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
+  // { title: "Data Migration", url: "/admin/data-migration", icon: Database, roles: ["admin", "treasurer"] }, // TODO: Not implemented
+  { title: "Member Suspension", url: "/admin/member-suspension", icon: Ban, roles: ["admin", "credit_committee", "treasurer"] },
+  { title: "Member Exit", url: "/admin/member-exit", icon: LogOutIcon, roles: ["admin", "credit_committee", "treasurer"] },
+  { title: "Settings", url: "/settings", icon: Settings, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
+  // { title: "User Guide", url: "/guide", icon: HelpCircle, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] }, // TODO: Not implemented
 ];
 
 // Helper function to check if user has any of the required roles

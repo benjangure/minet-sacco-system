@@ -232,11 +232,11 @@ public class MemberService {
         savingsAccount.setCreatedAt(LocalDateTime.now());
         accountRepository.save(savingsAccount);
         
-        // Create Shares Account
+        // Create Shares Account with mandatory 3000 KES share capital
         Account sharesAccount = new Account();
         sharesAccount.setMember(member);
         sharesAccount.setAccountType(Account.AccountType.SHARES);
-        sharesAccount.setBalance(BigDecimal.ZERO);
+        sharesAccount.setBalance(new BigDecimal("3000.00")); // Mandatory share capital for all members
         sharesAccount.setCreatedAt(LocalDateTime.now());
         accountRepository.save(sharesAccount);
     }

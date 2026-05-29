@@ -86,11 +86,11 @@ const MemberTransactionHistory = () => {
     try {
       let url = `${API_BASE_URL}/members/${memberId}/transactions`;
       const params = new URLSearchParams();
-      
+
       if (startDate) params.append("startDate", startDate);
       if (endDate) params.append("endDate", endDate);
       if (transactionTypeFilter && transactionTypeFilter !== "all") params.append("transactionType", transactionTypeFilter);
-      
+
       if (params.toString()) {
         url += "?" + params.toString();
       }
@@ -101,7 +101,12 @@ const MemberTransactionHistory = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.data || []);
+        // Filter out LOAN_REPAYMENT transactions to avoid duplicate display
+        // Loan repayments are already shown in the loan repayments section
+        const filteredTransactions = (data.data || []).filter(
+          (t: Transaction) => t.transactionType !== "LOAN_REPAYMENT"
+        );
+        setTransactions(filteredTransactions);
       } else {
         toast({ title: "Error", description: "Failed to fetch transactions", variant: "destructive" });
       }
@@ -131,7 +136,11 @@ const MemberTransactionHistory = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.data || []);
+        // Filter out LOAN_REPAYMENT transactions to avoid duplicate display
+        const filteredTransactions = (data.data || []).filter(
+          (t: Transaction) => t.transactionType !== "LOAN_REPAYMENT"
+        );
+        setTransactions(filteredTransactions);
       }
     } catch (error) {
       console.error("Error fetching transactions:", error);
@@ -176,11 +185,8 @@ const MemberTransactionHistory = () => {
     const loanDisbursements = transactions
       .filter(t => t.transactionType === "LOAN_DISBURSEMENT")
       .reduce((sum, t) => sum + t.amount, 0);
-    const loanRepayments = transactions
-      .filter(t => t.transactionType === "LOAN_REPAYMENT")
-      .reduce((sum, t) => sum + t.amount, 0);
 
-    return { deposits, withdrawals, loanDisbursements, loanRepayments };
+    return { deposits, withdrawals, loanDisbursements };
   };
 
   if (!canAccessTransactionHistory) {
@@ -317,7 +323,6 @@ const MemberTransactionHistory = () => {
                       <SelectItem value="DEPOSIT">Deposit</SelectItem>
                       <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
                       <SelectItem value="LOAN_DISBURSEMENT">Loan Disbursement</SelectItem>
-                      <SelectItem value="LOAN_REPAYMENT">Loan Repayment</SelectItem>
                       <SelectItem value="INTEREST">Interest</SelectItem>
                       <SelectItem value="LOAN_DEFAULT_DEBIT">Loan Default Debit</SelectItem>
                     </SelectContent>
@@ -337,7 +342,7 @@ const MemberTransactionHistory = () => {
 
           {/* Summary Cards */}
           {transactions.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Total Deposits</p>
@@ -354,12 +359,6 @@ const MemberTransactionHistory = () => {
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Loan Disbursements</p>
                   <p className="text-lg font-bold text-blue-600">KES {totals.loanDisbursements.toLocaleString()}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs text-muted-foreground">Loan Repayments</p>
-                  <p className="text-lg font-bold text-purple-600">KES {totals.loanRepayments.toLocaleString()}</p>
                 </CardContent>
               </Card>
             </div>

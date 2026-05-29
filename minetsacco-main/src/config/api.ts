@@ -7,7 +7,7 @@ import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
 
 const DEFAULT_NATIVE_BACKEND_URL =
-  import.meta.env.VITE_NATIVE_BACKEND_URL || 'http://192.168.0.41:8080';
+  import.meta.env.VITE_NATIVE_BACKEND_URL || 'http://192.168.1.55:8080';
 
 // Determine backend URL based on platform
 const getDefaultBackendUrl = (): string => {
@@ -17,8 +17,7 @@ const getDefaultBackendUrl = (): string => {
     // For APK: use laptop IP (can be changed in settings)
     return DEFAULT_NATIVE_BACKEND_URL;
   } else {
-    // For web: use localhost:8080 for development
-    // This ensures we always connect to localhost when developing
+    // For web: use localhost for development
     return 'http://localhost:8080';
   }
 };
@@ -26,11 +25,11 @@ const getDefaultBackendUrl = (): string => {
 const DEFAULT_BACKEND_URL = getDefaultBackendUrl();
 
 // Get backend URL from localStorage or use default
-// For web development, always use localhost:8080 regardless of localStorage
+// For web development, always use localhost
 export const getBackendUrl = (): string => {
   const isNative = Capacitor.isNativePlatform();
   
-  // For web development, always use localhost:8080
+  // For web, use localhost
   if (!isNative) {
     return 'http://localhost:8080';
   }
@@ -46,7 +45,7 @@ export const setBackendUrl = (url: string): void => {
   const isNative = Capacitor.isNativePlatform();
   
   if (!isNative) {
-    console.warn('Backend URL can only be changed for native APK platform. Web development always uses localhost:8080');
+    console.warn('Backend URL can only be changed for native APK platform. Web uses localhost:8080');
     return;
   }
   
@@ -73,7 +72,29 @@ const api = axios.create({
 
 // Add token to requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  // Check if this is a member portal request
+  const isMemberRoute = window.location.pathname.startsWith('/member');
+  
+  let token = null;
+  
+  if (isMemberRoute) {
+    // For member portal routes, always use the member token (not admin session)
+    token = localStorage.getItem('token');
+  } else {
+    // For admin routes, use the session token
+    const sessionStr = localStorage.getItem('session');
+    if (sessionStr) {
+      try {
+        const session = JSON.parse(sessionStr);
+        token = session.token;
+      } catch (e) {
+        token = localStorage.getItem('token');
+      }
+    } else {
+      token = localStorage.getItem('token');
+    }
+  }
+  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

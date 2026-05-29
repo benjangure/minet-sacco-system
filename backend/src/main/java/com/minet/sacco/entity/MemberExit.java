@@ -57,12 +57,19 @@ public class MemberExit {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    @Column(name = "approval_notes", columnDefinition = "TEXT")
+    private String approvalNotes;
+
+    @Column(name = "status")
+    private String status;
+
     @Column(name = "is_active_guarantor")
     private Boolean isActiveGuarantor = false;
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        status = "PENDING";
     }
 
     // Getters and Setters
@@ -110,6 +117,12 @@ public class MemberExit {
 
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
+
+    public String getApprovalNotes() { return approvalNotes; }
+    public void setApprovalNotes(String approvalNotes) { this.approvalNotes = approvalNotes; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
     public Boolean getIsActiveGuarantor() { return isActiveGuarantor; }
     public void setIsActiveGuarantor(Boolean isActiveGuarantor) { this.isActiveGuarantor = isActiveGuarantor; }

@@ -117,7 +117,7 @@ export const getSuggestedIP = async (): Promise<string> => {
   }
   
   // Fallback to common patterns including all supported subnets
-  return '192.168.1.41'; // Updated to 192.168.1.x subnet
+  return '192.168.0.70'; // Updated to 192.168.0.x subnet with port 8080
 };
 
 // Detect current network IP for smarter suggestions

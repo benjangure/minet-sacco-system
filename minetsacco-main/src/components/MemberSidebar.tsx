@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake } from 'lucide-react';
+import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/images/logo.png';
@@ -8,14 +8,21 @@ interface MemberSidebarProps {
   onLogout: () => void;
   memberName: string;
   unreadNotifications?: number;
+  hideMobileToggle?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export default function MemberSidebar({ onLogout, memberName, unreadNotifications = 0 }: MemberSidebarProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export default function MemberSidebar({ onLogout, memberName, unreadNotifications = 0, hideMobileToggle = false, isOpen: controlledIsOpen, onClose }: MemberSidebarProps) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const navigate = useNavigate();
 
+  // Use controlled state if provided, otherwise use internal state
+  const sidebarIsOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setSidebarIsOpen = controlledIsOpen !== undefined && onClose ? onClose : setInternalIsOpen;
+
   const handleMenuClick = (id: string) => {
-    setIsOpen(false);
+    setSidebarIsOpen(false);
     
     // Navigate based on menu item
     switch(id) {
@@ -40,6 +47,9 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
       case 'notifications':
         navigate('/member/dashboard?tab=notifications');
         break;
+      case 'settings':
+        navigate('/member/settings');
+        break;
       default:
         navigate('/member/dashboard');
     }
@@ -53,34 +63,37 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
     { icon: Handshake, label: 'My Guarantees', id: 'guarantees' },
     { icon: FileText, label: 'Reports', id: 'reports' },
     { icon: Bell, label: 'Notifications', id: 'notifications', badge: unreadNotifications },
+    { icon: Settings, label: 'Settings', id: 'settings' },
   ];
 
   return (
     <>
-      {/* Mobile Toggle Button */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsOpen(!isOpen)}
-          className="bg-primary text-white hover:bg-primary/90"
-        >
-          {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </Button>
-      </div>
+      {/* Mobile Toggle Button - only show if not hidden */}
+      {!hideMobileToggle && (
+        <div className="lg:hidden fixed top-4 left-4 z-50">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarIsOpen(!sidebarIsOpen)}
+            className="bg-primary text-white hover:bg-primary/90"
+          >
+            {sidebarIsOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </Button>
+        </div>
+      )}
 
       {/* Overlay for mobile */}
-      {isOpen && (
+      {sidebarIsOpen && (
         <div
           className="fixed inset-0 bg-black/50 lg:hidden z-40"
-          onClick={() => setIsOpen(false)}
+          onClick={() => setSidebarIsOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside
         className={`fixed left-0 top-0 h-screen w-64 bg-gradient-to-b from-primary to-primary/90 text-white transform transition-transform duration-300 z-40 lg:relative lg:translate-x-0 lg:z-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
+          hideMobileToggle ? 'translate-x-0' : (sidebarIsOpen ? 'translate-x-0' : '-translate-x-full')
         }`}
       >
         <div className="p-6 space-y-8">
@@ -121,7 +134,10 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
           {/* Logout Button */}
           <div className="pt-4 border-t border-white/20 space-y-2">
             <Button
-              onClick={onLogout}
+              onClick={() => {
+                onLogout();
+                setSidebarIsOpen(false);
+              }}
               variant="ghost"
               className="w-full justify-start gap-3 text-white hover:bg-white/10"
             >

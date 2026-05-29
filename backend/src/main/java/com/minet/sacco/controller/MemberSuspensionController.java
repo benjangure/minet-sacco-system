@@ -1,8 +1,14 @@
 package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
+import com.minet.sacco.entity.Member;
 import com.minet.sacco.entity.MemberSuspension;
+import com.minet.sacco.entity.MemberExit;
 import com.minet.sacco.entity.User;
+import com.minet.sacco.repository.MemberRepository;
+import com.minet.sacco.repository.UserRepository;
+import com.minet.sacco.repository.MemberExitRepository;
+import com.minet.sacco.repository.MemberSuspensionRepository;
 import com.minet.sacco.service.MemberSuspensionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/members")
@@ -20,14 +27,26 @@ public class MemberSuspensionController {
     @Autowired
     private MemberSuspensionService memberSuspensionService;
 
+    @Autowired
+    private MemberRepository memberRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private MemberExitRepository memberExitRepository;
+
+    @Autowired
+    private MemberSuspensionRepository memberSuspensionRepository;
+
     /**
      * Suspend a member
-     * Only ADMIN and CREDIT_COMMITTEE can suspend members
+     * Credit Committee initiates suspension (acting as HR), Treasurer approves
      */
     @PostMapping("/{memberId}/suspend")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CREDIT_COMMITTEE')")
+    @PreAuthorize("hasRole('CREDIT_COMMITTEE')")
     public ResponseEntity<ApiResponse<MemberSuspension>> suspendMember(
-            @PathVariable Long memberId,
+            @PathVariable String memberId,
             @RequestBody Map<String, String> request,
             Authentication authentication) {
 
@@ -38,8 +57,14 @@ public class MemberSuspensionController {
                         .body(new ApiResponse<>(false, "Reason is required", null));
             }
 
-            User user = (User) authentication.getPrincipal();
-            MemberSuspension suspension = memberSuspensionService.suspendMember(memberId, reason, user);
+            // Find member by employee ID
+            Member member = memberRepository.findByEmployeeId(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found with employee ID: " + memberId));
+
+            String username = authentication.getName();
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+            MemberSuspension suspension = memberSuspensionService.suspendMember(member.getId(), reason, user);
 
             return ResponseEntity.ok(new ApiResponse<>(true, "Member suspended successfully", suspension));
 
@@ -54,14 +79,20 @@ public class MemberSuspensionController {
      * Only ADMIN and CREDIT_COMMITTEE can lift suspensions
      */
     @PostMapping("/{memberId}/lift-suspension")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CREDIT_COMMITTEE')")
+    @PreAuthorize("hasRole('CREDIT_COMMITTEE')")
     public ResponseEntity<ApiResponse<MemberSuspension>> liftSuspension(
-            @PathVariable Long memberId,
+            @PathVariable String memberId,
             Authentication authentication) {
 
         try {
-            User user = (User) authentication.getPrincipal();
-            MemberSuspension suspension = memberSuspensionService.liftSuspension(memberId, user);
+            // Find member by employee ID
+            Member member = memberRepository.findByEmployeeId(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found with employee ID: " + memberId));
+
+            String username = authentication.getName();
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+            MemberSuspension suspension = memberSuspensionService.liftSuspension(member.getId(), user);
 
             return ResponseEntity.ok(new ApiResponse<>(true, "Suspension lifted successfully", suspension));
 
@@ -95,6 +126,67 @@ public class MemberSuspensionController {
     }
 
     /**
+     * Get all suspensions (for reports)
+     */
+    @GetMapping("/suspensions/all")
+    @PreAuthorize("hasRole('TREASURER') or hasRole('CREDIT_COMMITTEE') or hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<MemberSuspension>>> getAllSuspensions() {
+        try {
+            List<MemberSuspension> all = memberSuspensionRepository.findAll();
+            return ResponseEntity.ok(new ApiResponse<>(true, "All suspensions retrieved", all));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Get pending suspensions (for Treasurer approval)
+     */
+    @GetMapping("/suspensions/pending")
+    @PreAuthorize("hasRole('TREASURER')")
+    public ResponseEntity<ApiResponse<List<MemberSuspension>>> getPendingSuspensions() {
+        try {
+            List<MemberSuspension> pending = memberSuspensionService.getPendingSuspensions();
+            return ResponseEntity.ok(new ApiResponse<>(true, "Pending suspensions retrieved", pending));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Get member status (active, suspended, exited)
+     */
+    @GetMapping("/{memberId}/status")
+    public ResponseEntity<ApiResponse<Map<String, String>>> getMemberStatus(@PathVariable String memberId) {
+        try {
+            Member member = memberRepository.findByEmployeeId(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found"));
+
+            String status = "ACTIVE";
+
+            // Check if member has an approved exit
+            Optional<MemberExit> exit = memberExitRepository.findByMemberIdAndStatus(member.getId(), "APPROVED");
+            if (exit.isPresent()) {
+                status = "EXITED";
+            } else {
+                // Check if member has an active suspension
+                Optional<MemberSuspension> suspension = memberSuspensionRepository.findByMemberIdAndIsActiveTrue(member.getId());
+                if (suspension.isPresent()) {
+                    status = "SUSPENDED";
+                }
+            }
+
+            Map<String, String> response = Map.of("memberId", memberId, "status", status);
+            return ResponseEntity.ok(new ApiResponse<>(true, "Member status retrieved", response));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        }
+    }
+
+    /**
      * Get suspension history
      */
     @GetMapping("/{memberId}/suspension-history")
@@ -110,16 +202,45 @@ public class MemberSuspensionController {
     }
 
     /**
+     * Validate suspension (Treasurer approval)
+     * Only TREASURER can validate suspensions
+     */
+    @PostMapping("/suspension/{suspensionId}/validate")
+    @PreAuthorize("hasRole('TREASURER')")
+    public ResponseEntity<ApiResponse<MemberSuspension>> validateSuspension(
+            @PathVariable Long suspensionId,
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
+
+        try {
+            String validationNotes = request.get("validationNotes");
+
+            // Get the user
+            String username = authentication.getName();
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
+            // Validate suspension
+            MemberSuspension suspension = memberSuspensionService.validateSuspension(suspensionId, validationNotes, user);
+
+            return ResponseEntity.ok(new ApiResponse<>(true, "Suspension validated successfully", suspension));
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        }
+    }
+
+    /**
      * Get all active suspensions
      * Only ADMIN and CREDIT_COMMITTEE can view
      */
     @GetMapping("/suspensions/active")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CREDIT_COMMITTEE')")
+    @PreAuthorize("hasRole('CREDIT_COMMITTEE')")
     public ResponseEntity<ApiResponse<List<MemberSuspension>>> getAllActiveSuspensions() {
         try {
             List<MemberSuspension> suspensions = memberSuspensionService.getAllActiveSuspensions();
             return ResponseEntity.ok(new ApiResponse<>(true, "Active suspensions retrieved", suspensions));
-
         } catch (Exception e) {
             return ResponseEntity.badRequest()
                     .body(new ApiResponse<>(false, e.getMessage(), null));

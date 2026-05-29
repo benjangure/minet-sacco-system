@@ -6,8 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Upload, FileCheck, AlertCircle, Loader2, Users, CheckCircle2, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { downloadAndOpenFile } from "@/utils/downloadHelper";
+import { getBackendUrl } from "@/config/api";
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = `${getBackendUrl()}/api`;
 
 interface Member {
   id: number;
@@ -172,12 +173,21 @@ const KycDocumentUpload = () => {
         // Refresh the document list
         fetchMemberDocuments();
       } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.message || "Failed to upload document",
-          variant: "destructive",
-        });
+        try {
+          const error = await response.json();
+          toast({
+            title: "Error",
+            description: error.message || error.error || "Failed to upload document",
+            variant: "destructive",
+          });
+        } catch (jsonError) {
+          // If response is not JSON, show status-based error
+          toast({
+            title: "Error",
+            description: `Upload failed (${response.status}). Please try again.`,
+            variant: "destructive",
+          });
+        }
       }
     } catch (error) {
       toast({

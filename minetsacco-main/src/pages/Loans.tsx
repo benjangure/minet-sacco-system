@@ -1134,8 +1134,8 @@ const Loans = () => {
                       <div className="flex justify-between mb-1">
                         <span className="text-xs text-gray-600">Repayment Status</span>
                         <span className="text-xs font-medium">
-                          {selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance
-                            ? `${Math.round(((selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.amount) * 100)}%`
+                          {selectedLoanForDetails.totalRepayable && selectedLoanForDetails.outstandingBalance
+                            ? `${Math.round(((selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.totalRepayable) * 100)}%`
                             : "0%"}
                         </span>
                       </div>
@@ -1143,8 +1143,8 @@ const Loans = () => {
                         <div
                           className="bg-green-500 h-2 rounded-full transition-all"
                           style={{
-                            width: selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance
-                              ? `${Math.min(((selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.amount) * 100, 100)}%`
+                            width: selectedLoanForDetails.totalRepayable && selectedLoanForDetails.outstandingBalance
+                              ? `${Math.min(((selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.totalRepayable) * 100, 100)}%`
                               : "0%"
                           }}
                         />
@@ -1160,8 +1160,8 @@ const Loans = () => {
                       <div className="bg-white rounded p-1.5 border border-green-100">
                         <p className="text-gray-600 text-xs">Repaid</p>
                         <p className="font-bold text-green-600">
-                          KES {selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance
-                            ? (selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance).toLocaleString()
+                          KES {selectedLoanForDetails.totalRepayable && selectedLoanForDetails.outstandingBalance
+                            ? Math.max(0, selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance).toLocaleString()
                             : "0"}
                         </p>
                       </div>

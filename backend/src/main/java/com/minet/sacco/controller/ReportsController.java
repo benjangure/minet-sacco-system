@@ -2,9 +2,11 @@ package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.ProfitLossReportDTO;
+import com.minet.sacco.dto.WithdrawalMonitoringReportDTO;
 import com.minet.sacco.service.ReportsService;
 import com.minet.sacco.service.ReportExportService;
 import com.minet.sacco.service.ProfitLossReportService;
+import com.minet.sacco.service.WithdrawalMonitoringReportService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -28,6 +30,9 @@ public class ReportsController {
 
     @Autowired
     private ProfitLossReportService profitLossReportService;
+
+    @Autowired
+    private WithdrawalMonitoringReportService withdrawalMonitoringReportService;
 
     // ===== CASHBOOK ENDPOINTS =====
     @GetMapping("/cashbook")
@@ -303,6 +308,85 @@ public class ReportsController {
         
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=profit_loss_" + LocalDate.now() + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfFile);
+    }
+
+    // ===== WITHDRAWAL MONITORING REPORT ENDPOINTS =====
+    @GetMapping("/withdrawal-monitoring")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    public ResponseEntity<ApiResponse<WithdrawalMonitoringReportDTO>> getWithdrawalMonitoringReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String memberNumber,
+            @RequestParam(required = false) String withdrawalMethod,
+            @RequestParam(required = false) String transactionStatus) {
+        
+        if (startDate == null || endDate == null) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Start date and end date are required"));
+        }
+        
+        if (startDate.isAfter(endDate)) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Start date must be before or equal to end date"));
+        }
+        
+        WithdrawalMonitoringReportDTO report = 
+            withdrawalMonitoringReportService.generateWithdrawalMonitoringReport(startDate, endDate, memberNumber, withdrawalMethod, transactionStatus);
+        return ResponseEntity.ok(ApiResponse.success("Withdrawal monitoring report generated successfully", report));
+    }
+
+    @GetMapping("/withdrawal-monitoring/export/excel")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    public ResponseEntity<byte[]> exportWithdrawalMonitoringExcel(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String memberNumber,
+            @RequestParam(required = false) String withdrawalMethod,
+            @RequestParam(required = false) String transactionStatus) throws Exception {
+        
+        if (startDate == null || endDate == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        if (startDate.isAfter(endDate)) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        WithdrawalMonitoringReportDTO report = 
+            withdrawalMonitoringReportService.generateWithdrawalMonitoringReport(startDate, endDate, memberNumber, withdrawalMethod, transactionStatus);
+        byte[] excelFile = reportExportService.exportWithdrawalMonitoringToExcel(report);
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=withdrawal_monitoring_" + LocalDate.now() + ".xlsx")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(excelFile);
+    }
+
+    @GetMapping("/withdrawal-monitoring/export/pdf")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    public ResponseEntity<byte[]> exportWithdrawalMonitoringPdf(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String memberNumber,
+            @RequestParam(required = false) String withdrawalMethod,
+            @RequestParam(required = false) String transactionStatus) throws Exception {
+        
+        if (startDate == null || endDate == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        if (startDate.isAfter(endDate)) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        WithdrawalMonitoringReportDTO report = 
+            withdrawalMonitoringReportService.generateWithdrawalMonitoringReport(startDate, endDate, memberNumber, withdrawalMethod, transactionStatus);
+        byte[] pdfFile = reportExportService.exportWithdrawalMonitoringToPdf(report);
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=withdrawal_monitoring_" + LocalDate.now() + ".pdf")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfFile);
     }

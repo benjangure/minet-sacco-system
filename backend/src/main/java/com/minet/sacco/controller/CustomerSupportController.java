@@ -108,6 +108,42 @@ public class CustomerSupportController {
         return ResponseEntity.ok(ApiResponse.success("Member profile retrieved", member));
     }
 
+    @PostMapping("/members/{memberId}/reset-password")
+    @PreAuthorize("hasRole('ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<String>> resetMemberPassword(
+            @PathVariable Long memberId,
+            Authentication authentication) {
+
+        User supportUser = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+
+        // Generate a temporary password reset token and send email
+        customerSupportService.sendPasswordResetEmail(member, supportUser);
+
+        return ResponseEntity.ok(ApiResponse.success("Password reset email sent to member", "Email sent successfully"));
+    }
+
+    @PostMapping("/members/{memberId}/set-temporary-password")
+    @PreAuthorize("hasRole('ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<SetTemporaryPasswordResponse>> setTemporaryPassword(
+            @PathVariable Long memberId,
+            Authentication authentication) {
+
+        User supportUser = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+
+        // Set temporary password for member
+        SetTemporaryPasswordResponse response = customerSupportService.setTemporaryPassword(member, supportUser);
+
+        return ResponseEntity.ok(ApiResponse.success("Temporary password set successfully", response));
+    }
+
     // DTOs
     public static class CreateTicketRequest {
         private Long memberId;
@@ -133,5 +169,21 @@ public class CustomerSupportController {
 
         public String getResolution() { return resolution; }
         public void setResolution(String resolution) { this.resolution = resolution; }
+    }
+
+    public static class SetTemporaryPasswordResponse {
+        private String temporaryPassword;
+        private String message;
+
+        public SetTemporaryPasswordResponse(String temporaryPassword, String message) {
+            this.temporaryPassword = temporaryPassword;
+            this.message = message;
+        }
+
+        public String getTemporaryPassword() { return temporaryPassword; }
+        public void setTemporaryPassword(String temporaryPassword) { this.temporaryPassword = temporaryPassword; }
+
+        public String getMessage() { return message; }
+        public void setMessage(String message) { this.message = message; }
     }
 }

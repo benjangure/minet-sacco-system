@@ -77,10 +77,36 @@ public class LoanDisbursementService {
                 loan.setOutstandingBalance(totalRepayable);
             }
         }
+        
+        // IMPORTANT: Always ensure outstandingBalance equals totalRepayable at disbursement
+        // This ensures accurate repayment tracking from the start
+        // Also handle cases where outstandingBalance is incorrectly set to a higher value
+        if (loan.getTotalRepayable() != null && 
+            (loan.getOutstandingBalance() == null || 
+             loan.getOutstandingBalance().compareTo(loan.getTotalRepayable()) != 0)) {
+            loan.setOutstandingBalance(loan.getTotalRepayable());
+        }
+        
+        // Safety check: if outstanding balance is somehow greater than total repayable, fix it
+        if (loan.getOutstandingBalance() != null && loan.getTotalRepayable() != null &&
+            loan.getOutstandingBalance().compareTo(loan.getTotalRepayable()) > 0) {
+            loan.setOutstandingBalance(loan.getTotalRepayable());
+        }
 
-        // Generate and assign loan number
-        String loanNumber = loanNumberGenerationService.generateLoanNumber(loan);
-        loan.setLoanNumber(loanNumber);
+        // Generate and assign loan number (only if not already assigned)
+        if (loan.getLoanNumber() == null || loan.getLoanNumber().isEmpty()) {
+            String loanNumber = loanNumberGenerationService.generateLoanNumber(loan);
+            loan.setLoanNumber(loanNumber);
+        } else {
+            // Loan already has a number, but verify it's not a duplicate from a failed attempt
+            // Check if another loan already has this number
+            boolean isDuplicate = loanRepository.existsByLoanNumberAndIdNot(loan.getLoanNumber(), loan.getId());
+            if (isDuplicate) {
+                // Another loan has this number, regenerate
+                String loanNumber = loanNumberGenerationService.generateLoanNumber(loan);
+                loan.setLoanNumber(loanNumber);
+            }
+        }
 
         // Update loan status
         loan.setStatus(Loan.Status.DISBURSED);
@@ -108,7 +134,7 @@ public class LoanDisbursementService {
         transaction.setAccount(savingsAccount);
         transaction.setTransactionType(Transaction.TransactionType.LOAN_DISBURSEMENT);
         transaction.setAmount(updatedLoan.getAmount());
-        transaction.setDescription("Loan disbursement to bank account - Loan Number: " + loanNumber + 
+        transaction.setDescription("Loan disbursement to bank account - Loan Number: " + updatedLoan.getLoanNumber() + 
                                   " | Bank: " + updatedLoan.getMember().getBankName() + 
                                   " | Account: " + updatedLoan.getMember().getBankAccountNumber());
         transaction.setCreatedBy(disbursedBy);

@@ -6,8 +6,9 @@ import { Upload, FileText, Image, CheckCircle, Eye, X, Download, RefreshCw } fro
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { downloadAndOpenFile } from "@/utils/downloadHelper";
+import { getBackendUrl } from "@/config/api";
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = `${getBackendUrl()}/api`;
 
 interface DocumentUploadProps {
   memberId: number;
