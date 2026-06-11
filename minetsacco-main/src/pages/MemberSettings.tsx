@@ -11,7 +11,8 @@ import MemberLayout from '@/components/MemberLayout';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 export default function MemberSettings() {
   const [backendUrl, setBackendUrlLocal] = useState('');

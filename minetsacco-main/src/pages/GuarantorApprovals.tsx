@@ -10,7 +10,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { CheckCircle, XCircle, AlertCircle, Clock } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface GuarantorRequest {
   id: number;

@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { FileText, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 const Reports = () => {
   const [reportType, setReportType] = useState("cashbook");

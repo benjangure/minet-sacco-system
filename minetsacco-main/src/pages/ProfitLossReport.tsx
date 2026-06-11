@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Download, Loader2, TrendingUp, TrendingDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface ProfitLossReportDTO {
   period: {

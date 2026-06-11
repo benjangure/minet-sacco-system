@@ -1,3 +1,4 @@
+import { getApiBaseUrl } from "../config/api";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Download, TrendingUp, Activity, BarChart3 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const API_BASE_URL = import.meta.env.VITE_NATIVE_BACKEND_URL
-  ? `${import.meta.env.VITE_NATIVE_BACKEND_URL}/api`
-  : "http://localhost:8080/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface AuditLog {
   id: number;

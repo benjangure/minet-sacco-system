@@ -13,7 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface BulkBatch {
   id: number;

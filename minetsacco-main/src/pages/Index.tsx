@@ -7,7 +7,8 @@ import { Users, Landmark, PiggyBank, AlertTriangle, Shield, FileText } from "luc
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import DepositApprovalPanel from "@/components/DepositApprovalPanel";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 const Index = () => {
   const { role, session } = useAuth();
