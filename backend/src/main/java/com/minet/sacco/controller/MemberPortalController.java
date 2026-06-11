@@ -266,6 +266,28 @@ public class MemberPortalController {
         try {
             Member member = getCurrentMember();
             List<Loan> loans = loanRepository.findByMemberId(member.getId());
+            
+            // Recalculate outstanding balance for each loan to ensure accuracy
+            for (Loan loan : loans) {
+                // Skip outstanding balance calculation for loans still in approval stages
+                // These loans don't have totalRepayable set yet (it's calculated by treasurer)
+                if (loan.getTotalRepayable() != null) {
+                    BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loan.getId());
+                    if (totalRepaid == null) {
+                        totalRepaid = BigDecimal.ZERO;
+                    }
+                    BigDecimal outstandingBalance = loan.getTotalRepayable().subtract(totalRepaid);
+                    if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
+                        outstandingBalance = BigDecimal.ZERO;
+                    }
+                    loan.setOutstandingBalance(outstandingBalance);
+                } else {
+                    // For loans in approval stages, set outstanding balance to null
+                    // Frontend should display "Awaiting approval/treasurer" instead of a balance
+                    loan.setOutstandingBalance(null);
+                }
+            }
+            
             return ResponseEntity.ok(loans);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
@@ -290,7 +312,25 @@ public class MemberPortalController {
                 return ResponseEntity.status(403).body("Unauthorized");
             }
             
-            return ResponseEntity.ok(loan.get());
+            Loan loanData = loan.get();
+            
+            // Recalculate outstanding balance to ensure accuracy only for loans with totalRepayable set
+            if (loanData.getTotalRepayable() != null) {
+                BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(id);
+                if (totalRepaid == null) {
+                    totalRepaid = BigDecimal.ZERO;
+                }
+                BigDecimal outstandingBalance = loanData.getTotalRepayable().subtract(totalRepaid);
+                if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
+                    outstandingBalance = BigDecimal.ZERO;
+                }
+                loanData.setOutstandingBalance(outstandingBalance);
+            } else {
+                // For loans in approval stages, set outstanding balance to null
+                loanData.setOutstandingBalance(null);
+            }
+            
+            return ResponseEntity.ok(loanData);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
@@ -699,6 +739,8 @@ public class MemberPortalController {
             LoanRepayment repayment = new LoanRepayment();
             repayment.setLoan(loan);
             repayment.setAmount(repaymentDTO.getAmount());
+            repayment.setPrincipalAmount(repaymentDTO.getPrincipalAmount() != null ? repaymentDTO.getPrincipalAmount() : repaymentDTO.getAmount());
+            repayment.setInterestAmount(repaymentDTO.getInterestAmount() != null ? repaymentDTO.getInterestAmount() : BigDecimal.ZERO);
             repayment.setPaymentDate(java.time.LocalDateTime.now());
             repayment.setPaymentMethod(LoanRepayment.PaymentMethod.valueOf(repaymentDTO.getPaymentMethod()));
             repayment.setDescription(repaymentDTO.getDescription());
@@ -706,6 +748,13 @@ public class MemberPortalController {
             
             // Update loan outstanding balance
             loan.setOutstandingBalance(loan.getOutstandingBalance().subtract(repaymentDTO.getAmount()));
+            if (repayment.getInterestAmount().compareTo(BigDecimal.ZERO) > 0 && loan.getInterestRemaining() != null) {
+                BigDecimal newInterestRemaining = loan.getInterestRemaining().subtract(repayment.getInterestAmount());
+                if (newInterestRemaining.compareTo(BigDecimal.ZERO) < 0) {
+                    newInterestRemaining = BigDecimal.ZERO;
+                }
+                loan.setInterestRemaining(newInterestRemaining);
+            }
             
             // Check if fully repaid
             boolean isFullyRepaid = loan.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0;
@@ -1757,11 +1806,11 @@ public class MemberPortalController {
             loanTable.addCell("Term (Months)");
             loanTable.addCell(loan.getTermMonths().toString());
             loanTable.addCell("Monthly Repayment");
-            loanTable.addCell("KES " + loan.getMonthlyRepayment());
+            loanTable.addCell(loan.getMonthlyRepayment() != null ? "KES " + loan.getMonthlyRepayment() : "N/A");
             loanTable.addCell("Status");
             loanTable.addCell(loan.getStatus().toString());
             loanTable.addCell("Outstanding Balance");
-            loanTable.addCell("KES " + loan.getOutstandingBalance());
+            loanTable.addCell(loan.getOutstandingBalance() != null ? "KES " + loan.getOutstandingBalance() : "N/A");
             document.add(loanTable);
             
             // Repayments
@@ -1785,7 +1834,7 @@ public class MemberPortalController {
                 document.add(repaymentTable);
             }
             
-            totalOutstanding = totalOutstanding.add(loan.getOutstandingBalance());
+            totalOutstanding = totalOutstanding.add(loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO);
             document.add(new com.itextpdf.layout.element.Paragraph(""));
         }
         

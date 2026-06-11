@@ -69,8 +69,28 @@ public class ExcelParserService {
                 if (loanNumberCell != null) {
                     item.setLoanNumber(getCellValueAsString(loanNumberCell));
                 }
-                
-                // Column 5: Loan Repayment Payment Method (optional, defaults to SALARY_DEDUCTION)
+
+                // Column 5: Loan Repayment Principal Amount (optional)
+                if (colIndex < row.getLastCellNum()) {
+                    Cell principalCell = row.getCell(colIndex++);
+                    if (principalCell != null) {
+                        item.setLoanRepaymentPrincipalAmount(getCellValueAsBigDecimal(principalCell));
+                    }
+                } else {
+                    colIndex++; // Skip if column doesn't exist
+                }
+
+                // Column 6: Loan Repayment Interest Amount (optional)
+                if (colIndex < row.getLastCellNum()) {
+                    Cell interestCell = row.getCell(colIndex++);
+                    if (interestCell != null) {
+                        item.setLoanRepaymentInterestAmount(getCellValueAsBigDecimal(interestCell));
+                    }
+                } else {
+                    colIndex++; // Skip if column doesn't exist
+                }
+
+                // Column 7: Loan Repayment Payment Method (optional, defaults to SALARY_DEDUCTION)
                 if (colIndex < row.getLastCellNum()) {
                     Cell paymentMethodCell = row.getCell(colIndex++);
                     if (paymentMethodCell != null) {
@@ -82,8 +102,8 @@ public class ExcelParserService {
                 } else {
                     colIndex++; // Skip if column doesn't exist
                 }
-                
-                // Column 6: Loan Repayment Reference Number (optional)
+
+                // Column 8: Loan Repayment Reference Number (optional)
                 if (colIndex < row.getLastCellNum()) {
                     Cell referenceNumberCell = row.getCell(colIndex++);
                     if (referenceNumberCell != null) {
@@ -94,6 +114,15 @@ public class ExcelParserService {
                     }
                 } else {
                     colIndex++; // Skip if column doesn't exist
+                }
+
+                // If principal / interest were supplied but total repayment amount was omitted, set the total.
+                if ((item.getLoanRepaymentAmount() == null || item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) == 0)
+                        && (item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) > 0
+                        || item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) > 0)) {
+                    item.setLoanRepaymentAmount(
+                            item.getLoanRepaymentPrincipalAmount().add(item.getLoanRepaymentInterestAmount())
+                    );
                 }
                 
                 // Dynamic columns based on enabled funds

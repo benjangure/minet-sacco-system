@@ -5,6 +5,7 @@ import com.minet.sacco.dto.LoanApplicationRequest;
 import com.minet.sacco.dto.LoanApprovalRequest;
 import com.minet.sacco.dto.LoanApprovalValidationDTO;
 import com.minet.sacco.dto.LoanRepaymentRequest;
+import com.minet.sacco.dto.TreasurerLoanApprovalRequest;
 import com.minet.sacco.entity.Loan;
 import com.minet.sacco.entity.LoanRepayment;
 import com.minet.sacco.entity.User;
@@ -77,6 +78,7 @@ public class LoanController {
             loanMap.put("status", loan.getStatus());
             loanMap.put("monthlyRepayment", loan.getMonthlyRepayment());
             loanMap.put("totalInterest", loan.getTotalInterest());
+            loanMap.put("interestRemaining", loan.getInterestRemaining());
             loanMap.put("totalRepayable", loan.getTotalRepayable());
             loanMap.put("outstandingBalance", loan.getOutstandingBalance());
             loanMap.put("purpose", loan.getPurpose());
@@ -620,4 +622,34 @@ public class LoanController {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
+
+    /**
+     * RESTRUCTURED: Treasurer sets interest rate and approves/rejects loan
+     * Called when loan is in PENDING_TREASURER status
+     * Only accessible by TREASURER role
+     */
+    @PostMapping("/{loanId}/treasurer/set-interest")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Loan>> treasurerSetInterest(
+            @PathVariable Long loanId,
+            @Valid @RequestBody com.minet.sacco.dto.TreasurerLoanApprovalRequest request,
+            Authentication authentication) {
+        try {
+            User treasurer = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("Treasurer user not found"));
+            
+            // Ensure request has the correct loan ID
+            request.setLoanId(loanId);
+            
+            Loan loan = loanService.treasurerSetInterestAndApprove(request, treasurer);
+            
+            return ResponseEntity.ok(ApiResponse.success(
+                request.getApproved() ? "Loan approved with interest set" : "Loan rejected",
+                loan
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
 }
+

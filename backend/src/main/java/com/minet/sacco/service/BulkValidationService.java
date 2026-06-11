@@ -86,6 +86,25 @@ public class BulkValidationService {
         if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) < 0) {
             errors.add("Row " + rowNumber + ": Loan repayment amount cannot be negative");
         }
+        if (item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) < 0) {
+            errors.add("Row " + rowNumber + ": Loan repayment principal amount cannot be negative");
+        }
+        if (item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) < 0) {
+            errors.add("Row " + rowNumber + ": Loan repayment interest amount cannot be negative");
+        }
+        if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) == 0 &&
+            (item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) > 0 ||
+             item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) > 0)) {
+            item.setLoanRepaymentAmount(item.getLoanRepaymentPrincipalAmount().add(item.getLoanRepaymentInterestAmount()));
+        }
+        if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0 &&
+            (item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) > 0 ||
+             item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) > 0)) {
+            BigDecimal splitTotal = item.getLoanRepaymentPrincipalAmount().add(item.getLoanRepaymentInterestAmount());
+            if (splitTotal.compareTo(item.getLoanRepaymentAmount()) != 0) {
+                errors.add("Row " + rowNumber + ": Loan repayment total must equal principal plus interest");
+            }
+        }
         if (item.getBenevolentFundAmount().compareTo(BigDecimal.ZERO) < 0) {
             errors.add("Row " + rowNumber + ": Benevolent fund amount cannot be negative");
         }

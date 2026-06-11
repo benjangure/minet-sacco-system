@@ -599,6 +599,30 @@ export default function MemberDashboard() {
               </Card>
             )}
 
+            {/* Loan Awaiting Guarantor Approval Alert */}
+            {activeLoans.some(l => l.status === 'PENDING_GUARANTOR_APPROVAL') && (
+              <Card className="border-blue-200 bg-blue-50">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-blue-900 mb-2">Loan Application Submitted</h3>
+                      <p className="text-sm text-blue-800 mb-3">
+                        You have {activeLoans.filter(l => l.status === 'PENDING_GUARANTOR_APPROVAL').length} loan application(s) awaiting guarantor approval.
+                        The loan details will be available once the guarantor(s) approve.
+                      </p>
+                      <Button 
+                        size="sm"
+                        onClick={() => setActiveTab('loans')}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        View Loan Status
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="grid gap-3 md:gap-4 md:grid-cols-2 lg:grid-cols-3">
               <Card className="border-none shadow-sm">
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -998,11 +1022,19 @@ export default function MemberDashboard() {
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Outstanding</p>
-                              <p className="font-semibold text-red-600">{formatCurrency(loan.outstandingBalance)}</p>
+                              <p className="font-semibold text-red-600">
+                                {loan.outstandingBalance !== null && loan.outstandingBalance !== undefined 
+                                  ? formatCurrency(loan.outstandingBalance) 
+                                  : 'Awaiting Approval'}
+                              </p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Monthly Payment</p>
-                              <p className="font-semibold">{formatCurrency(loan.monthlyRepayment)}</p>
+                              <p className="font-semibold">
+                                {loan.monthlyRepayment !== null && loan.monthlyRepayment !== undefined 
+                                  ? formatCurrency(loan.monthlyRepayment) 
+                                  : 'Pending'}
+                              </p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Repayments Made</p>
@@ -1104,11 +1136,19 @@ export default function MemberDashboard() {
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Outstanding</p>
-                              <p className="font-semibold text-red-600">{formatCurrency(loan.outstandingBalance)}</p>
+                              <p className="font-semibold text-red-600">
+                                {loan.outstandingBalance !== null && loan.outstandingBalance !== undefined 
+                                  ? formatCurrency(loan.outstandingBalance) 
+                                  : 'Awaiting Approval'}
+                              </p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Monthly Payment</p>
-                              <p className="font-semibold">{formatCurrency(loan.monthlyRepayment)}</p>
+                              <p className="font-semibold">
+                                {loan.monthlyRepayment !== null && loan.monthlyRepayment !== undefined 
+                                  ? formatCurrency(loan.monthlyRepayment) 
+                                  : 'Pending'}
+                              </p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Repayments Made</p>
@@ -1119,21 +1159,11 @@ export default function MemberDashboard() {
                           {/* Repayment Progress */}
                           <div className="border-t pt-4">
                             <p className="text-sm font-semibold mb-3">Repayment Progress</p>
-                            {(() => {
-                              // DEBUG: Log the raw loan object to see what the frontend is receiving
-                              console.log(`[DEBUG] Loan ${loan.id} (${loan.loanNumber}) - Raw API Data:`, {
-                                id: loan.id,
-                                loanNumber: loan.loanNumber,
-                                status: loan.status,
-                                amount: loan.amount,
-                                totalInterest: (loan as any).totalInterest,
-                                totalRepayable: loan.totalRepayable,
-                                outstandingBalance: loan.outstandingBalance,
-                                calculatedRepaid: loan.totalRepayable - loan.outstandingBalance,
-                                calculatedPercentage: ((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100
-                              });
-                              return null;
-                            })()}
+                            {loan.totalRepayable === null || loan.totalRepayable === undefined ? (
+                              <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                                This loan is awaiting approval. Repayment details will be available once approved by the treasurer.
+                              </div>
+                            ) : (
                             <div className="space-y-3">
                               <div>
                                 <div className="flex justify-between text-sm mb-1">
@@ -1161,6 +1191,7 @@ export default function MemberDashboard() {
                                 </div>
                               </div>
                             </div>
+                            )}
                           </div>
 
                           {/* Repayment History */}

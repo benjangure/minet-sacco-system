@@ -55,4 +55,13 @@ public interface GuarantorRepository extends JpaRepository<Guarantor, Long> {
            "AND l.status NOT IN ('REPAID', 'REJECTED', 'DEFAULTED')", nativeQuery = true)
     BigDecimal sumActivePledgesByMemberIdExcludingLoan(@Param("memberId") Long memberId,
                                                        @Param("excludeLoanId") Long excludeLoanId);
+
+    // Report-specific queries
+    List<Guarantor> findByMemberIdAndSelfGuaranteeIsTrueAndStatus(Long memberId, Guarantor.Status status);
+
+    List<Guarantor> findByMemberIdAndSelfGuaranteeIsFalseAndStatus(Long memberId, Guarantor.Status status);
+
+    List<Guarantor> findByMemberIdAndSelfGuaranteeIsFalse(Long memberId);
+
+    List<Guarantor> findByMemberIdAndSelfGuaranteeIsFalseAndStatusNotIn(Long memberId, List<Guarantor.Status> statuses);
 }

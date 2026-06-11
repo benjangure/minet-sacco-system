@@ -62,6 +62,19 @@ const Reports = () => {
   const [wmWithdrawalMethod, setWmWithdrawalMethod] = useState("");
   const [wmTransactionStatus, setWmTransactionStatus] = useState("");
 
+  // Guarantor Report filters
+  const [guarantorMemberId, setGuarantorMemberId] = useState("");
+  const [guarantorStatus, setGuarantorStatus] = useState("");
+  const [guarantorViewMode, setGuarantorViewMode] = useState("single");  // single or all
+
+  // Loan Eligibility filters
+  const [eligibilityMemberId, setEligibilityMemberId] = useState("");
+
+  // Monthly Contribution filters
+  const [mctStartDate, setMctStartDate] = useState("");
+  const [mctEndDate, setMctEndDate] = useState("");
+  const [mctBatchStatus, setMctBatchStatus] = useState("");
+
   const handleExportExcel = async () => {
     try {
       setLoading(true);
@@ -116,6 +129,28 @@ const Reports = () => {
         if (wmMemberNumber) url += `&memberNumber=${wmMemberNumber}`;
         if (wmWithdrawalMethod) url += `&withdrawalMethod=${wmWithdrawalMethod}`;
         if (wmTransactionStatus) url += `&transactionStatus=${wmTransactionStatus}`;
+      } else if (reportType === "guarantor-report") {
+        if (!guarantorMemberId) {
+          toast({ title: "Error", description: "Member ID is required", variant: "destructive" });
+          return;
+        }
+        url += `/guarantor/${guarantorMemberId}/export/excel`;
+        if (guarantorStatus) url += `?guarantorStatus=${guarantorStatus}`;
+      } else if (reportType === "guarantor-all-report") {
+        url += `/guarantor/all/export/excel`;  // Note: May need endpoint adjustment
+      } else if (reportType === "loan-eligibility-report") {
+        if (!eligibilityMemberId) {
+          toast({ title: "Error", description: "Member ID is required", variant: "destructive" });
+          return;
+        }
+        url += `/loan-eligibility/${eligibilityMemberId}/export/excel`;
+      } else if (reportType === "monthly-contribution-tracking") {
+        if (!mctStartDate || !mctEndDate) {
+          toast({ title: "Error", description: "Start and end dates are required", variant: "destructive" });
+          return;
+        }
+        url += `/monthly-contribution-tracking/export/excel?startDate=${mctStartDate}&endDate=${mctEndDate}`;
+        if (mctBatchStatus) url += `&batchStatus=${mctBatchStatus}`;
       }
 
       const response = await fetch(url, {
@@ -195,6 +230,28 @@ const Reports = () => {
         if (wmMemberNumber) url += `&memberNumber=${wmMemberNumber}`;
         if (wmWithdrawalMethod) url += `&withdrawalMethod=${wmWithdrawalMethod}`;
         if (wmTransactionStatus) url += `&transactionStatus=${wmTransactionStatus}`;
+      } else if (reportType === "guarantor-report") {
+        if (!guarantorMemberId) {
+          toast({ title: "Error", description: "Member ID is required", variant: "destructive" });
+          return;
+        }
+        url += `/guarantor/${guarantorMemberId}/export/pdf`;
+        if (guarantorStatus) url += `?guarantorStatus=${guarantorStatus}`;
+      } else if (reportType === "guarantor-all-report") {
+        url += `/guarantor/all/export/pdf`;  // Note: May need endpoint adjustment
+      } else if (reportType === "loan-eligibility-report") {
+        if (!eligibilityMemberId) {
+          toast({ title: "Error", description: "Member ID is required", variant: "destructive" });
+          return;
+        }
+        url += `/loan-eligibility/${eligibilityMemberId}/export/pdf`;
+      } else if (reportType === "monthly-contribution-tracking") {
+        if (!mctStartDate || !mctEndDate) {
+          toast({ title: "Error", description: "Start and end dates are required", variant: "destructive" });
+          return;
+        }
+        url += `/monthly-contribution-tracking/export/pdf?startDate=${mctStartDate}&endDate=${mctEndDate}`;
+        if (mctBatchStatus) url += `&batchStatus=${mctBatchStatus}`;
       }
 
       const response = await fetch(url, {
@@ -267,14 +324,17 @@ const Reports = () => {
                         <SelectItem value="loan-register">Loan Register</SelectItem>
                       </>
                     )}
-                    {canViewGuarantorReport && (
-                      <SelectItem value="guarantor-report">Guarantor Report</SelectItem>
-                    )}
                     {canViewLoanEligibilityReport && (
                       <SelectItem value="loan-eligibility-report">Loan Eligibility Report</SelectItem>
                     )}
                     {canViewWithdrawalMonitoringReport && (
                       <SelectItem value="withdrawal-monitoring">Withdrawal Monitoring Report</SelectItem>
+                    )}
+                    {canViewGuarantorReport && (
+                      <SelectItem value="guarantor-report">Guarantor Report</SelectItem>
+                    )}
+                    {canViewGuarantorReport && (
+                      <SelectItem value="guarantor-all-report">Guarantor Report (All Members)</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
@@ -492,6 +552,84 @@ const Reports = () => {
                         <SelectContent>
                           <SelectItem value="COMPLETED">Completed</SelectItem>
                           <SelectItem value="PENDING">Pending</SelectItem>
+                          <SelectItem value="FAILED">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Guarantor Report Filters */}
+              {reportType === "guarantor-report" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Guarantor Report Filters</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Member ID *</label>
+                      <Input type="text" placeholder="e.g., 1" value={guarantorMemberId} onChange={(e) => setGuarantorMemberId(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Guarantor Status</label>
+                      <Select value={guarantorStatus} onValueChange={setGuarantorStatus}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ACTIVE">Active</SelectItem>
+                          <SelectItem value="RELEASED">Released</SelectItem>
+                          <SelectItem value="DEFAULTED">Defaulted</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Guarantor Report All Members Filters */}
+              {reportType === "guarantor-all-report" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Guarantor Report (All Members)</h3>
+                  <p className="text-sm text-muted-foreground">Displays guarantorship capacity for all members at a glance</p>
+                </div>
+              )}
+
+              {/* Loan Eligibility Report Filters */}
+              {reportType === "loan-eligibility-report" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Loan Eligibility Report Filters</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Member ID *</label>
+                      <Input type="text" placeholder="e.g., 1" value={eligibilityMemberId} onChange={(e) => setEligibilityMemberId(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Monthly Contribution Tracking Filters */}
+              {reportType === "monthly-contribution-tracking" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Monthly Contribution Tracking Filters</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Start Date *</label>
+                      <Input type="date" value={mctStartDate} onChange={(e) => setMctStartDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">End Date *</label>
+                      <Input type="date" value={mctEndDate} onChange={(e) => setMctEndDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Batch Status</label>
+                      <Select value={mctBatchStatus} onValueChange={setMctBatchStatus}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PENDING">Pending</SelectItem>
+                          <SelectItem value="PROCESSING">Processing</SelectItem>
+                          <SelectItem value="COMPLETED">Completed</SelectItem>
                           <SelectItem value="FAILED">Failed</SelectItem>
                         </SelectContent>
                       </Select>

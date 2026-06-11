@@ -42,8 +42,8 @@ public class LoanRepaymentService {
      * Record a loan repayment and update outstanding balance
      */
     @Transactional
-    public LoanRepayment recordRepayment(Long loanId, BigDecimal amount, LoanRepayment.PaymentMethod paymentMethod, 
-                                         String referenceNumber, LocalDateTime paymentDate, User recordedBy) {
+    public LoanRepayment recordRepayment(Long loanId, BigDecimal amount, BigDecimal principalAmount, BigDecimal interestAmount,
+                                         LoanRepayment.PaymentMethod paymentMethod, String referenceNumber, LocalDateTime paymentDate, User recordedBy) {
         
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
@@ -52,8 +52,28 @@ public class LoanRepaymentService {
             throw new RuntimeException("Can only record repayments for DISBURSED loans");
         }
 
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal principal = principalAmount != null ? principalAmount.setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        BigDecimal interest = interestAmount != null ? interestAmount.setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+
+        if ((amount == null || amount.compareTo(BigDecimal.ZERO) == 0)
+                && (principal.compareTo(BigDecimal.ZERO) > 0 || interest.compareTo(BigDecimal.ZERO) > 0)) {
+            amount = principal.add(interest);
+        }
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new RuntimeException("Repayment amount must be greater than zero");
+        }
+
+        if (principal.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Principal amount cannot be negative");
+        }
+
+        if (interest.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Interest amount cannot be negative");
+        }
+
+        if (principal.add(interest).compareTo(amount) != 0) {
+            throw new RuntimeException("Repayment total must equal principal plus interest");
         }
 
         if (amount.compareTo(loan.getOutstandingBalance()) > 0) {
@@ -64,6 +84,8 @@ public class LoanRepaymentService {
         LoanRepayment repayment = new LoanRepayment();
         repayment.setLoan(loan);
         repayment.setAmount(amount);
+        repayment.setPrincipalAmount(principal);
+        repayment.setInterestAmount(interest);
         repayment.setPaymentMethod(paymentMethod);
         repayment.setReferenceNumber(referenceNumber);
         repayment.setPaymentDate(paymentDate);
@@ -77,6 +99,14 @@ public class LoanRepaymentService {
         BigDecimal newOutstandingBalance = loan.getOutstandingBalance().subtract(amount);
         loan.setOutstandingBalance(newOutstandingBalance);
 
+        if (interest.compareTo(BigDecimal.ZERO) > 0 && loan.getInterestRemaining() != null) {
+            BigDecimal newInterestRemaining = loan.getInterestRemaining().subtract(interest);
+            if (newInterestRemaining.compareTo(BigDecimal.ZERO) < 0) {
+                newInterestRemaining = BigDecimal.ZERO;
+            }
+            loan.setInterestRemaining(newInterestRemaining);
+        }
+
         // If fully repaid, update status
         if (newOutstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
             loan.setStatus(Loan.Status.REPAID);
@@ -84,19 +114,37 @@ public class LoanRepaymentService {
 
         loanRepository.save(loan);
 
+        // Preserve final amount for use in lambda
+        final BigDecimal repaymentAmount = amount;
+        final BigDecimal interestForLambda = interest;
+
         // Create transaction record so repayment appears in Member Transaction History
         accountRepository.findByMemberIdAndAccountType(loan.getMember().getId(), Account.AccountType.SAVINGS)
                 .ifPresent(account -> {
+                    // Create LOAN_REPAYMENT transaction for the full amount
                     Transaction transaction = new Transaction();
                     transaction.setAccount(account);
                     transaction.setTransactionType(Transaction.TransactionType.LOAN_REPAYMENT);
-                    transaction.setAmount(amount);
+                    transaction.setAmount(repaymentAmount);
                     transaction.setDescription("Loan repayment - Loan #" + loan.getLoanNumber() +
                             " - Method: " + paymentMethod +
                             (referenceNumber != null && !referenceNumber.isEmpty() ? " - Ref: " + referenceNumber : ""));
                     transaction.setTransactionDate(paymentDate != null ? paymentDate : LocalDateTime.now());
                     transaction.setCreatedBy(recordedBy);
                     transactionRepository.save(transaction);
+
+                    // Create separate INTEREST transaction if interest was paid
+                    if (interestForLambda.compareTo(BigDecimal.ZERO) > 0) {
+                        Transaction interestTransaction = new Transaction();
+                        interestTransaction.setAccount(account);
+                        interestTransaction.setTransactionType(Transaction.TransactionType.INTEREST);
+                        interestTransaction.setAmount(interestForLambda);
+                        interestTransaction.setDescription("Interest income - Loan #" + loan.getLoanNumber() +
+                                (referenceNumber != null && !referenceNumber.isEmpty() ? " - Ref: " + referenceNumber : ""));
+                        interestTransaction.setTransactionDate(paymentDate != null ? paymentDate : LocalDateTime.now());
+                        interestTransaction.setCreatedBy(recordedBy);
+                        transactionRepository.save(interestTransaction);
+                    }
                 });
 
         // Update guarantor pledge tracking (reduce pledge for self-guarantors)

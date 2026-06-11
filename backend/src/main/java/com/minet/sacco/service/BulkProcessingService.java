@@ -643,6 +643,8 @@ public class BulkProcessingService {
             com.minet.sacco.dto.LoanRepaymentRequest repaymentRequest = new com.minet.sacco.dto.LoanRepaymentRequest();
             repaymentRequest.setLoanId(loan.getId());
             repaymentRequest.setAmount(item.getLoanRepaymentAmount());
+            repaymentRequest.setPrincipalAmount(item.getLoanRepaymentPrincipalAmount());
+            repaymentRequest.setInterestAmount(item.getLoanRepaymentInterestAmount());
             
             // Set payment method from bulk item (defaults to SALARY_DEDUCTION)
             repaymentRequest.setPaymentMethod(item.getLoanRepaymentPaymentMethod());
@@ -659,7 +661,17 @@ public class BulkProcessingService {
             
             // Refresh loan to get updated status and balance
             Loan updatedLoan = loanRepository.findById(loan.getId()).orElse(loan);
-            BigDecimal outstandingAfter = updatedLoan.getOutstandingBalance();
+            
+            // Recalculate outstanding balance to ensure accuracy (totalRepayable - totalRepaid)
+            BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(updatedLoan.getId());
+            if (totalRepaid == null) {
+                totalRepaid = BigDecimal.ZERO;
+            }
+            BigDecimal outstandingAfter = updatedLoan.getTotalRepayable().subtract(totalRepaid);
+            if (outstandingAfter.compareTo(BigDecimal.ZERO) < 0) {
+                outstandingAfter = BigDecimal.ZERO;
+            }
+            
             boolean isFullyRepaid = updatedLoan.getStatus() == Loan.Status.REPAID && 
                                    outstandingAfter.compareTo(BigDecimal.ZERO) <= 0;
             

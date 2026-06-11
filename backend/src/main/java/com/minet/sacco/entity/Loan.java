@@ -50,8 +50,13 @@ public class Loan {
     private BigDecimal totalInterest;
 
     @DecimalMin(value = "0.00")
+    @Column(name = "interest_remaining", nullable = true)
+    private BigDecimal interestRemaining;
+
+    @DecimalMin(value = "0.00")
     private BigDecimal totalRepayable;
 
+    @NotNull
     @DecimalMin(value = "0.00")
     @Column(name = "original_principal")
     private BigDecimal originalPrincipal;
@@ -144,6 +149,9 @@ public class Loan {
     public BigDecimal getTotalInterest() { return totalInterest; }
     public void setTotalInterest(BigDecimal totalInterest) { this.totalInterest = totalInterest; }
 
+    public BigDecimal getInterestRemaining() { return interestRemaining; }
+    public void setInterestRemaining(BigDecimal interestRemaining) { this.interestRemaining = interestRemaining; }
+
     public BigDecimal getTotalRepayable() { return totalRepayable; }
     public void setTotalRepayable(BigDecimal totalRepayable) { this.totalRepayable = totalRepayable; }
 
@@ -210,6 +218,7 @@ public class Loan {
         BigDecimal rate = this.interestRate.divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
         BigDecimal timeInYears = new BigDecimal(this.termMonths).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
         this.totalInterest = this.amount.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
+        this.interestRemaining = this.totalInterest;
 
         // Calculate total repayable: amount + totalInterest
         this.totalRepayable = this.amount.add(this.totalInterest);

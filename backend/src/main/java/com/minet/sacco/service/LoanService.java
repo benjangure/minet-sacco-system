@@ -53,10 +53,13 @@ public class LoanService {
     private MemberValidationService memberValidationService;
 
     @Autowired
-    private AuditService auditService;
+    private UserRepository userRepository;
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private AuditService auditService;
 
     @Autowired
     private LoanEligibilityValidator loanEligibilityValidator;
@@ -206,17 +209,12 @@ public class LoanService {
             throw new RuntimeException("Loan must have at least one guarantor or member must self-guarantee");
         }
 
-        // Calculate loan financials
+        // RESTRUCTURED: Don't calculate interest at application stage
+        // Interest will be set by treasurer at PENDING_TREASURER stage
+        // Leave fields null - treasurer will set them before final approval
         BigDecimal principal = request.getAmount();
         BigDecimal annualRate = loanProduct.getInterestRate();
         Integer termMonths = request.getTermMonths();
-        
-        // Simple interest calculation: Interest = Principal * Rate * Time
-        BigDecimal rate = annualRate.divide(BigDecimal.valueOf(100));
-        BigDecimal timeInYears = BigDecimal.valueOf(termMonths).divide(BigDecimal.valueOf(12), 4, BigDecimal.ROUND_HALF_UP);
-        BigDecimal totalInterest = principal.multiply(rate).multiply(timeInYears).setScale(2, BigDecimal.ROUND_HALF_UP);
-        BigDecimal totalRepayable = principal.add(totalInterest);
-        BigDecimal monthlyRepayment = totalRepayable.divide(BigDecimal.valueOf(termMonths), 2, BigDecimal.ROUND_HALF_UP);
 
         // Determine loan status based on guarantor types
         boolean hasNonSelfGuarantors = request.getGuarantors() != null && 
@@ -239,21 +237,21 @@ public class LoanService {
         loan.setMember(member);
         loan.setLoanProduct(loanProduct);
         loan.setAmount(principal);
+        loan.setOriginalPrincipal(principal);  // Set original principal to the requested amount
         loan.setInterestRate(annualRate);
         loan.setTermMonths(termMonths);
-        loan.setMonthlyRepayment(monthlyRepayment);
-        loan.setTotalInterest(totalInterest);
-        loan.setTotalRepayable(totalRepayable);
-        loan.setOutstandingBalance(totalRepayable);
+        // RESTRUCTURED: Don't set interest fields at application - leave them null
+        loan.setMonthlyRepayment(null);  // Will be set by treasurer
+        loan.setTotalInterest(null);     // Will be set by treasurer
+        loan.setTotalRepayable(null);    // Will be set by treasurer
+        loan.setOutstandingBalance(null); // Will be set by treasurer
         loan.setPurpose(request.getPurpose());
         loan.setStatus(initialStatus);
         loan.setApplicationDate(LocalDateTime.now());
         loan.setCreatedBy(createdBy);
-        loan.setLoanNumber(null); // NEW: Explicitly set to null - will be assigned on disbursement
+        loan.setLoanNumber(null); // Will be assigned on disbursement
 
-        // Calculate repayment details and set originalPrincipal
-        loan.calculateRepaymentDetails();
-
+        // Don't call calculateRepaymentDetails() - interest not calculated at application
         loan = loanRepository.save(loan);
 
         // Create guarantor records with custom guarantee amounts
@@ -386,6 +384,34 @@ public class LoanService {
                 notificationRole = "TREASURER";
             } else if (currentStatus == Loan.Status.PENDING_TREASURER) {
                 nextStatus = Loan.Status.APPROVED;
+                
+                // Treasurer must set total interest amount (not percentage) at this stage
+                if (request.getInterestRate() == null || request.getInterestRate().compareTo(BigDecimal.ZERO) < 0) {
+                    throw new RuntimeException("Total interest amount must be provided by Treasurer for final approval");
+                }
+                
+                // Set the total interest amount directly (as provided by HR)
+                BigDecimal totalInterestAmount = request.getInterestRate(); // This is actually the total interest in KES
+                loan.setTotalInterest(totalInterestAmount);
+                loan.setInterestRemaining(totalInterestAmount);
+                
+                // Calculate derived fields:
+                // totalRepayable = principal + totalInterest
+                loan.setTotalRepayable(loan.getAmount().add(totalInterestAmount));
+                
+                // monthlyRepayment = totalRepayable / termMonths
+                if (loan.getTermMonths() != null && loan.getTermMonths() > 0) {
+                    BigDecimal monthlyRepayment = loan.getTotalRepayable().divide(
+                        new BigDecimal(loan.getTermMonths()),
+                        2,
+                        java.math.RoundingMode.HALF_UP
+                    );
+                    loan.setMonthlyRepayment(monthlyRepayment);
+                }
+                
+                // Set outstanding balance to total repayable initially (will be updated as loan is repaid)
+                loan.setOutstandingBalance(loan.getTotalRepayable());
+                
                 notificationMessage = "Your loan application for KES " + loan.getAmount() + " has been approved and is ready for disbursement.";
                 notificationRole = null; // Notify member
             } else {
@@ -473,19 +499,46 @@ public class LoanService {
             throw new RuntimeException("Loan is not in disbursed status");
         }
 
+        BigDecimal requestAmount = request.getAmount();
+        BigDecimal principalAmount = request.getPrincipalAmount() != null ? request.getPrincipalAmount().setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        BigDecimal interestAmount = request.getInterestAmount() != null ? request.getInterestAmount().setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+
+        if ((requestAmount == null || requestAmount.compareTo(BigDecimal.ZERO) == 0)
+                && (principalAmount.compareTo(BigDecimal.ZERO) > 0 || interestAmount.compareTo(BigDecimal.ZERO) > 0)) {
+            requestAmount = principalAmount.add(interestAmount);
+        }
+
+        if (requestAmount == null || requestAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Repayment amount must be greater than zero");
+        }
+
+        if (principalAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Principal amount cannot be negative");
+        }
+
+        if (interestAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Interest amount cannot be negative");
+        }
+
+        if (principalAmount.add(interestAmount).compareTo(requestAmount) != 0) {
+            throw new RuntimeException("Repayment total must equal principal plus interest");
+        }
+
         // Validate repayment amount
         // Round both to 2 decimal places to avoid floating point precision issues
         BigDecimal outstandingBefore = getOutstandingBalance(loan.getId())
                 .setScale(2, java.math.RoundingMode.HALF_UP);
-        BigDecimal requestAmount = request.getAmount().setScale(2, java.math.RoundingMode.HALF_UP);
-        if (requestAmount.compareTo(outstandingBefore) > 0) {
+        BigDecimal requestAmountRounded = requestAmount.setScale(2, java.math.RoundingMode.HALF_UP);
+        if (requestAmountRounded.compareTo(outstandingBefore) > 0) {
             throw new RuntimeException("Repayment amount cannot exceed outstanding balance of KES " + outstandingBefore);
         }
 
         // Create repayment record
         LoanRepayment repayment = new LoanRepayment();
         repayment.setLoan(loan);
-        repayment.setAmount(request.getAmount());
+        repayment.setAmount(requestAmount);
+        repayment.setPrincipalAmount(principalAmount);
+        repayment.setInterestAmount(interestAmount);
         repayment.setRecordedBy(createdBy);
         repayment.setPaymentDate(LocalDateTime.now());
         repayment = loanRepaymentRepository.save(repayment);
@@ -810,6 +863,93 @@ public class LoanService {
         // Delegate to the existing applyForLoan method
         // The loan officer is recorded as the creator
         return applyForLoan(request, loanOfficer);
+    }
+
+    /**
+     * RESTRUCTURED: Treasurer sets interest and approves/rejects loan
+     * Called when loan is in PENDING_TREASURER status
+     * Treasurer can override product interest rate before final approval
+     */
+    @Transactional
+    public Loan treasurerSetInterestAndApprove(com.minet.sacco.dto.TreasurerLoanApprovalRequest request, User treasurer) {
+        Loan loan = loanRepository.findById(request.getLoanId())
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+        
+        // Validate loan is in PENDING_TREASURER status
+        if (loan.getStatus() != Loan.Status.PENDING_TREASURER) {
+            throw new RuntimeException("Loan must be in PENDING_TREASURER status to set interest. Current status: " + loan.getStatus());
+        }
+        
+        if (request.getApproved()) {
+            // Treasurer approves - calculate interest from provided rate
+            BigDecimal principal = loan.getAmount();
+            BigDecimal annualRate = request.getInterestRate();
+            Integer termMonths = loan.getTermMonths();
+            
+            // Simple interest calculation: Interest = Principal * Rate * Time
+            BigDecimal rate = annualRate.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+            BigDecimal timeInYears = new BigDecimal(termMonths).divide(new BigDecimal("12"), 4, RoundingMode.HALF_UP);
+            BigDecimal totalInterest = principal.multiply(rate).multiply(timeInYears).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal totalRepayable = principal.add(totalInterest);
+            BigDecimal monthlyRepayment = totalRepayable.divide(new BigDecimal(termMonths), 2, RoundingMode.HALF_UP);
+            
+            // Set calculated interest fields
+            loan.setTotalInterest(totalInterest);
+            loan.setTotalRepayable(totalRepayable);
+            loan.setMonthlyRepayment(monthlyRepayment);
+            loan.setOutstandingBalance(totalRepayable);
+            loan.setOriginalPrincipal(principal);  // Set for future reference
+            
+            // Move to APPROVED status
+            loan.setStatus(Loan.Status.APPROVED);
+            loan.setApprovedBy(treasurer);
+            loan.setApprovalDate(LocalDateTime.now());
+            
+            loan = loanRepository.save(loan);
+            
+            // Notify member that loan approved with interest details
+            Optional<User> memberUserOpt = memberRepository.findById(loan.getMember().getId())
+                    .flatMap(m -> {
+                        // Find user by member ID through User table
+                        try {
+                            return userRepository.findByMemberId(m.getId());
+                        } catch (Exception e) {
+                            return Optional.empty();
+                        }
+                    });
+            
+            if (memberUserOpt.isPresent()) {
+                String message = "Your loan application has been approved! Loan Amount: KES " + principal.toPlainString() + 
+                        ", Interest Rate: " + annualRate + "%, Total Repayable: KES " + totalRepayable.toPlainString() + 
+                        ", Monthly Payment: KES " + monthlyRepayment.toPlainString() + ". Your loan is ready for disbursement.";
+                notificationService.notifyUser(memberUserOpt.get().getId(), message, "LOAN_APPROVED", loan.getId(), loan.getMember().getId(), "LOAN_APPROVED");
+            }
+        } else {
+            // Treasurer rejects - revert to PENDING_CREDIT_COMMITTEE for reconsideration
+            loan.setStatus(Loan.Status.PENDING_CREDIT_COMMITTEE);
+            if (request.getNotes() != null) {
+                loan.setRejectionReason(request.getNotes());
+            }
+            loan = loanRepository.save(loan);
+            
+            // Notify member about rejection
+            Optional<User> rejectionMemberUserOpt = memberRepository.findById(loan.getMember().getId())
+                    .flatMap(m -> {
+                        try {
+                            return userRepository.findByMemberId(m.getId());
+                        } catch (Exception e) {
+                            return Optional.empty();
+                        }
+                    });
+            
+            if (rejectionMemberUserOpt.isPresent()) {
+                String message = "Your loan application was not approved at the final review stage. " +
+                        (request.getNotes() != null ? "Reason: " + request.getNotes() : "Please contact the SACCO for details.");
+                notificationService.notifyUser(rejectionMemberUserOpt.get().getId(), message, "LOAN_REJECTED", loan.getId(), loan.getMember().getId(), "LOAN_REJECTED");
+            }
+        }
+        
+        return loan;
     }
 
     /**

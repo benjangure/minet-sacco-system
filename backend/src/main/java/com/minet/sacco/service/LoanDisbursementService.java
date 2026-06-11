@@ -51,6 +51,11 @@ public class LoanDisbursementService {
             throw new RuntimeException("Loan must be APPROVED before disbursement. Current status: " + freshLoan.getStatus());
         }
         
+        // RESTRUCTURED: Check that treasurer has set interest before disbursement
+        if (freshLoan.getTotalInterest() == null || freshLoan.getTotalRepayable() == null || freshLoan.getMonthlyRepayment() == null) {
+            throw new RuntimeException("Cannot disburse loan without interest set. Treasurer must approve with interest amount first. Loan ID: " + freshLoan.getId());
+        }
+        
         loan = freshLoan;
 
         // Verify and recalculate loan calculations if they're missing or zero
@@ -75,6 +80,7 @@ public class LoanDisbursementService {
                 loan.setTotalRepayable(totalRepayable);
                 loan.setMonthlyRepayment(monthlyRepayment);
                 loan.setOutstandingBalance(totalRepayable);
+                loan.setInterestRemaining(totalInterest);
             }
         }
         
@@ -85,6 +91,9 @@ public class LoanDisbursementService {
             (loan.getOutstandingBalance() == null || 
              loan.getOutstandingBalance().compareTo(loan.getTotalRepayable()) != 0)) {
             loan.setOutstandingBalance(loan.getTotalRepayable());
+        }
+        if (loan.getTotalInterest() != null && loan.getInterestRemaining() == null) {
+            loan.setInterestRemaining(loan.getTotalInterest());
         }
         
         // Safety check: if outstanding balance is somehow greater than total repayable, fix it

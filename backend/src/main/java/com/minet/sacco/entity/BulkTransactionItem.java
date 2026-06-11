@@ -38,6 +38,12 @@ public class BulkTransactionItem {
     @Column(name = "loan_repayment_amount", precision = 15, scale = 2)
     private BigDecimal loanRepaymentAmount = BigDecimal.ZERO;
 
+    @Column(name = "loan_repayment_principal_amount", precision = 15, scale = 2)
+    private BigDecimal loanRepaymentPrincipalAmount = BigDecimal.ZERO;
+
+    @Column(name = "loan_repayment_interest_amount", precision = 15, scale = 2)
+    private BigDecimal loanRepaymentInterestAmount = BigDecimal.ZERO;
+
     @Column(name = "loan_number", length = 50)
     private String loanNumber;
 
@@ -115,6 +121,12 @@ public class BulkTransactionItem {
 
     public BigDecimal getLoanRepaymentAmount() { return loanRepaymentAmount; }
     public void setLoanRepaymentAmount(BigDecimal loanRepaymentAmount) { this.loanRepaymentAmount = loanRepaymentAmount; }
+
+    public BigDecimal getLoanRepaymentPrincipalAmount() { return loanRepaymentPrincipalAmount; }
+    public void setLoanRepaymentPrincipalAmount(BigDecimal loanRepaymentPrincipalAmount) { this.loanRepaymentPrincipalAmount = loanRepaymentPrincipalAmount; }
+
+    public BigDecimal getLoanRepaymentInterestAmount() { return loanRepaymentInterestAmount; }
+    public void setLoanRepaymentInterestAmount(BigDecimal loanRepaymentInterestAmount) { this.loanRepaymentInterestAmount = loanRepaymentInterestAmount; }
 
     public String getLoanNumber() { return loanNumber; }
     public void setLoanNumber(String loanNumber) { this.loanNumber = loanNumber; }

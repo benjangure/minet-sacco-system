@@ -19,14 +19,17 @@ import { API_BASE_URL } from "@/config/api";
 
 const loanStatusColors: Record<string, string> = {
   PENDING: "bg-blue-100 text-blue-800",
-  UNDER_REVIEW: "bg-yellow-100 text-yellow-800",
+  PENDING_GUARANTOR_APPROVAL: "bg-yellow-100 text-yellow-800",
+  PENDING_GUARANTOR_REPLACEMENT: "bg-yellow-100 text-yellow-800",
+  PENDING_GUARANTOR_REASSIGNMENT: "bg-yellow-100 text-yellow-800",
+  PENDING_LOAN_OFFICER_REVIEW: "bg-yellow-100 text-yellow-800",
+  PENDING_CREDIT_COMMITTEE: "bg-yellow-100 text-yellow-800",
+  PENDING_TREASURER: "bg-yellow-100 text-yellow-800",
   APPROVED: "bg-green-100 text-green-800",
   REJECTED: "bg-red-100 text-red-800",
   DISBURSED: "bg-purple-100 text-purple-800",
-  ACTIVE: "bg-indigo-100 text-indigo-800",
-  FULLY_PAID: "bg-green-200 text-green-900",
+  REPAID: "bg-green-200 text-green-900",
   DEFAULTED: "bg-red-200 text-red-900",
-  WRITTEN_OFF: "bg-muted text-muted-foreground",
 };
 
 interface Loan {
@@ -104,9 +107,20 @@ const Loans = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [products, setProducts] = useState<LoanProduct[]>([]);
   const [search, setSearch] = useState("");
+  
+  // Valid loan statuses from backend
+  const validStatuses = [
+    "all", "PENDING", "PENDING_GUARANTOR_APPROVAL", "PENDING_GUARANTOR_REPLACEMENT",
+    "PENDING_GUARANTOR_REASSIGNMENT", "PENDING_LOAN_OFFICER_REVIEW", 
+    "PENDING_CREDIT_COMMITTEE", "PENDING_TREASURER", "APPROVED", "REJECTED", 
+    "DISBURSED", "REPAID", "DEFAULTED"
+  ];
+  
   const [statusFilter, setStatusFilter] = useState(() => {
     // Initialize from query parameter if present, otherwise default to "all"
-    return searchParams.get("status") || "all";
+    const paramStatus = searchParams.get("status") || "all";
+    // Validate that the status is in the valid list
+    return validStatuses.includes(paramStatus) ? paramStatus : "all";
   });
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -141,16 +155,41 @@ const Loans = () => {
         url = `${API_BASE_URL}/loans/status/${statusFilter}`;
       }
       
+      if (!session?.token) {
+        console.error("No authorization token available");
+        toast({ title: "Error", description: "Authentication token missing. Please log in again.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+      
       const response = await fetch(url, {
-        headers: { "Authorization": `Bearer ${session?.token}` },
+        headers: { "Authorization": `Bearer ${session.token}` },
       });
       
-      if (response.ok) {
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Error fetching loans:", {
+          status: response.status,
+          statusText: response.statusText,
+          url,
+          error: errorData
+        });
+        toast({ 
+          title: "Error", 
+          description: errorData.message || `Failed to fetch loans: ${response.statusText}`, 
+          variant: "destructive" 
+        });
+      } else {
         const data = await response.json();
         setLoans(data.data || []);
       }
     } catch (error) {
       console.error("Error fetching loans:", error);
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to fetch loans", 
+        variant: "destructive" 
+      });
     }
     setLoading(false);
   };
@@ -185,7 +224,6 @@ const Loans = () => {
 
   useEffect(() => {
     if (session) {
-      fetchLoans();
       fetchMembers();
       fetchProducts();
       // Fetch global loan term limit set by admin
@@ -198,6 +236,13 @@ const Loans = () => {
       }).catch(() => {});
     }
   }, [session]);
+
+  // Separate effect to handle loan fetching when statusFilter changes
+  useEffect(() => {
+    if (session) {
+      fetchLoans();
+    }
+  }, [session, statusFilter]);
 
   const handleApplyStatusFilter = () => {
     fetchLoans();
@@ -306,15 +351,10 @@ const Loans = () => {
     setForm({ ...form, loanProductId: productId });
   };
 
+  // RESTRUCTURED: Don't calculate interest during application
+  // Interest will be set by treasurer at final approval stage
   const calculateLoan = () => {
-    if (!selectedProduct || !form.amount || !form.termMonths) return null;
-    const principal = parseFloat(form.amount);
-    const rate = selectedProduct.interestRate / 100 / 12;
-    const months = parseInt(form.termMonths);
-    const totalInterest = principal * (selectedProduct.interestRate / 100) * (months / 12);
-    const totalRepayable = principal + totalInterest;
-    const monthlyRepayment = totalRepayable / months;
-    return { totalInterest, totalRepayable, monthlyRepayment };
+    return null; // No interest preview during application
   };
 
   const calc = calculateLoan();
@@ -323,7 +363,7 @@ const Loans = () => {
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!calc || !selectedProduct) return;
+    if (!selectedProduct) return;  // RESTRUCTURED: No longer checking calc since we don't calculate interest at application
 
     const termVal = parseInt(form.termMonths);
     const minTerm = selectedProduct.minTermMonths ?? 1;
@@ -423,6 +463,8 @@ const Loans = () => {
           loanId: loan.id,
           approved: true,
           comments: actionNotes || "Approved",
+          // Treasurer includes interest rate when approving
+          interestRate: role === "TREASURER" && approvalReason ? parseFloat(approvalReason) : undefined,
         };
       } else if (action === "reject") {
         url = `${API_BASE_URL}/loans/approve`;
@@ -617,17 +659,11 @@ const Loans = () => {
                 </div>
                 {calc && (
                   <div className="bg-accent p-3 rounded-md text-sm space-y-1">
-                    <div className="flex justify-between">
-                      <span>Total Interest:</span>
-                      <span className="font-medium">KES {calc.totalInterest.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Total Repayable:</span>
-                      <span className="font-medium">KES {calc.totalRepayable.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                    </div>
-                    <div className="flex justify-between font-bold">
-                      <span>Monthly Repayment:</span>
-                      <span>KES {calc.monthlyRepayment.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                      <p className="text-sm text-blue-900">
+                        <strong>Interest Calculation:</strong> Interest will be reviewed and set by the Treasurer at the final approval stage. 
+                        You will be notified with the complete repayment details once the interest is confirmed.
+                      </p>
                     </div>
                   </div>
                 )}
@@ -1285,14 +1321,51 @@ const Loans = () => {
                 (selectedLoanForDetails.status === "PENDING_TREASURER" && role === "TREASURER")
               ) && (
                 <Card className="p-3 border-blue-200 bg-blue-50">
-                  <p className="font-semibold text-xs mb-2">Approval Decision</p>
+                  <p className="font-semibold text-xs mb-2">
+                    {role === "TREASURER" && selectedLoanForDetails.status === "PENDING_TREASURER" 
+                      ? "Final Approval - Set Interest Rate & Confirm Disbursement"
+                      : "Approval Decision"}
+                  </p>
                   <div className="space-y-2">
+                    {/* Treasurer Interest Amount Input */}
+                    {role === "TREASURER" && selectedLoanForDetails.status === "PENDING_TREASURER" && (
+                      <div className="grid grid-cols-2 gap-2 p-2 bg-white rounded border border-blue-300">
+                        <div>
+                          <Label className="text-xs font-semibold">Total Interest Amount (KES) *</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="e.g., 5000"
+                            value={approvalReason}
+                            onChange={(e) => {
+                              setApprovalReason(e.target.value);
+                            }}
+                            className="text-xs h-8"
+                          />
+                          <p className="text-xs text-gray-600 mt-1">
+                            As informed by HR
+                          </p>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Loan Summary</Label>
+                          <div className="text-xs bg-gray-100 p-2 rounded mt-1">
+                            <p>Amount: KES {(selectedLoanForDetails.amount || 0).toLocaleString()}</p>
+                            <p>Term: {selectedLoanForDetails.termMonths} months</p>
+                            <p>Interest: KES {approvalReason ? parseFloat(approvalReason).toLocaleString() : 0}</p>
+                            <p className="font-semibold mt-1">Total: KES {(((selectedLoanForDetails.amount || 0) + (approvalReason ? parseFloat(approvalReason) : 0))).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div>
                       <Label className="text-xs">Reason/Comments *</Label>
                       <Textarea
-                        placeholder="Enter your reason for approval or rejection..."
-                        value={approvalReason}
-                        onChange={(e) => setApprovalReason(e.target.value)}
+                        placeholder={role === "TREASURER" && selectedLoanForDetails.status === "PENDING_TREASURER" 
+                          ? "Enter approval notes..." 
+                          : "Enter your reason for approval or rejection..."}
+                        value={actionNotes}
+                        onChange={(e) => setActionNotes(e.target.value)}
                         className="text-xs min-h-20"
                       />
                     </div>
@@ -1301,12 +1374,15 @@ const Loans = () => {
                         size="sm"
                         className="h-8 text-xs flex-1 bg-green-600 hover:bg-green-700"
                         onClick={() => {
-                          if (!approvalReason.trim()) {
-                            toast({ title: "Required", description: "Please enter a reason for approval", variant: "destructive" });
+                          if (!actionNotes.trim()) {
+                            toast({ title: "Required", description: "Please enter approval notes", variant: "destructive" });
+                            return;
+                          }
+                          if (role === "TREASURER" && selectedLoanForDetails.status === "PENDING_TREASURER" && !approvalReason) {
+                            toast({ title: "Required", description: "Please enter interest rate", variant: "destructive" });
                             return;
                           }
                           setActionDialog({ loan: selectedLoanForDetails, action: "approve" });
-                          setActionNotes(approvalReason);
                         }}
                         disabled={approvalSubmitting}
                       >
@@ -1316,12 +1392,11 @@ const Loans = () => {
                         size="sm"
                         className="h-8 text-xs flex-1 bg-red-600 hover:bg-red-700"
                         onClick={() => {
-                          if (!approvalReason.trim()) {
+                          if (!actionNotes.trim()) {
                             toast({ title: "Required", description: "Please enter a reason for rejection", variant: "destructive" });
                             return;
                           }
                           setActionDialog({ loan: selectedLoanForDetails, action: "reject" });
-                          setActionNotes(approvalReason);
                         }}
                         disabled={approvalSubmitting}
                       >

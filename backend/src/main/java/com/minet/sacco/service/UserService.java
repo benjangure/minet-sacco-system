@@ -154,4 +154,9 @@ public class UserService {
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(email);
     }
+
+    public Integer getUserIdByUsername(String username) {
+        Optional<User> user = userRepository.findByUsername(username);
+        return user.map(u -> u.getId().intValue()).orElse(null);
+    }
 }

@@ -43,6 +43,8 @@ import MemberTransactionHistory from "./pages/MemberTransactionHistory";
 import TellerMemberContext from "./pages/TellerMemberContext";
 import CustomerSupportPortal from "./pages/CustomerSupportPortal";
 import AuditReports from "./pages/AuditReports";
+import GLManualEntries from "./pages/GLManualEntries";
+import GLConfiguration from "./pages/GLConfiguration";
 // import DataMigration from "./pages/DataMigration"; // TODO: Old data migration page - replaced by Loan Migration
 // import DataMigrationMakerChecker from "./pages/DataMigrationMakerChecker"; // TODO: Not in use
 import MemberSuspension from "./pages/MemberSuspension";
@@ -100,6 +102,8 @@ const AppRoutes = () => (
     <Route path="/customer-support-portal" element={<ProtectedRoute><AppLayout><CustomerSupportPortal /></AppLayout></ProtectedRoute>} />
     <Route path="/audit-reports" element={<ProtectedRoute><AppLayout><AuditReports /></AppLayout></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><AppLayout><Reports /></AppLayout></ProtectedRoute>} />
+    <Route path="/gl-manual-entries" element={<ProtectedRoute><AppLayout><GLManualEntries /></AppLayout></ProtectedRoute>} />
+    <Route path="/gl-configuration" element={<ProtectedRoute><AppLayout><GLConfiguration /></AppLayout></ProtectedRoute>} />
     <Route path="/bulk-processing" element={<ProtectedRoute><AppLayout><BulkProcessing /></AppLayout></ProtectedRoute>} />
     <Route path="/loan-migration" element={<ProtectedRoute><AppLayout><LoanMigration /></AppLayout></ProtectedRoute>} />
     

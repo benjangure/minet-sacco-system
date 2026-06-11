@@ -34,10 +34,22 @@ public class ReportsService {
      */
     public CashbookReport generateCashbook(LocalDate startDate, LocalDate endDate, 
                                           String memberNumber, String transactionType, String accountType) {
+        return generateCashbook(startDate, endDate, memberNumber, transactionType, accountType, BigDecimal.ZERO);
+    }
+
+    public CashbookReport generateCashbook(LocalDate startDate, LocalDate endDate, 
+                                          String memberNumber, String transactionType, String accountType,
+                                          BigDecimal openingBalance) {
         CashbookReport report = new CashbookReport();
         report.setStartDate(startDate);
         report.setEndDate(endDate);
         report.setGeneratedAt(LocalDateTime.now());
+
+        // Initialize opening balance
+        if (openingBalance == null) {
+            openingBalance = BigDecimal.ZERO;
+        }
+        report.setOpeningBalance(openingBalance);
 
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
@@ -58,6 +70,9 @@ public class ReportsService {
         BigDecimal totalDeposits = BigDecimal.ZERO;
         BigDecimal totalWithdrawals = BigDecimal.ZERO;
         BigDecimal totalRepayments = BigDecimal.ZERO;
+        BigDecimal totalDisbursements = BigDecimal.ZERO;
+        BigDecimal totalReceipts = BigDecimal.ZERO;
+        BigDecimal totalPayments = BigDecimal.ZERO;
 
         List<CashbookEntry> entries = new ArrayList<>();
         for (Transaction transaction : transactions) {
@@ -73,20 +88,46 @@ public class ReportsService {
 
             entries.add(entry);
 
-            // Calculate totals
+            // Calculate breakdown and summary totals
             switch (transaction.getTransactionType()) {
-                case DEPOSIT, LOAN_DISBURSEMENT -> totalDeposits = totalDeposits.add(transaction.getAmount());
-                case WITHDRAWAL -> totalWithdrawals = totalWithdrawals.add(transaction.getAmount());
-                case LOAN_REPAYMENT -> totalRepayments = totalRepayments.add(transaction.getAmount());
+                case DEPOSIT -> {
+                    totalDeposits = totalDeposits.add(transaction.getAmount());
+                    totalReceipts = totalReceipts.add(transaction.getAmount());
+                }
+                case WITHDRAWAL -> {
+                    totalWithdrawals = totalWithdrawals.add(transaction.getAmount());
+                    totalPayments = totalPayments.add(transaction.getAmount());
+                }
+                case LOAN_REPAYMENT -> {
+                    totalRepayments = totalRepayments.add(transaction.getAmount());
+                    totalReceipts = totalReceipts.add(transaction.getAmount());
+                }
+                case LOAN_DISBURSEMENT -> {
+                    totalDisbursements = totalDisbursements.add(transaction.getAmount());
+                    totalPayments = totalPayments.add(transaction.getAmount());
+                }
                 default -> {}
             }
         }
 
         report.setEntries(entries);
+        
+        // Set breakdown fields
         report.setTotalDeposits(totalDeposits);
         report.setTotalWithdrawals(totalWithdrawals);
         report.setTotalRepayments(totalRepayments);
-        report.setNetCash(totalDeposits.add(totalRepayments).subtract(totalWithdrawals));
+        report.setTotalDisbursements(totalDisbursements);
+        
+        // Set summary fields
+        report.setTotalReceipts(totalReceipts);
+        report.setTotalPayments(totalPayments);
+        
+        // Calculate closing balance: openingBalance + totalReceipts - totalPayments
+        BigDecimal closingBalance = openingBalance.add(totalReceipts).subtract(totalPayments);
+        report.setClosingBalance(closingBalance);
+        
+        // Legacy field for backward compatibility
+        report.setNetCash(totalReceipts.subtract(totalPayments));
 
         return report;
     }
@@ -324,9 +365,20 @@ public class ReportsService {
         private LocalDate endDate;
         private LocalDateTime generatedAt;
         private List<CashbookEntry> entries;
+        
+        // Summary fields
+        private BigDecimal openingBalance;
+        private BigDecimal totalReceipts;
+        private BigDecimal totalPayments;
+        private BigDecimal closingBalance;
+        
+        // Breakdown fields
         private BigDecimal totalDeposits;
-        private BigDecimal totalWithdrawals;
         private BigDecimal totalRepayments;
+        private BigDecimal totalWithdrawals;
+        private BigDecimal totalDisbursements;
+        
+        // Legacy field for backward compatibility
         private BigDecimal netCash;
 
         // Getters and Setters
@@ -338,12 +390,28 @@ public class ReportsService {
         public void setGeneratedAt(LocalDateTime generatedAt) { this.generatedAt = generatedAt; }
         public List<CashbookEntry> getEntries() { return entries; }
         public void setEntries(List<CashbookEntry> entries) { this.entries = entries; }
+        
+        // Summary getters and setters
+        public BigDecimal getOpeningBalance() { return openingBalance; }
+        public void setOpeningBalance(BigDecimal openingBalance) { this.openingBalance = openingBalance; }
+        public BigDecimal getTotalReceipts() { return totalReceipts; }
+        public void setTotalReceipts(BigDecimal totalReceipts) { this.totalReceipts = totalReceipts; }
+        public BigDecimal getTotalPayments() { return totalPayments; }
+        public void setTotalPayments(BigDecimal totalPayments) { this.totalPayments = totalPayments; }
+        public BigDecimal getClosingBalance() { return closingBalance; }
+        public void setClosingBalance(BigDecimal closingBalance) { this.closingBalance = closingBalance; }
+        
+        // Breakdown getters and setters
         public BigDecimal getTotalDeposits() { return totalDeposits; }
         public void setTotalDeposits(BigDecimal totalDeposits) { this.totalDeposits = totalDeposits; }
-        public BigDecimal getTotalWithdrawals() { return totalWithdrawals; }
-        public void setTotalWithdrawals(BigDecimal totalWithdrawals) { this.totalWithdrawals = totalWithdrawals; }
         public BigDecimal getTotalRepayments() { return totalRepayments; }
         public void setTotalRepayments(BigDecimal totalRepayments) { this.totalRepayments = totalRepayments; }
+        public BigDecimal getTotalWithdrawals() { return totalWithdrawals; }
+        public void setTotalWithdrawals(BigDecimal totalWithdrawals) { this.totalWithdrawals = totalWithdrawals; }
+        public BigDecimal getTotalDisbursements() { return totalDisbursements; }
+        public void setTotalDisbursements(BigDecimal totalDisbursements) { this.totalDisbursements = totalDisbursements; }
+        
+        // Legacy getter and setter for backward compatibility
         public BigDecimal getNetCash() { return netCash; }
         public void setNetCash(BigDecimal netCash) { this.netCash = netCash; }
     }

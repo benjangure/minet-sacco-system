@@ -39,6 +39,8 @@ interface BulkTransactionItem {
   savingsAmount: number;
   sharesAmount: number;
   loanRepaymentAmount: number;
+  loanRepaymentPrincipalAmount: number;
+  loanRepaymentInterestAmount: number;
   loanNumber?: string;
   benevolentFundAmount: number;
   developmentFundAmount: number;
@@ -873,6 +875,10 @@ export default function BulkProcessing() {
           const baseRow = {
             "Employee ID": "EMP001",
             "Savings": 5000,
+            "Loan Repayment Principal Amount": "",
+            "Loan Repayment Interest Amount": "",
+            "Loan Repayment": "",
+            "Loan Number": "",
             ...fundColumns,
           };
 
@@ -880,6 +886,8 @@ export default function BulkProcessing() {
           const rowWithLoan = {
             "Employee ID": "EMP002",
             "Savings": 8000,
+            "Loan Repayment Principal Amount": 3500,
+            "Loan Repayment Interest Amount": 1500,
             "Loan Repayment": 5000,
             "Loan Number": "LN-2026-002",
             ...fundColumns,
@@ -888,6 +896,10 @@ export default function BulkProcessing() {
           const rowWithoutLoan = {
             "Employee ID": "EMP003",
             "Savings": 6000,
+            "Loan Repayment Principal Amount": "",
+            "Loan Repayment Interest Amount": "",
+            "Loan Repayment": "",
+            "Loan Number": "",
             ...fundColumns,
           };
 
@@ -1249,11 +1261,11 @@ export default function BulkProcessing() {
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  <strong>Excel Template Format (10 columns):</strong>
+                  <strong>Excel Template Format:</strong>
                   <br />
-                  Employee ID | Savings | Shares | Loan Repayment | Loan Number | Benevolent | Development | School Fees | Holiday | Emergency
+                  Employee ID | Savings | Loan Repayment Principal Amount | Loan Repayment Interest Amount | Loan Repayment | Loan Number | Benevolent | Development | School Fees | Holiday | Emergency
                   <br />
-                  <span className="text-xs text-gray-600">All fund contributions are optional. Use 0 or leave blank if not applicable.</span>
+                  <span className="text-xs text-gray-600">All fund contributions are optional. Provide loan split values when you want to record principal and interest separately.</span>
                 </AlertDescription>
               </Alert>
 
@@ -1847,6 +1859,8 @@ export default function BulkProcessing() {
                             <TableHead>Savings</TableHead>
                             <TableHead>Shares</TableHead>
                             <TableHead>Loan</TableHead>
+                            <TableHead>Principal</TableHead>
+                            <TableHead>Interest</TableHead>
                             <TableHead>Loan #</TableHead>
                             {enabledFunds.map((fund) => (
                               <TableHead key={fund.id}>{fund.displayName.substring(0, 8)}</TableHead>
@@ -1877,6 +1891,8 @@ export default function BulkProcessing() {
                                 <TableCell className="text-xs">{item.savingsAmount > 0 ? formatCurrency(item.savingsAmount) : "-"}</TableCell>
                                 <TableCell className="text-xs">{item.sharesAmount > 0 ? formatCurrency(item.sharesAmount) : "-"}</TableCell>
                                 <TableCell className="text-xs">{item.loanRepaymentAmount > 0 ? formatCurrency(item.loanRepaymentAmount) : "-"}</TableCell>
+                                <TableCell className="text-xs">{item.loanRepaymentPrincipalAmount > 0 ? formatCurrency(item.loanRepaymentPrincipalAmount) : "-"}</TableCell>
+                                <TableCell className="text-xs">{item.loanRepaymentInterestAmount > 0 ? formatCurrency(item.loanRepaymentInterestAmount) : "-"}</TableCell>
                                 <TableCell className="text-xs">{item.loanNumber || "-"}</TableCell>
                                 {enabledFunds.map((fund) => {
                                   const fundKey = fund.fundType.toLowerCase() + "FundAmount";

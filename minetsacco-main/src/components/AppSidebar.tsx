@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Landmark, PiggyBank, FileText, Settings, Shield, LogOut, HelpCircle, Package, Upload, CheckCircle2, BarChart3, Database, Sliders, Ban, LogOut as LogOutIcon,
+  LayoutDashboard, Users, Landmark, PiggyBank, FileText, Settings, Shield, LogOut, HelpCircle, Package, Upload, CheckCircle2, BarChart3, Database, Sliders, Ban, LogOut as LogOutIcon, Notebook,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,6 +24,11 @@ const allMainItems = [
   { title: "Bulk Processing", url: "/bulk-processing", icon: Upload, roles: ["treasurer", "credit_committee"] },
   { title: "Loan Migration", url: "/loan-migration", icon: Database, roles: ["treasurer", "admin"] },
   { title: "Reports", url: "/reports", icon: FileText, roles: ["admin", "treasurer", "auditor"] },
+];
+
+const glAccountingItems = [
+  { title: "GL Configuration", url: "/gl-configuration", icon: Sliders, roles: ["admin", "treasurer"] },
+  { title: "GL Manual Entries", url: "/gl-manual-entries", icon: Notebook, roles: ["treasurer", "admin"] },
 ];
 
 const kycItems = [
@@ -64,6 +69,7 @@ export function AppSidebar() {
   const { profile, role, signOut } = useAuth();
 
   const mainItems = allMainItems.filter(item => userHasRole(role, item.roles));
+  const glItems = glAccountingItems.filter(item => userHasRole(role, item.roles));
   const kycItemsFiltered = kycItems.filter(item => userHasRole(role, item.roles));
   const adminItems = allAdminItems.filter(item => userHasRole(role, item.roles));
 
@@ -98,6 +104,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {glItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>GL/Accounting</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {glItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink to={item.url} className="hover:bg-accent" activeClassName="bg-accent text-accent-foreground font-medium">
+                        <item.icon className="mr-2 h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {adminItems.length > 0 && (
           <SidebarGroup>
