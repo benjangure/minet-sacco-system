@@ -126,7 +126,7 @@ export const BackendConnectionManager: React.FC<BackendConnectionManagerProps> =
         });
         
         if (url && url !== currentUrl) {
-          const fullUrl = urlToTest.includes('://') ? urlToTest : `http://${urlToTest}:8080`;
+          const fullUrl = urlToTest.includes('://') ? urlToTest : `http://${urlToTest}:9090`;
           setBackendUrl(fullUrl);
           setCurrentUrl(fullUrl);
           onConnectionSuccess?.();
@@ -160,13 +160,13 @@ export const BackendConnectionManager: React.FC<BackendConnectionManagerProps> =
     try {
       const discoveredIP = await autoDiscoverBackend();
       if (discoveredIP) {
-        const fullUrl = `http://${discoveredIP}:8080`;
+        const fullUrl = `http://${discoveredIP}:9090`;
         setTestUrl(fullUrl);
         setDiscoveredIPs([discoveredIP]);
         
         toast({
           title: "Backend Found",
-          description: `Discovered backend at ${discoveredIP}:8080`,
+          description: `Discovered backend at ${discoveredIP}:9090`,
         });
         
         await handleTestConnection(fullUrl);
@@ -198,7 +198,7 @@ export const BackendConnectionManager: React.FC<BackendConnectionManagerProps> =
       return;
     }
 
-    const fullUrl = testUrl.includes('://') ? testUrl : `http://${testUrl}:8080`;
+    const fullUrl = testUrl.includes('://') ? testUrl : `http://${testUrl}:9090`;
     setBackendUrl(fullUrl);
     setCurrentUrl(fullUrl);
     
@@ -212,7 +212,7 @@ export const BackendConnectionManager: React.FC<BackendConnectionManagerProps> =
   };
 
   const handleQuickConnect = (ip: string) => {
-    const fullUrl = `http://${ip}:8080`;
+    const fullUrl = `http://${ip}:9090`;
     setTestUrl(fullUrl);
     handleTestConnection(fullUrl);
   };
@@ -329,7 +329,7 @@ export const BackendConnectionManager: React.FC<BackendConnectionManagerProps> =
             <Input
               value={testUrl}
               onChange={(e) => setTestUrl(e.target.value)}
-              placeholder="e.g., 192.168.0.34 or http://192.168.0.34:8080"
+              placeholder="e.g., 192.168.0.34 or http://192.168.0.34:9090"
               className="w-full"
             />
             <p className="text-xs text-muted-foreground">
