@@ -17,14 +17,12 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   const navigate = useNavigate();
 
-  // Use controlled state if provided, otherwise use internal state
   const sidebarIsOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
   const setSidebarIsOpen = controlledIsOpen !== undefined && onClose ? onClose : setInternalIsOpen;
 
   const handleMenuClick = (id: string) => {
     setSidebarIsOpen(false);
     
-    // Navigate based on menu item
     switch(id) {
       case 'home':
         navigate('/member/dashboard');
@@ -68,7 +66,6 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
 
   return (
     <>
-      {/* Mobile Toggle Button - only show if not hidden */}
       {!hideMobileToggle && (
         <div className="lg:hidden fixed top-4 left-4 z-50">
           <Button
@@ -82,7 +79,6 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
         </div>
       )}
 
-      {/* Overlay for mobile */}
       {sidebarIsOpen && (
         <div
           className="fixed inset-0 bg-black/50 lg:hidden z-40"
@@ -90,15 +86,14 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`fixed left-0 top-0 h-screen w-64 bg-gradient-to-b from-primary to-primary/90 text-white transform transition-transform duration-300 z-40 lg:relative lg:translate-x-0 lg:z-0 ${
           hideMobileToggle ? 'translate-x-0' : (sidebarIsOpen ? 'translate-x-0' : '-translate-x-full')
         }`}
       >
-        <div className="p-6 space-y-8">
+        <div className="p-6 flex flex-col h-full overflow-y-auto">
           {/* Logo/Header */}
-          <div className="space-y-2 flex items-center gap-3">
+          <div className="space-y-2 flex items-center gap-3 mb-6">
             <img src={logo} alt="Minet SACCO" className="h-10 w-auto" />
             <div>
               <h1 className="text-2xl font-bold">Minet SACCO</h1>
@@ -107,13 +102,13 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
           </div>
 
           {/* Member Info */}
-          <div className="bg-white/10 rounded-lg p-4 space-y-2">
+          <div className="bg-white/10 rounded-lg p-4 space-y-2 mb-6">
             <p className="text-white/80 text-xs uppercase tracking-wide">Welcome</p>
             <p className="font-semibold text-lg">{memberName}</p>
           </div>
 
           {/* Navigation Menu */}
-          <nav className="space-y-2">
+          <nav className="space-y-2 flex-1">
             {menuItems.map((item) => (
               <button
                 key={item.id}
@@ -132,7 +127,7 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
           </nav>
 
           {/* Logout Button */}
-          <div className="pt-4 border-t border-white/20 space-y-2">
+          <div className="mt-auto pt-4 border-t border-white/20">
             <Button
               onClick={() => {
                 onLogout();
