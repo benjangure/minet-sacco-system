@@ -13,13 +13,9 @@ export interface Notification {
 }
 
 const getAuthHeaders = () => {
-  // Token can be stored in two places:
-  // 1. Staff users: localStorage.session.token
-  // 2. Member users: localStorage.token
   let token = null;
-  
+
   try {
-    // First try to get token from session (staff users)
     const session = localStorage.getItem('session');
     if (session) {
       const parsedSession = JSON.parse(session);
@@ -28,31 +24,28 @@ const getAuthHeaders = () => {
   } catch (e) {
     console.warn('Failed to parse session from localStorage');
   }
-  
-  // If no token found in session, try member token
+
   if (!token) {
     token = localStorage.getItem('token');
   }
-  
+
   if (!token) {
     console.warn('No token found in localStorage');
   }
-  
+
   return {
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json',
   };
 };
 
-// Flag to prevent multiple redirect attempts
 let isRedirecting = false;
 
 const handleAuthError = (response: Response) => {
   if (response.status === 401) {
-    // Only redirect if not already on login page and if we have a token to clear
     const currentPath = window.location.pathname;
     let hasToken = false;
-    
+
     try {
       const session = localStorage.getItem('session');
       if (session) {
@@ -62,9 +55,8 @@ const handleAuthError = (response: Response) => {
     } catch (e) {
       // Failed to parse session
     }
-    
+
     if (hasToken && currentPath !== '/login' && !isRedirecting) {
-      // Token expired - clear session and redirect to login
       isRedirecting = true;
       localStorage.removeItem('token');
       localStorage.removeItem('session');
@@ -72,7 +64,6 @@ const handleAuthError = (response: Response) => {
       window.location.href = '/login';
       throw new Error('Session expired. Please login again.');
     } else if (!hasToken) {
-      // No token - just throw error without redirect
       throw new Error('No authentication token found');
     }
   }
@@ -83,34 +74,10 @@ const getApiBaseUrlDynamic = (): string => {
   return getApiBaseUrl();
 };
 
+// Reliable path detection based on current URL instead of localStorage state
 const getNotificationsPath = (): string => {
-  let userRole = null;
-  
-  // First try to get role from session (staff users)
-  try {
-    const session = localStorage.getItem('session');
-    if (session) {
-      const parsedSession = JSON.parse(session);
-      userRole = parsedSession.user?.role;
-    }
-  } catch (e) {
-    console.warn('Failed to parse session from localStorage');
-  }
-  
-  // If no role found in session, check if this is a member (member token exists)
-  if (!userRole) {
-    const memberToken = localStorage.getItem('token');
-    if (memberToken) {
-      // This is a member user
-      userRole = 'MEMBER';
-    }
-  }
-  
-  // Staff roles use /api/notifications, members use /api/member/notifications
-  if (userRole && userRole === 'MEMBER') {
-    return '/member/notifications';
-  }
-  return '/notifications';
+  const isMemberPortal = window.location.pathname.startsWith('/member');
+  return isMemberPortal ? '/member/notifications' : '/notifications';
 };
 
 export const notificationService = {
