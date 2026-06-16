@@ -55,34 +55,49 @@ const Index = () => {
         }).catch(() => null);
         const loansData = loansRes?.ok ? (await loansRes.json()).data || [] : [];
 
-        // Fetch KYC data
-        const kycPendingRes = await fetch(`${API_BASE_URL}/kyc-documents/pending`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const kycPendingData = kycPendingRes?.ok ? (await kycPendingRes.json()).data || [] : [];
+        // Initialize data variables
+        let kycPendingData = [];
+        let kycIncompleteData = [];
+        let myUploadsData = [];
+        let approvedLoansData = [];
+        let pendingDepositsData = [];
 
-        const kycIncompleteRes = await fetch(`${API_BASE_URL}/kyc-documents/incomplete-members`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const kycIncompleteData = kycIncompleteRes?.ok ? (await kycIncompleteRes.json()).data || [] : [];
+        // Fetch KYC data (only for users with appropriate roles)
+        if (session.role === 'TELLER' || session.role === 'ADMIN') {
+          const kycPendingRes = await fetch(`${API_BASE_URL}/kyc-documents/pending`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          kycPendingData = kycPendingRes?.ok ? (await kycPendingRes.json()).data || [] : [];
 
-        // Fetch my uploaded documents (for CUSTOMER_SUPPORT)
-        const myUploadsRes = await fetch(`${API_BASE_URL}/kyc-documents/my-uploads`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const myUploadsData = myUploadsRes?.ok ? (await myUploadsRes.json()).data || [] : [];
+          const kycIncompleteRes = await fetch(`${API_BASE_URL}/kyc-documents/incomplete-members`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          kycIncompleteData = kycIncompleteRes?.ok ? (await kycIncompleteRes.json()).data || [] : [];
+        }
 
-        // Fetch approved loans (for TREASURER)
-        const approvedLoansRes = await fetch(`${API_BASE_URL}/bulk/loan-items/approved`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const approvedLoansData = approvedLoansRes?.ok ? (await approvedLoansRes.json()).data || [] : [];
+        // Fetch my uploaded documents (only for CUSTOMER_SUPPORT)
+        if (session.role === 'CUSTOMER_SUPPORT') {
+          const myUploadsRes = await fetch(`${API_BASE_URL}/kyc-documents/my-uploads`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          myUploadsData = myUploadsRes?.ok ? (await myUploadsRes.json()).data || [] : [];
+        }
 
-        // Fetch pending deposits (for TELLER)
-        const pendingDepositsRes = await fetch(`${API_BASE_URL}/teller/deposit-requests/pending`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const pendingDepositsData = pendingDepositsRes?.ok ? (await pendingDepositsRes.json()).data || [] : [];
+        // Fetch approved loans (only for TREASURER)
+        if (session.role === 'TREASURER' || session.role === 'ADMIN') {
+          const approvedLoansRes = await fetch(`${API_BASE_URL}/bulk/loan-items/approved`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          approvedLoansData = approvedLoansRes?.ok ? (await approvedLoansRes.json()).data || [] : [];
+        }
+
+        // Fetch pending deposits (only for TELLER)
+        if (session.role === 'TELLER' || session.role === 'ADMIN') {
+          const pendingDepositsRes = await fetch(`${API_BASE_URL}/teller/deposit-requests/pending`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          pendingDepositsData = pendingDepositsRes?.ok ? (await pendingDepositsRes.json()).data || [] : [];
+        }
 
         // Calculate stats
         const activeMembers = membersData.filter((m: any) => m.status === "ACTIVE").length;

@@ -63,7 +63,7 @@ const KycApproval = () => {
   }
 
   useEffect(() => {
-    if (session) {
+    if (session && (session.role === 'TELLER' || session.role === 'ADMIN')) {
       fetchPendingDocuments();
       fetchMembersWithIncompleteKyc();
     }

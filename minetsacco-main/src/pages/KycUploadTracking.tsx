@@ -29,7 +29,7 @@ const KycUploadTracking = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (session) {
+    if (session && session.role === 'CUSTOMER_SUPPORT') {
       fetchMyUploadedDocuments();
     }
   }, [session]);
