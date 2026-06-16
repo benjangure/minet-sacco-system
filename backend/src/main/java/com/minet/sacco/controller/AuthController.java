@@ -6,6 +6,7 @@ import com.minet.sacco.dto.AuthResponse;
 import com.minet.sacco.dto.SetupPasswordRequest;
 import com.minet.sacco.entity.User;
 import com.minet.sacco.repository.UserRepository;
+import com.minet.sacco.repository.MemberCredentialRepository;
 import com.minet.sacco.security.CustomUserDetailsService;
 import com.minet.sacco.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,9 @@ public class AuthController {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+    
+    @Autowired
+    private MemberCredentialRepository memberCredentialRepository;
 
     @PostMapping("/login")
     public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest) throws Exception {
@@ -156,6 +160,14 @@ public class AuthController {
             user.setFirstLogin(false);
             user.setUpdatedAt(LocalDateTime.now());
             userRepository.save(user);
+            
+            // Update credential tracking record
+            memberCredentialRepository.findByMemberId(user.getMemberId())
+                .ifPresent(credential -> {
+                    credential.setPasswordChanged(true);
+                    credential.setPasswordChangedAt(LocalDateTime.now());
+                    memberCredentialRepository.save(credential);
+                });
             
             return ResponseEntity.ok(new ApiResponse<>(true, "Password setup successful", null));
         } catch (Exception e) {

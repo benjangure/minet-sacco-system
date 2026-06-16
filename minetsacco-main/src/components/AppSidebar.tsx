@@ -40,6 +40,7 @@ const kycItems = [
 
 const allAdminItems = [
   { title: "User Management", url: "/admin/users", icon: Shield, roles: ["admin", "treasurer"] },
+  { title: "Member Credentials", url: "/admin/member-credentials", icon: Users, roles: ["admin", "treasurer", "customer_support"] },
   { title: "Loan Products", url: "/admin/loan-products", icon: Package, roles: ["admin"] },
   { title: "Fund Configuration", url: "/admin/fund-configuration", icon: Settings, roles: ["admin"] },
   { title: "Loan Eligibility Rules", url: "/admin/loan-eligibility-rules", icon: Settings, roles: ["admin"] },

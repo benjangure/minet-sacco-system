@@ -1,232 +1,224 @@
 package com.minet.sacco.service;
 
-import com.minet.sacco.entity.Member;
 import com.minet.sacco.entity.User;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-
-/**
- * Email Service for sending notifications to members and staff.
- * Currently configured as a stub - actual SMTP configuration needed in application.properties
- */
 @Service
 public class EmailService {
-
+    
+    private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
+    
     @Autowired(required = false)
     private JavaMailSender mailSender;
-
-    private static final String SENDER_EMAIL = "noreply@minetsacco.com";
-    private static final String SENDER_NAME = "Minet SACCO";
-
+    
+    @Value("${spring.mail.enabled:false}")
+    private boolean emailEnabled;
+    
+    @Value("${app.sacco.name:Minet SACCO}")
+    private String saccoName;
+    
+    @Value("${app.sacco.support.email:support@minetsacco.com}")
+    private String supportEmail;
+    
+    @Value("${spring.mail.username:}")
+    private String fromEmail;
+    
     /**
-     * Send member onboarding email with login credentials and APK download link
-     * Called when member is approved and activated
+     * Send welcome email with login credentials to new member
      */
-    @Async
-    public void sendMemberOnboardingEmail(Member member, String apkDownloadLink) {
-        if (mailSender == null) {
-            System.out.println("INFO: Email service not configured. Skipping onboarding email for member: " + member.getId());
-            return;
+    public boolean sendWelcomeEmail(String memberEmail, String memberName, String username, String temporaryPassword, boolean hasNationalId) {
+        if (!emailEnabled || mailSender == null) {
+            logger.warn("Email service not configured. Cannot send welcome email to {}", memberEmail);
+            return false;
         }
-
+        
         try {
-            String username = member.getEmployeeId() != null ? 
-                member.getEmployeeId() : member.getMemberNumber();
-
-            String htmlContent = buildOnboardingEmailHtml(
-                member.getFirstName(),
-                member.getLastName(),
-                username,
-                member.getNationalId(),
-                member.getMemberNumber(),
-                apkDownloadLink
-            );
-
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(SENDER_EMAIL);
-            message.setTo(member.getEmail());
-            message.setSubject("Welcome to Minet SACCO - Your Login Credentials");
-            message.setText(htmlContent);
-
-            mailSender.send(message);
+            message.setFrom(fromEmail);
+            message.setTo(memberEmail);
+            message.setSubject("Welcome to " + saccoName + " - Your Login Credentials");
             
-            System.out.println("INFO: Onboarding email sent successfully to: " + member.getEmail());
-
+            String emailBody = buildWelcomeEmailBody(memberName, username, temporaryPassword, hasNationalId);
+            message.setText(emailBody);
+            
+            mailSender.send(message);
+            logger.info("Welcome email sent successfully to {} ({})", memberName, memberEmail);
+            return true;
+            
         } catch (Exception e) {
-            System.err.println("ERROR: Failed to send onboarding email to member " + 
-                             member.getId() + ": " + e.getMessage());
+            logger.error("Failed to send welcome email to {} ({}): {}", memberName, memberEmail, e.getMessage());
+            return false;
         }
     }
-
+    
+    /**
+     * Send password reset email
+     */
+    public boolean sendPasswordResetEmail(String memberEmail, String memberName, String temporaryPassword) {
+        if (!emailEnabled || mailSender == null) {
+            logger.warn("Email service not configured. Cannot send password reset email to {}", memberEmail);
+            return false;
+        }
+        
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(memberEmail);
+            message.setSubject(saccoName + " - Password Reset");
+            
+            String emailBody = buildPasswordResetEmailBody(memberName, temporaryPassword);
+            message.setText(emailBody);
+            
+            mailSender.send(message);
+            logger.info("Password reset email sent successfully to {} ({})", memberName, memberEmail);
+            return true;
+            
+        } catch (Exception e) {
+            logger.error("Failed to send password reset email to {} ({}): {}", memberName, memberEmail, e.getMessage());
+            return false;
+        }
+    }
+    
+    private String buildWelcomeEmailBody(String memberName, String username, String temporaryPassword, boolean hasNationalId) {
+        StringBuilder body = new StringBuilder();
+        
+        body.append("Dear ").append(memberName).append(",\n\n");
+        body.append("Welcome to ").append(saccoName).append("!\n\n");
+        body.append("Your member account has been successfully created. Below are your login credentials:\n\n");
+        
+        body.append("Mobile App Login Details:\n");
+        body.append("------------------------\n");
+        body.append("Username: ").append(username).append("\n");
+        
+        if (hasNationalId) {
+            body.append("Initial Password: Your National ID\n");
+            body.append("\nFor security, please use your National ID as the initial password.\n");
+        } else {
+            body.append("Temporary Password: ").append(temporaryPassword).append("\n");
+            body.append("\nThis is a temporary password generated for your security.\n");
+        }
+        
+        body.append("\nIMPORTANT NEXT STEPS:\n");
+        body.append("1. Download the ").append(saccoName).append(" mobile app\n");
+        body.append("2. Login using the credentials above\n");
+        body.append("3. You will be prompted to create a new secure password\n");
+        body.append("4. Complete your profile and start using SACCO services\n\n");
+        
+        body.append("SECURITY REMINDER:\n");
+        body.append("- Keep your login credentials secure and confidential\n");
+        body.append("- Never share your password with anyone\n");
+        body.append("- Contact support if you suspect unauthorized access\n\n");
+        
+        body.append("Need Help?\n");
+        body.append("If you have any questions or need assistance, please contact our support team at ").append(supportEmail).append("\n\n");
+        
+        body.append("Welcome aboard!\n\n");
+        body.append("Best regards,\n");
+        body.append(saccoName).append(" Team");
+        
+        return body.toString();
+    }
+    
+    private String buildPasswordResetEmailBody(String memberName, String temporaryPassword) {
+        StringBuilder body = new StringBuilder();
+        
+        body.append("Dear ").append(memberName).append(",\n\n");
+        body.append("Your password has been reset as requested.\n\n");
+        
+        body.append("New Temporary Password: ").append(temporaryPassword).append("\n\n");
+        
+        body.append("NEXT STEPS:\n");
+        body.append("1. Login using your username and the temporary password above\n");
+        body.append("2. You will be prompted to create a new secure password\n");
+        body.append("3. Choose a strong password that you can remember\n\n");
+        
+        body.append("If you did not request this password reset, please contact our support team immediately at ").append(supportEmail).append("\n\n");
+        
+        body.append("Best regards,\n");
+        body.append(saccoName).append(" Team");
+        
+        return body.toString();
+    }
+    
     /**
      * Send password change confirmation email
      */
-    @Async
-    public void sendPasswordChangeConfirmation(User user) {
-        if (mailSender == null) {
-            System.out.println("INFO: Email service not configured. Skipping password change confirmation for: " + user.getUsername());
-            return;
+    public boolean sendPasswordChangeConfirmation(User user) {
+        if (!emailEnabled || mailSender == null) {
+            logger.warn("Email service not configured. Cannot send password change confirmation to user: {}", user.getUsername());
+            return false;
         }
-
+        
         try {
-            String htmlContent = buildPasswordChangeEmailHtml(
-                user.getUsername(),
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
-            );
-
+            // Get member details if available
+            String memberName = user.getUsername();
+            String memberEmail = null;
+            
+            if (user.getMemberId() != null) {
+                // This would typically get member details, but for now we'll use what we have
+                memberName = "Member " + user.getMemberId();
+            }
+            
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(SENDER_EMAIL);
-            message.setTo(user.getEmail());
-            message.setSubject("Password Changed - Minet SACCO");
-            message.setText(htmlContent);
-
+            message.setFrom(fromEmail);
+            
+            if (memberEmail != null) {
+                message.setTo(memberEmail);
+            } else {
+                // If no email available, log it and return false
+                logger.warn("No email address available for user: {}", user.getUsername());
+                return false;
+            }
+            
+            message.setSubject(saccoName + " - Password Changed Successfully");
+            
+            String emailBody = buildPasswordChangeConfirmationBody(memberName);
+            message.setText(emailBody);
+            
             mailSender.send(message);
-
-            System.out.println("INFO: Password change confirmation email sent to: " + user.getEmail());
-
+            logger.info("Password change confirmation email sent successfully to user: {}", user.getUsername());
+            return true;
+            
         } catch (Exception e) {
-            System.err.println("ERROR: Failed to send password change confirmation to user " + 
-                             user.getId() + ": " + e.getMessage());
+            logger.error("Failed to send password change confirmation to user {}: {}", user.getUsername(), e.getMessage());
+            return false;
         }
     }
-
-    /**
-     * Send password reset notification (when support resets member password)
-     */
-    @Async
-    public void sendPasswordResetNotification(User user, String temporaryPassword) {
-        if (mailSender == null) {
-            System.out.println("INFO: Email service not configured. Skipping password reset notification for: " + user.getUsername());
-            return;
-        }
-
-        try {
-            String htmlContent = buildPasswordResetEmailHtml(
-                user.getUsername(),
-                temporaryPassword
-            );
-
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(SENDER_EMAIL);
-            message.setTo(user.getEmail());
-            message.setSubject("Password Reset - Minet SACCO");
-            message.setText(htmlContent);
-
-            mailSender.send(message);
-
-            System.out.println("INFO: Password reset notification sent to: " + user.getEmail());
-
-        } catch (Exception e) {
-            System.err.println("ERROR: Failed to send password reset notification to user " + 
-                             user.getId() + ": " + e.getMessage());
-        }
+    
+    private String buildPasswordChangeConfirmationBody(String memberName) {
+        StringBuilder body = new StringBuilder();
+        
+        body.append("Dear ").append(memberName).append(",\n\n");
+        body.append("This is to confirm that your password has been changed successfully.\n\n");
+        
+        body.append("SECURITY DETAILS:\n");
+        body.append("- Date: ").append(new java.util.Date()).append("\n");
+        body.append("- Action: Password Update\n");
+        body.append("- Status: Successful\n\n");
+        
+        body.append("If you did not make this change, please contact our support team immediately at ").append(supportEmail).append("\n\n");
+        
+        body.append("For your security:\n");
+        body.append("- Keep your new password secure and confidential\n");
+        body.append("- Never share your password with anyone\n");
+        body.append("- Use a strong, unique password\n\n");
+        
+        body.append("Best regards,\n");
+        body.append(saccoName).append(" Team");
+        
+        return body.toString();
     }
-
+    
     /**
-     * Build HTML content for member onboarding email
+     * Check if email service is properly configured
      */
-    private String buildOnboardingEmailHtml(String firstName, String lastName, 
-                                           String username, String password, 
-                                           String memberNumber, String apkLink) {
-        return String.format(
-            "<html>" +
-            "<body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">" +
-            "<div style=\"max-width: 600px; margin: 0 auto; padding: 20px;\">" +
-            "<h2 style=\"color: #2c3e50;\">Welcome to Minet SACCO, %s %s!</h2>" +
-            "<p>Your account has been successfully approved and activated. You can now access the Minet SACCO mobile app.</p>" +
-            "<hr style=\"border: none; border-top: 1px solid #ddd; margin: 20px 0;\">" +
-            "<h3 style=\"color: #34495e;\">📱 Mobile App Login Credentials:</h3>" +
-            "<div style=\"background-color: #f9f9f9; padding: 15px; border-radius: 5px; border-left: 4px solid #3498db;\">" +
-            "<p><strong>Username:</strong> %s<br/>" +
-            "<strong>Password:</strong> %s (Your National ID)<br/>" +
-            "<strong>Member Number:</strong> %s</p>" +
-            "</div>" +
-            "<p style=\"color: #e74c3c;\"><strong>⚠️ Important:</strong> Your password is your National ID for the first login. You <strong>MUST</strong> change it to a secure password after your first login.</p>" +
-            "<h3 style=\"color: #34495e;\">📲 Next Steps:</h3>" +
-            "<ol>" +
-            "<li><a href=\"%s\" style=\"color: #3498db; text-decoration: none;\"><strong>Download the Minet SACCO Mobile App</strong></a></li>" +
-            "<li>Launch the app and log in with your credentials above</li>" +
-            "<li>Go to Settings → Security → Change Password</li>" +
-            "<li>Enter your National ID as the current password</li>" +
-            "<li>Create a new strong password and confirm it</li>" +
-            "<li>Your new password will take effect immediately</li>" +
-            "</ol>" +
-            "<hr style=\"border: none; border-top: 1px solid #ddd; margin: 20px 0;\">" +
-            "<p style=\"color: #7f8c8d;\">If you have any questions or need assistance, please contact our Customer Support team.</p>" +
-            "<p style=\"font-size: 12px; color: #95a5a6;\">This is an automated email. Please do not reply to this message.</p>" +
-            "</div>" +
-            "</body>" +
-            "</html>",
-            firstName, lastName, username, password, memberNumber, apkLink
-        );
-    }
-
-    /**
-     * Build HTML content for password change confirmation email
-     */
-    private String buildPasswordChangeEmailHtml(String username, String timestamp) {
-        return String.format(
-            "<html>" +
-            "<body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">" +
-            "<div style=\"max-width: 600px; margin: 0 auto; padding: 20px;\">" +
-            "<h2 style=\"color: #27ae60;\">✓ Password Changed Successfully</h2>" +
-            "<p>Your password for account <strong>%s</strong> has been changed.</p>" +
-            "<div style=\"background-color: #f9f9f9; padding: 15px; border-radius: 5px; border-left: 4px solid #27ae60;\">" +
-            "<p><strong>Account:</strong> %s<br/>" +
-            "<strong>Changed at:</strong> %s</p>" +
-            "</div>" +
-            "<p style=\"color: #e74c3c;\"><strong>If you did not make this change,</strong> please contact Customer Support immediately.</p>" +
-            "<p style=\"color: #7f8c8d;\">For security reasons, please remember to:</p>" +
-            "<ul>" +
-            "<li>Keep your password confidential</li>" +
-            "<li>Use a strong password with uppercase, lowercase, numbers, and special characters</li>" +
-            "<li>Don't share your credentials with anyone</li>" +
-            "<li>Log out when you're done using the app</li>" +
-            "</ul>" +
-            "<hr style=\"border: none; border-top: 1px solid #ddd; margin: 20px 0;\">" +
-            "<p style=\"font-size: 12px; color: #95a5a6;\">This is an automated email. Please do not reply to this message.</p>" +
-            "</div>" +
-            "</body>" +
-            "</html>",
-            username, username, timestamp
-        );
-    }
-
-    /**
-     * Build HTML content for password reset notification
-     */
-    private String buildPasswordResetEmailHtml(String username, String temporaryPassword) {
-        return String.format(
-            "<html>" +
-            "<body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">" +
-            "<div style=\"max-width: 600px; margin: 0 auto; padding: 20px;\">" +
-            "<h2 style=\"color: #f39c12;\">🔐 Your Password Has Been Reset</h2>" +
-            "<p>Our Customer Support team has reset your password as requested.</p>" +
-            "<div style=\"background-color: #f9f9f9; padding: 15px; border-radius: 5px; border-left: 4px solid #f39c12;\">" +
-            "<p><strong>Account:</strong> %s<br/>" +
-            "<strong>Temporary Password:</strong> %s</p>" +
-            "</div>" +
-            "<h3 style=\"color: #34495e;\">📱 What to do next:</h3>" +
-            "<ol>" +
-            "<li>Log in with your username: <strong>%s</strong></li>" +
-            "<li>Use the temporary password: <strong>%s</strong></li>" +
-            "<li>Go to Settings → Security → Change Password</li>" +
-            "<li>Create a new strong password</li>" +
-            "<li>Your new password will take effect immediately</li>" +
-            "</ol>" +
-            "<p style=\"color: #e74c3c;\"><strong>⚠️ Important:</strong> The temporary password will work for 24 hours. Please change it to a new password as soon as possible.</p>" +
-            "<hr style=\"border: none; border-top: 1px solid #ddd; margin: 20px 0;\">" +
-            "<p style=\"font-size: 12px; color: #95a5a6;\">This is an automated email. Please do not reply to this message.</p>" +
-            "</div>" +
-            "</body>" +
-            "</html>",
-            username, temporaryPassword, username, temporaryPassword
-        );
+    public boolean isEmailConfigured() {
+        return emailEnabled && mailSender != null;
     }
 }

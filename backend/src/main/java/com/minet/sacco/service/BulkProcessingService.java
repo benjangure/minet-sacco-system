@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.Optional;
 
 @Service
 public class BulkProcessingService {
@@ -77,6 +78,12 @@ public class BulkProcessingService {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+    
+    @Autowired
+    private EmailService emailService;
+    
+    @Autowired
+    private MemberCredentialRepository memberCredentialRepository;
 
     public BulkBatch parseAndValidate(MultipartFile file, String batchType, User uploader) throws IOException {
         validateFile(file);
@@ -838,6 +845,8 @@ public class BulkProcessingService {
         // Check if user already exists
         Optional<User> existingUser = userRepository.findByUsername(username);
         User user;
+        boolean hasNationalId = member.getNationalId() != null && !member.getNationalId().trim().isEmpty();
+        String password;
         
         if (existingUser.isPresent()) {
             // Update existing user with member_id if not already set
@@ -847,17 +856,25 @@ public class BulkProcessingService {
                 user.setUpdatedAt(LocalDateTime.now());
                 userRepository.save(user);
             }
+            return; // Don't create credential record for existing users
         } else {
-            // Generate random temporary password
-            String temporaryPassword = com.minet.sacco.util.PasswordGenerator.generateTemporaryPassword();
-            
             // Create new user account
             user = new User();
             user.setUsername(username);
             user.setEmail(member.getEmail() != null && !member.getEmail().isBlank()
                 ? member.getEmail()
                 : username + "@minet.sacco");
-            user.setPassword(passwordEncoder.encode(temporaryPassword));
+            
+            // Password logic: Use National ID if available, otherwise generate temporary password
+            if (hasNationalId) {
+                // Use National ID as password (existing behavior)
+                password = member.getNationalId().trim();
+            } else {
+                // Generate random temporary password when no National ID
+                password = com.minet.sacco.util.PasswordGenerator.generateTemporaryPassword();
+            }
+            
+            user.setPassword(passwordEncoder.encode(password));
             user.setRole(User.Role.MEMBER);
             user.setMemberId(member.getId());
             user.setEnabled(true);
@@ -865,12 +882,45 @@ public class BulkProcessingService {
             user.setCreatedAt(LocalDateTime.now());
             userRepository.save(user);
             
-            // Log the temporary password for admin/staff to share with member
-            // In production, this should be sent via email/SMS if possible
-            System.out.println("TEMP PASSWORD for " + username + ": " + temporaryPassword);
+            // Create credential tracking record for admin visibility
+            MemberCredential credential = new MemberCredential(
+                member.getId(),
+                username,
+                member.getFirstName() + " " + member.getLastName(),
+                member.getEmail(),
+                hasNationalId,
+                user.getId() // created by system user
+            );
             
-            // If email is available and valid, we could send it via email service here
-            // TODO: Implement email service integration for sending temporary passwords
+            // If email service is configured and email is available, try to send
+            if (emailService != null && emailService.isEmailConfigured() && 
+                member.getEmail() != null && !member.getEmail().isBlank()) {
+                boolean emailSent = emailService.sendWelcomeEmail(
+                    member.getEmail(), 
+                    member.getFirstName() + " " + member.getLastName(),
+                    username, 
+                    password, 
+                    hasNationalId
+                );
+                
+                if (emailSent) {
+                    credential.setEmailSent(true);
+                    credential.setEmailSentAt(LocalDateTime.now());
+                }
+            }
+            
+            memberCredentialRepository.save(credential);
+            
+            // Console logging for admin reference (until email is set up)
+            if (!credential.isEmailSent()) {
+                if (hasNationalId) {
+                    System.out.println("MEMBER CREDENTIALS - " + member.getFirstName() + " " + member.getLastName() + 
+                        " (Username: " + username + ") - Use National ID as password");
+                } else {
+                    System.out.println("TEMP PASSWORD - " + member.getFirstName() + " " + member.getLastName() + 
+                        " (Username: " + username + "): " + password);
+                }
+            }
         }
     }
 

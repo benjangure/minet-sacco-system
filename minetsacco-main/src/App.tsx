@@ -30,6 +30,7 @@ import ViewMemberDocuments from "./pages/ViewMemberDocuments";
 import NotFound from "./pages/NotFound";
 import MemberLogin from "./pages/MemberLogin";
 import PasswordSetup from "./pages/PasswordSetup";
+import MemberCredentials from "./pages/MemberCredentials";
 import MemberDashboard from "./pages/MemberDashboard";
 import MemberAccountStatement from "./pages/MemberAccountStatement";
 import MemberLoanBalances from "./pages/MemberLoanBalances";
@@ -111,6 +112,7 @@ const AppRoutes = () => (
     
     {/* Admin Routes */}
     <Route path="/admin/users" element={<ProtectedRoute><AppLayout><UserManagement /></AppLayout></ProtectedRoute>} />
+    <Route path="/admin/member-credentials" element={<ProtectedRoute><AppLayout><MemberCredentials /></AppLayout></ProtectedRoute>} />
     <Route path="/admin/loan-products" element={<ProtectedRoute><AppLayout><LoanProducts /></AppLayout></ProtectedRoute>} />
     <Route path="/admin/fund-configuration" element={<ProtectedRoute><AppLayout><FundConfiguration /></AppLayout></ProtectedRoute>} />
     <Route path="/admin/loan-eligibility-rules" element={<ProtectedRoute><AppLayout><LoanEligibilityRules /></AppLayout></ProtectedRoute>} />
