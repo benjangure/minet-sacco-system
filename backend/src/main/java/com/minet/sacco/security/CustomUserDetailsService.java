@@ -41,6 +41,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         // Check if user is a MEMBER - validate member status
         if (user.getRole() == User.Role.MEMBER) {
             Member member = memberRepository.findByEmployeeId(username)
+                    .or(() -> memberRepository.findByMemberNumber(username))
                     .orElseThrow(() -> new UsernameNotFoundException("Member not found: " + username));
 
             // Check if member is suspended

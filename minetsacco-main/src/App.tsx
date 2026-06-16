@@ -29,6 +29,7 @@ import KycUploadTracking from "./pages/KycUploadTracking";
 import ViewMemberDocuments from "./pages/ViewMemberDocuments";
 import NotFound from "./pages/NotFound";
 import MemberLogin from "./pages/MemberLogin";
+import PasswordSetup from "./pages/PasswordSetup";
 import MemberDashboard from "./pages/MemberDashboard";
 import MemberAccountStatement from "./pages/MemberAccountStatement";
 import MemberLoanBalances from "./pages/MemberLoanBalances";
@@ -89,6 +90,7 @@ const AppRoutes = () => (
     
     {/* Member Login */}
     <Route path="/member/login" element={<MemberLogin />} />
+    <Route path="/member/password-setup" element={<PasswordSetup />} />
     
     <Route path="/" element={<RootRoute />} />
     <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />

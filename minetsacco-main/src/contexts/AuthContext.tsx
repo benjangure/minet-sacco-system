@@ -23,6 +23,7 @@ interface AuthContextType {
   profile: { full_name: string; email: string; avatar_url: string | null } | null;
   loading: boolean;
   signIn: (username: string, password: string) => Promise<{ error: Error | null }>;
+  memberSignIn: (username: string, password: string) => Promise<{ error: Error | null; firstLogin?: boolean; username?: string; password?: string }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
@@ -114,6 +115,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
+  const memberSignIn = async (username: string, password: string) => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/auth/member/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Login failed");
+      }
+
+      const data = await response.json();
+      
+      // Check if this is a first login
+      if (data.firstLogin) {
+        return { 
+          error: null, 
+          firstLogin: true, 
+          username: username,
+          password: password 
+        };
+      }
+      
+      // Decode JWT to get user info (basic decode, not verification)
+      const tokenParts = data.token.split('.');
+      const payload = JSON.parse(atob(tokenParts[1]));
+      
+      const sessionData: Session = {
+        token: data.token,
+        user: {
+          id: data.memberId || 0,
+          username: payload.sub,
+          email: username,
+          role: (payload.role || "MEMBER") as AppRole,
+        },
+      };
+
+      setSession(sessionData);
+      setUser(sessionData.user);
+      setRole(sessionData.user.role);
+      setProfile({
+        full_name: sessionData.user.username,
+        email: sessionData.user.email,
+        avatar_url: null,
+      });
+
+      localStorage.setItem("session", JSON.stringify(sessionData));
+
+      return { error: null, firstLogin: false };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
   const signIn = async (username: string, password: string) => {
     try {
       const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
@@ -180,7 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, role, profile, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ session, user, role, profile, loading, signIn, memberSignIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -254,10 +254,8 @@ public class BulkValidationService {
             errors.add("Row " + rowNumber + ": Last name must be max 50 characters (current: " + item.getLastName().length() + ")");
         }
         
-        // Validate email
-        if (item.getEmail() == null || item.getEmail().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Email is required");
-        } else {
+        // Validate email (optional but must be valid if provided)
+        if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
             String email = item.getEmail().trim();
             if (!isValidEmail(email)) {
                 errors.add("Row " + rowNumber + ": Invalid email format '" + email + "' - must contain @ symbol and domain (e.g., john.doe@email.com)");
@@ -276,10 +274,8 @@ public class BulkValidationService {
             }
         }
         
-        // Validate national ID
-        if (item.getNationalId() == null || item.getNationalId().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": National ID is required");
-        } else {
+        // Validate national ID (optional but must be unique if provided)
+        if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
             String nationalId = item.getNationalId().trim();
             if (memberRepository.findByNationalId(nationalId).isPresent()) {
                 errors.add("Row " + rowNumber + ": National ID '" + nationalId + "' is already registered in the system");
@@ -323,38 +319,36 @@ public class BulkValidationService {
             }
         }
         
-        // Validate employer
-        if (item.getEmployer() == null || item.getEmployer().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Employer is required");
-        } else if (item.getEmployer().length() > 100) {
-            errors.add("Row " + rowNumber + ": Employer must be max 100 characters (current: " + item.getEmployer().length() + ")");
+        // Validate employer (optional)
+        if (item.getEmployer() != null && !item.getEmployer().trim().isEmpty()) {
+            if (item.getEmployer().length() > 100) {
+                errors.add("Row " + rowNumber + ": Employer must be max 100 characters (current: " + item.getEmployer().length() + ")");
+            }
         }
         
-        // Validate bank
-        if (item.getBank() == null || item.getBank().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Bank is required");
-        } else if (item.getBank().length() > 50) {
-            errors.add("Row " + rowNumber + ": Bank must be max 50 characters (current: " + item.getBank().length() + ")");
+        // Validate bank (optional)
+        if (item.getBank() != null && !item.getBank().trim().isEmpty()) {
+            if (item.getBank().length() > 50) {
+                errors.add("Row " + rowNumber + ": Bank must be max 50 characters (current: " + item.getBank().length() + ")");
+            }
         }
         
-        // Validate bank account
-        if (item.getBankAccount() == null || item.getBankAccount().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Bank account is required");
-        } else if (item.getBankAccount().length() > 50) {
-            errors.add("Row " + rowNumber + ": Bank account must be max 50 characters (current: " + item.getBankAccount().length() + ")");
+        // Validate bank account (optional)
+        if (item.getBankAccount() != null && !item.getBankAccount().trim().isEmpty()) {
+            if (item.getBankAccount().length() > 50) {
+                errors.add("Row " + rowNumber + ": Bank account must be max 50 characters (current: " + item.getBankAccount().length() + ")");
+            }
         }
         
-        // Validate next of kin
-        if (item.getNextOfKin() == null || item.getNextOfKin().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Next of kin is required");
-        } else if (item.getNextOfKin().length() > 100) {
-            errors.add("Row " + rowNumber + ": Next of kin must be max 100 characters (current: " + item.getNextOfKin().length() + ")");
+        // Validate next of kin (optional but must be valid if provided)
+        if (item.getNextOfKin() != null && !item.getNextOfKin().trim().isEmpty()) {
+            if (item.getNextOfKin().length() > 100) {
+                errors.add("Row " + rowNumber + ": Next of kin must be max 100 characters (current: " + item.getNextOfKin().length() + ")");
+            }
         }
         
-        // Validate NOK phone
-        if (item.getNokPhone() == null || item.getNokPhone().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": NOK phone is required");
-        } else {
+        // Validate NOK phone (optional but must be valid if provided)
+        if (item.getNokPhone() != null && !item.getNokPhone().trim().isEmpty()) {
             String nokPhone = item.getNokPhone().trim();
             if (nokPhone.length() < 9 || nokPhone.length() > 15) {
                 errors.add("Row " + rowNumber + ": NOK phone '" + nokPhone + "' must be 9-15 characters");

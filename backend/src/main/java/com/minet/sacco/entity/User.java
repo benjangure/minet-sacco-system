@@ -34,6 +34,9 @@ public class User {
 
     private Boolean enabled = true;
 
+    @Column(name = "first_login")
+    private boolean firstLogin = false;
+
     @Column(name = "created_by")
     private Long createdBy;
 
@@ -73,6 +76,9 @@ public class User {
 
     public Boolean getEnabled() { return enabled; }
     public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+
+    public boolean isFirstLogin() { return firstLogin; }
+    public void setFirstLogin(boolean firstLogin) { this.firstLogin = firstLogin; }
 
     public Long getCreatedBy() { return createdBy; }
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }

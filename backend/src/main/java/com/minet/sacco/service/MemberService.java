@@ -39,6 +39,9 @@ public class MemberService {
     @Autowired
     private AuditService auditService;
 
+    @Autowired
+    private EmailService emailService;
+
     public List<Member> getAllMembers() {
         return memberRepository.findAll();
     }
@@ -153,6 +156,7 @@ public class MemberService {
             user.setRole(User.Role.MEMBER);
             user.setMemberId(member.getId());
             user.setEnabled(true);
+            user.setFirstLogin(true);
             user.setCreatedAt(LocalDateTime.now());
             userRepository.save(user);
         }

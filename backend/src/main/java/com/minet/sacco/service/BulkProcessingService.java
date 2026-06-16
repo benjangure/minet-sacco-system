@@ -741,20 +741,56 @@ public class BulkProcessingService {
         Member member = new Member();
         member.setFirstName(item.getFirstName());
         member.setLastName(item.getLastName());
-        member.setEmail(item.getEmail());
+        
+        // Set email if provided, otherwise use generated email
+        if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
+            member.setEmail(item.getEmail());
+        } else {
+            // Generate a placeholder email if not provided
+            String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
+                ? item.getEmployeeId()
+                : generateMemberNumber();
+            member.setEmail(identifier + "@minet.sacco");
+        }
+        
         member.setPhone(item.getPhone());
-        member.setNationalId(item.getNationalId());
+        
+        // Set national ID if provided (now optional)
+        if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
+            member.setNationalId(item.getNationalId());
+        }
+        
         member.setDateOfBirth(item.getDateOfBirth());
         member.setDepartment(item.getDepartment());
         member.setEmployeeId(item.getEmployeeId());
         member.setEmploymentStatus("PERMANENT");
-        member.setEmployer(item.getEmployer());
-        member.setBankName(item.getBank());
-        member.setBankAccountNumber(item.getBankAccount());
-        member.setBankBranch(item.getBankBranch());
-        member.setNextOfKinName(item.getNextOfKin());
-        member.setNextOfKinPhone(item.getNokPhone());
-        member.setNextOfKinRelationship(item.getNokRelationship());
+        
+        // Set employer if provided (now optional)
+        if (item.getEmployer() != null && !item.getEmployer().trim().isEmpty()) {
+            member.setEmployer(item.getEmployer());
+        }
+        
+        // Set bank details if provided (now optional)
+        if (item.getBank() != null && !item.getBank().trim().isEmpty()) {
+            member.setBankName(item.getBank());
+        }
+        if (item.getBankAccount() != null && !item.getBankAccount().trim().isEmpty()) {
+            member.setBankAccountNumber(item.getBankAccount());
+        }
+        if (item.getBankBranch() != null && !item.getBankBranch().trim().isEmpty()) {
+            member.setBankBranch(item.getBankBranch());
+        }
+        
+        // Set next of kin details if provided (now optional)
+        if (item.getNextOfKin() != null && !item.getNextOfKin().trim().isEmpty()) {
+            member.setNextOfKinName(item.getNextOfKin());
+        }
+        if (item.getNokPhone() != null && !item.getNokPhone().trim().isEmpty()) {
+            member.setNextOfKinPhone(item.getNokPhone());
+        }
+        if (item.getNokRelationship() != null && !item.getNokRelationship().trim().isEmpty()) {
+            member.setNextOfKinRelationship(item.getNokRelationship());
+        }
 
         // Use employeeId as memberNumber
         String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
@@ -812,18 +848,29 @@ public class BulkProcessingService {
                 userRepository.save(user);
             }
         } else {
+            // Generate random temporary password
+            String temporaryPassword = com.minet.sacco.util.PasswordGenerator.generateTemporaryPassword();
+            
             // Create new user account
             user = new User();
             user.setUsername(username);
             user.setEmail(member.getEmail() != null && !member.getEmail().isBlank()
                 ? member.getEmail()
                 : username + "@minet.sacco");
-            user.setPassword(passwordEncoder.encode(member.getNationalId()));
+            user.setPassword(passwordEncoder.encode(temporaryPassword));
             user.setRole(User.Role.MEMBER);
             user.setMemberId(member.getId());
             user.setEnabled(true);
+            user.setFirstLogin(true);
             user.setCreatedAt(LocalDateTime.now());
             userRepository.save(user);
+            
+            // Log the temporary password for admin/staff to share with member
+            // In production, this should be sent via email/SMS if possible
+            System.out.println("TEMP PASSWORD for " + username + ": " + temporaryPassword);
+            
+            // If email is available and valid, we could send it via email service here
+            // TODO: Implement email service integration for sending temporary passwords
         }
     }
 

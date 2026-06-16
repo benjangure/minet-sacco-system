@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
-import api, { getBackendUrl, setBackendUrl } from '@/config/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, LogIn, Eye, EyeOff, Settings, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 import logo from '@/assets/images/logo.png';
 import { BackendConnectionManager } from '@/components/BackendConnectionManager';
+import { getBackendUrl, setBackendUrl } from '@/config/api';
 
 export default function MemberLogin() {
   const [username, setUsername] = useState('');
@@ -17,6 +18,7 @@ export default function MemberLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [accessError, setAccessError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [backendUrl, setBackendUrlLocal] = useState('');
@@ -24,6 +26,8 @@ export default function MemberLogin() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { memberSignIn } = useAuth();
 
   useEffect(() => {
     // Check if there's an access error from ProtectedRoute
@@ -33,11 +37,16 @@ export default function MemberLogin() {
       localStorage.removeItem('accessError');
     }
 
+    // Check for success message from password setup
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+    }
+
     // Load current backend URL
     const currentUrl = getBackendUrl();
     setBackendUrlLocal(currentUrl);
     setTempUrl(currentUrl);
-  }, []);
+  }, [location.state]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,31 +54,26 @@ export default function MemberLogin() {
     setLoading(true);
 
     try {
-      const response = await api.post('/auth/member/login', {
-        username,
-        password
-      });
+      const result = await memberSignIn(username, password);
 
-      const token = response.data.token;
-      const decoded: any = jwtDecode(token);
-
-      // Verify user is a member
-      if (decoded.role !== 'MEMBER') {
-        setError('Invalid credentials for member login');
-        setLoading(false);
+      if (result.error) {
+        setError(result.error.message);
         return;
       }
 
-      // Store token and user info
-      localStorage.setItem('token', token);
-      localStorage.setItem('userRole', decoded.role);
-      // Use memberId from token if available, otherwise use username
-      if (decoded.memberId) {
-        localStorage.setItem('memberId', decoded.memberId);
+      if (result.firstLogin) {
+        // Redirect to password setup page with credentials
+        navigate('/member/password-setup', { 
+          state: { 
+            username: result.username, 
+            currentPassword: result.password 
+          },
+          replace: true
+        });
+        return;
       }
-      localStorage.setItem('username', decoded.sub);
 
-      // Redirect to member dashboard
+      // Normal login successful - redirect to dashboard
       navigate('/member/dashboard');
     } catch (err: any) {
       console.error('Login error:', err);
@@ -233,6 +237,12 @@ export default function MemberLogin() {
               */}
 
               <form onSubmit={handleLogin} className="space-y-4">
+                {successMessage && (
+                  <Alert>
+                    <CheckCircle className="h-4 w-4" />
+                    <AlertDescription className="text-green-700">{successMessage}</AlertDescription>
+                  </Alert>
+                )}
                 {accessError && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                     <p className="text-sm text-red-700">{accessError}</p>

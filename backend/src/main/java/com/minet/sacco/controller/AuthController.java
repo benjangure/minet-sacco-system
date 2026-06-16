@@ -3,6 +3,7 @@ package com.minet.sacco.controller;
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.AuthRequest;
 import com.minet.sacco.dto.AuthResponse;
+import com.minet.sacco.dto.SetupPasswordRequest;
 import com.minet.sacco.entity.User;
 import com.minet.sacco.repository.UserRepository;
 import com.minet.sacco.security.CustomUserDetailsService;
@@ -13,7 +14,10 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -31,6 +35,9 @@ public class AuthController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @PostMapping("/login")
     public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest) throws Exception {
@@ -108,13 +115,51 @@ public class AuthController {
                 throw new Exception("Staff users must use the staff login page. Please use the staff login.");
             }
             
-            // Generate token with memberId for member users
-            final String jwt = jwtUtil.generateTokenWithMemberId(userDetails, user.getMemberId());
+            // Generate token with memberId and first-login status for member users
+            final String jwt = jwtUtil.generateTokenWithMemberId(userDetails, user.getMemberId(), user.isFirstLogin());
             
-            return ResponseEntity.ok(new AuthResponse(jwt));
+            return ResponseEntity.ok(new AuthResponse(jwt, user.getMemberId(), user.isFirstLogin()));
         } catch (Exception e) {
             System.err.println("ERROR: Failed to generate member JWT token: " + e.getMessage());
             throw new Exception(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Setup password endpoint for first-time member login
+     * Allows members to set their password using their temporary password
+     */
+    @PostMapping("/member/setup-password")
+    public ResponseEntity<?> setupPassword(@RequestBody SetupPasswordRequest request) throws Exception {
+        try {
+            // Find user by username
+            User user = userRepository.findByUsername(request.getUsername())
+                    .orElseThrow(() -> new Exception("User not found"));
+            
+            // Verify user is a member
+            if (user.getRole() != User.Role.MEMBER) {
+                throw new Exception("Only members can use this endpoint");
+            }
+            
+            // Verify user is on first login
+            if (!user.isFirstLogin()) {
+                throw new Exception("Password setup is only allowed for first-time login");
+            }
+            
+            // Verify current password matches
+            if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+                throw new Exception("Current password is incorrect");
+            }
+            
+            // Update password and mark first login as complete
+            user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+            user.setFirstLogin(false);
+            user.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(user);
+            
+            return ResponseEntity.ok(new ApiResponse<>(true, "Password setup successful", null));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, e.getMessage(), null));
         }
     }
 
@@ -124,6 +169,6 @@ public class AuthController {
      */
     @GetMapping("/auth/health")
     public ResponseEntity<?> healthCheck() {
-        return ResponseEntity.ok(new ApiResponse(true, "Backend is healthy", null));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Backend is healthy", null));
     }
 }
