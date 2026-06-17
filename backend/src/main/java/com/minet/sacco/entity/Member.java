@@ -27,7 +27,6 @@ public class Member {
     @Size(max = 50)
     private String firstName;
 
-    @NotBlank(message = "Last name is required")
     @Size(max = 50)
     private String lastName;
 
@@ -35,7 +34,6 @@ public class Member {
     @Size(max = 100)
     private String email;
 
-    @NotBlank(message = "Phone number is required")
     @Size(max = 15)
     private String phone;
 

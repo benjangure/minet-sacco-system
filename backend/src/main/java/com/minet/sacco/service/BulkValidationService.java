@@ -240,18 +240,42 @@ public class BulkValidationService {
         List<String> errors = new ArrayList<>();
         int rowNumber = item.getRowNumber();
         
-        // Validate first name
+        // ========== MANDATORY FIELDS ==========
+        
+        // Validate first name (REQUIRED)
         if (item.getFirstName() == null || item.getFirstName().trim().isEmpty()) {
             errors.add("Row " + rowNumber + ": First name is required");
         } else if (item.getFirstName().length() > 50) {
             errors.add("Row " + rowNumber + ": First name must be max 50 characters (current: " + item.getFirstName().length() + ")");
         }
         
-        // Validate last name
-        if (item.getLastName() == null || item.getLastName().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Last name is required");
-        } else if (item.getLastName().length() > 50) {
-            errors.add("Row " + rowNumber + ": Last name must be max 50 characters (current: " + item.getLastName().length() + ")");
+        // Validate employee ID (REQUIRED)
+        if (item.getEmployeeId() == null || item.getEmployeeId().trim().isEmpty()) {
+            errors.add("Row " + rowNumber + ": Employee ID is required");
+        } else {
+            String employeeId = item.getEmployeeId().trim();
+            if (employeeId.length() > 50) {
+                errors.add("Row " + rowNumber + ": Employee ID must be max 50 characters (current: " + employeeId.length() + ")");
+            } else if (memberRepository.existsByEmployeeId(employeeId)) {
+                errors.add("Row " + rowNumber + ": Employee ID '" + employeeId + "' is already registered in the system");
+            }
+        }
+        
+        // ========== OPTIONAL FIELDS (Can be edited later) ==========
+        
+        // Validate last name (optional)
+        if (item.getLastName() != null && !item.getLastName().trim().isEmpty()) {
+            if (item.getLastName().length() > 50) {
+                errors.add("Row " + rowNumber + ": Last name must be max 50 characters (current: " + item.getLastName().length() + ")");
+            }
+        }
+        
+        // Validate phone (optional)
+        if (item.getPhone() != null && !item.getPhone().trim().isEmpty()) {
+            String phone = item.getPhone().trim();
+            if (phone.length() < 9 || phone.length() > 15) {
+                errors.add("Row " + rowNumber + ": Phone '" + phone + "' must be 9-15 characters (e.g., 0712345678 or +254712345678)");
+            }
         }
         
         // Validate email (optional but must be valid if provided)
@@ -264,16 +288,6 @@ public class BulkValidationService {
             }
         }
         
-        // Validate phone
-        if (item.getPhone() == null || item.getPhone().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Phone is required");
-        } else {
-            String phone = item.getPhone().trim();
-            if (phone.length() < 9 || phone.length() > 15) {
-                errors.add("Row " + rowNumber + ": Phone '" + phone + "' must be 9-15 characters (e.g., 0712345678 or +254712345678)");
-            }
-        }
-        
         // Validate national ID (optional but must be unique if provided)
         if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
             String nationalId = item.getNationalId().trim();
@@ -282,10 +296,8 @@ public class BulkValidationService {
             }
         }
         
-        // Validate date of birth
-        if (item.getDateOfBirth() == null) {
-            errors.add("Row " + rowNumber + ": Date of birth is required. Accepted formats: YYYY-MM-DD (e.g., 1990-01-15), DD/MM/YYYY (e.g., 15/01/1990), or MM/DD/YYYY (e.g., 01/15/1990). Make sure the cell is not empty and contains a valid date.");
-        } else {
+        // Validate date of birth (optional but validate if provided)
+        if (item.getDateOfBirth() != null) {
             LocalDate today = LocalDate.now();
             LocalDate minDate = today.minusYears(18);
             if (item.getDateOfBirth().isAfter(minDate)) {
@@ -300,22 +312,10 @@ public class BulkValidationService {
             }
         }
         
-        // Validate department
-        if (item.getDepartment() == null || item.getDepartment().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Department is required");
-        } else if (item.getDepartment().length() > 50) {
-            errors.add("Row " + rowNumber + ": Department must be max 50 characters (current: " + item.getDepartment().length() + ")");
-        }
-        
-        // Validate employee ID
-        if (item.getEmployeeId() == null || item.getEmployeeId().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Employee ID is required");
-        } else {
-            String employeeId = item.getEmployeeId().trim();
-            if (employeeId.length() > 50) {
-                errors.add("Row " + rowNumber + ": Employee ID must be max 50 characters (current: " + employeeId.length() + ")");
-            } else if (memberRepository.existsByEmployeeId(employeeId)) {
-                errors.add("Row " + rowNumber + ": Employee ID '" + employeeId + "' is already registered in the system");
+        // Validate department (optional)
+        if (item.getDepartment() != null && !item.getDepartment().trim().isEmpty()) {
+            if (item.getDepartment().length() > 50) {
+                errors.add("Row " + rowNumber + ": Department must be max 50 characters (current: " + item.getDepartment().length() + ")");
             }
         }
         

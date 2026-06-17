@@ -76,7 +76,7 @@ public class BulkTransactionItem {
     @Column(nullable = false, length = 20)
     private String status = "PENDING";
 
-    @Column(name = "error_message", length = 500)
+    @Column(name = "error_message", length = 2000)
     private String errorMessage;
 
     @ManyToOne

@@ -33,6 +33,7 @@ public class BulkDisbursementItem {
 
     private String status; // PENDING, SUCCESS, FAILED
 
+    @Column(name = "error_message", length = 2000)
     private String errorMessage;
 
     private LocalDateTime processedAt;
