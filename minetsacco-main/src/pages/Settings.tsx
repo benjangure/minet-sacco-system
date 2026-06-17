@@ -307,6 +307,7 @@ const Settings = () => {
               </Card>
             </>
           )}
+        </TabsContent>
 
         <TabsContent value="security" className="space-y-6">
           <Card className="border-none shadow-sm">
