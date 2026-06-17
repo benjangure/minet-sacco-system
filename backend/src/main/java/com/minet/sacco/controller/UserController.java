@@ -3,6 +3,7 @@ package com.minet.sacco.controller;
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.DeletionApprovalDTO;
 import com.minet.sacco.dto.PasswordChangeRequestDTO;
+import com.minet.sacco.dto.ProfileUpdateRequest;
 import com.minet.sacco.dto.UserDTO;
 import com.minet.sacco.dto.UserDeletionRequestDTO;
 import com.minet.sacco.entity.User;
@@ -408,7 +409,7 @@ public class UserController {
     @PutMapping("/profile/me")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<User>> updateMyProfile(
-            @Valid @RequestBody User profileUpdate,
+            @Valid @RequestBody ProfileUpdateRequest profileUpdate,
             Authentication authentication) {
         
         String username = authentication.getName();
@@ -416,16 +417,16 @@ public class UserController {
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
         // Update only profile fields (not password, role, or enabled status)
-        if (profileUpdate.getFirstName() != null) {
+        if (profileUpdate.getFirstName() != null && !profileUpdate.getFirstName().isBlank()) {
             currentUser.setFirstName(profileUpdate.getFirstName());
         }
-        if (profileUpdate.getLastName() != null) {
+        if (profileUpdate.getLastName() != null && !profileUpdate.getLastName().isBlank()) {
             currentUser.setLastName(profileUpdate.getLastName());
         }
         if (profileUpdate.getEmail() != null && !profileUpdate.getEmail().isBlank()) {
             currentUser.setEmail(profileUpdate.getEmail());
         }
-        if (profileUpdate.getPhone() != null) {
+        if (profileUpdate.getPhone() != null && !profileUpdate.getPhone().isBlank()) {
             currentUser.setPhone(profileUpdate.getPhone());
         }
         
