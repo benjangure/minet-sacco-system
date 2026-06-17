@@ -735,9 +735,11 @@ public class BulkProcessingService {
 
     @Transactional
     private void processMemberItem(BulkMemberItem item) {
-        // Check if member already exists by national ID
-        if (memberRepository.findByNationalId(item.getNationalId()).isPresent()) {
-            throw new RuntimeException("Member with national ID already exists: " + item.getNationalId());
+        // Check if member already exists by national ID (only if national ID is provided)
+        if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
+            if (memberRepository.findByNationalId(item.getNationalId()).isPresent()) {
+                throw new RuntimeException("Member with national ID already exists: " + item.getNationalId());
+            }
         }
         // Also check by employee ID to prevent duplicates
         if (item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
@@ -891,6 +893,11 @@ public class BulkProcessingService {
                 hasNationalId,
                 user.getId() // created by system user
             );
+            
+            // Store password for retrieval by admins
+            credential.setPassword(password);
+            credential.setPasswordChanged(false);
+            credential.setCreatedAt(LocalDateTime.now());
             
             // If email service is configured and email is available, try to send
             if (emailService != null && emailService.isEmailConfigured() && 

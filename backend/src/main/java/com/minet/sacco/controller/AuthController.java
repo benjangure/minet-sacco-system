@@ -132,6 +132,7 @@ public class AuthController {
     /**
      * Setup password endpoint for first-time member login
      * Allows members to set their password using their temporary password
+     * SECURITY: Purges temporary password from database after member sets new one
      */
     @PostMapping("/member/setup-password")
     public ResponseEntity<?> setupPassword(@RequestBody SetupPasswordRequest request) throws Exception {
@@ -161,11 +162,12 @@ public class AuthController {
             user.setUpdatedAt(LocalDateTime.now());
             userRepository.save(user);
             
-            // Update credential tracking record
+            // Update credential tracking record and PURGE temporary password for security
             memberCredentialRepository.findByMemberId(user.getMemberId())
                 .ifPresent(credential -> {
                     credential.setPasswordChanged(true);
                     credential.setPasswordChangedAt(LocalDateTime.now());
+                    credential.setPassword(null); // SECURITY: Purge temporary password from database
                     memberCredentialRepository.save(credential);
                 });
             

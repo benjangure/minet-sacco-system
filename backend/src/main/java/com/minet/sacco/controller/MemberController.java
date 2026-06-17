@@ -2,6 +2,7 @@ package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.MemberApprovalRequest;
+import com.minet.sacco.dto.MemberCreationResponseDTO;
 import com.minet.sacco.entity.Member;
 import com.minet.sacco.entity.Transaction;
 import com.minet.sacco.entity.User;
@@ -66,7 +67,7 @@ public class MemberController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ROLE_TELLER', 'ROLE_CUSTOMER_SUPPORT')")
-    public ResponseEntity<ApiResponse<Member>> createMember(
+    public ResponseEntity<ApiResponse<MemberCreationResponseDTO>> createMember(
             @Valid @RequestBody Member member,
             Authentication authentication) {
         
@@ -75,8 +76,8 @@ public class MemberController {
         User currentUser = userService.getUserByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
-        Member createdMember = memberService.createMember(member, currentUser.getId());
-        return ResponseEntity.ok(ApiResponse.success("Member application submitted successfully. Awaiting approval.", createdMember));
+        MemberCreationResponseDTO createdMemberResponse = memberService.createMemberWithCredentials(member, currentUser.getId());
+        return ResponseEntity.ok(ApiResponse.success("Member created successfully. Credentials are ready for delivery.", createdMemberResponse));
     }
 
     @PostMapping("/{id}/approve")

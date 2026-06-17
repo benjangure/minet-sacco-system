@@ -22,6 +22,16 @@ export default function MemberSettings() {
   const navigate = useNavigate();
   const { toast } = useToast();
   
+  // Profile state
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileData, setProfileData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+  });
+  const [editingProfile, setEditingProfile] = useState(false);
+  
   // Password change state
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -35,7 +45,41 @@ export default function MemberSettings() {
     const currentUrl = getBackendUrl();
     setBackendUrlLocal(currentUrl);
     setTempUrl(currentUrl);
+    
+    // Fetch user profile
+    fetchProfile();
   }, []);
+
+  const fetchProfile = async () => {
+    setProfileLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setProfileLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/users/profile/me`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const user = data.data;
+        setProfileData({
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          email: user.email || "",
+          phone: user.phone || "",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch profile:", error);
+    }
+    setProfileLoading(false);
+  };
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -92,6 +136,45 @@ export default function MemberSettings() {
   const handleReset = () => {
     setTempUrl(backendUrl);
     setMessage(null);
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast({ title: "Error", description: "Authentication token not found", variant: "destructive" });
+      return;
+    }
+
+    setProfileLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/profile/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify(profileData),
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Profile updated successfully" });
+        setEditingProfile(false);
+        await fetchProfile();
+      } else {
+        const error = await response.json();
+        toast({ 
+          title: "Error", 
+          description: error.message || "Failed to update profile", 
+          variant: "destructive" 
+        });
+      }
+    } catch (error) {
+      console.error("Profile update error:", error);
+      toast({ title: "Error", description: "Failed to update profile", variant: "destructive" });
+    }
+    setProfileLoading(false);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -213,6 +296,7 @@ export default function MemberSettings() {
           <TabsList>
             {/* Backend Configuration tab commented out for production deployment */}
             {/* <TabsTrigger value="backend">Backend Configuration</TabsTrigger> */}
+            <TabsTrigger value="profile">My Profile</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
 
@@ -326,6 +410,96 @@ export default function MemberSettings() {
             </Card>
           </TabsContent>
           */}
+
+          <TabsContent value="profile" className="space-y-6">
+            <Card className="border-none shadow-sm">
+              <CardHeader>
+                <CardTitle>My Profile</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {profileLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading profile...</div>
+                ) : editingProfile ? (
+                  <form onSubmit={handleUpdateProfile} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>First Name</Label>
+                        <Input
+                          value={profileData.firstName}
+                          onChange={e => setProfileData({...profileData, firstName: e.target.value})}
+                          placeholder="Enter first name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Last Name</Label>
+                        <Input
+                          value={profileData.lastName}
+                          onChange={e => setProfileData({...profileData, lastName: e.target.value})}
+                          placeholder="Enter last name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Email</Label>
+                        <Input
+                          type="email"
+                          value={profileData.email}
+                          onChange={e => setProfileData({...profileData, email: e.target.value})}
+                          placeholder="Enter email"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Phone Number</Label>
+                        <Input
+                          value={profileData.phone}
+                          onChange={e => setProfileData({...profileData, phone: e.target.value})}
+                          placeholder="Enter phone number"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="submit" disabled={profileLoading}>
+                        Save Changes
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={() => {
+                          setEditingProfile(false);
+                          fetchProfile();
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 pb-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">First Name</p>
+                        <p className="text-lg font-medium">{profileData.firstName || "Not set"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Last Name</p>
+                        <p className="text-lg font-medium">{profileData.lastName || "Not set"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Email</p>
+                        <p className="text-lg font-medium break-all">{profileData.email || "Not set"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Phone</p>
+                        <p className="text-lg font-medium">{profileData.phone || "Not set"}</p>
+                      </div>
+                    </div>
+                    <Button onClick={() => setEditingProfile(true)}>
+                      Edit Profile
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="security" className="space-y-6">
             <Card className="border-none shadow-sm">

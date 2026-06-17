@@ -29,4 +29,6 @@ public interface MemberCredentialRepository extends JpaRepository<MemberCredenti
     
     @Query("SELECT COUNT(mc) FROM MemberCredential mc WHERE mc.passwordChanged = true")
     long countPasswordsChanged();
+    
+    List<MemberCredential> findByMemberNameContainingIgnoreCaseOrUsernameContainingIgnoreCase(String memberName, String username);
 }

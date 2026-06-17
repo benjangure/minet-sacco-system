@@ -5,6 +5,7 @@ import com.minet.sacco.entity.Account;
 import com.minet.sacco.entity.Loan;
 import com.minet.sacco.entity.User;
 import com.minet.sacco.entity.MemberCredential;
+import com.minet.sacco.dto.MemberCreationResponseDTO;
 import com.minet.sacco.repository.MemberRepository;
 import com.minet.sacco.repository.AccountRepository;
 import com.minet.sacco.repository.LoanRepository;
@@ -20,6 +21,9 @@ import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class MemberService {
@@ -47,6 +51,9 @@ public class MemberService {
 
     @Autowired
     private EmailService emailService;
+
+    // Temporary storage for generated passwords (cleaned up after use)
+    private static final Map<Long, String> generatedPasswords = new ConcurrentHashMap<>();
 
     public List<Member> getAllMembers() {
         return memberRepository.findAll();
@@ -88,6 +95,41 @@ public class MemberService {
         createMemberUserAccount(savedMember);
 
         return savedMember;
+    }
+
+    /**
+     * Creates a member and returns both member data and credential info for UI display
+     */
+    @Transactional
+    public MemberCreationResponseDTO createMemberWithCredentials(Member member, Long createdByUserId) {
+        Member savedMember = createMember(member, createdByUserId);
+        
+        // Get username
+        String username = member.getEmployeeId() != null ? member.getEmployeeId() : savedMember.getMemberNumber();
+        
+        // Determine password type and temporary password
+        boolean hasNationalId = member.getNationalId() != null && !member.getNationalId().trim().isEmpty();
+        String temporaryPassword = null;
+        String passwordType;
+        
+        if (hasNationalId) {
+            passwordType = "NATIONAL_ID";
+        } else {
+            temporaryPassword = getLastGeneratedPassword(savedMember.getId());
+            passwordType = "GENERATED";
+        }
+        
+        return new MemberCreationResponseDTO(
+            savedMember.getId(),
+            savedMember.getMemberNumber(),
+            savedMember.getFirstName(),
+            savedMember.getLastName(),
+            username,
+            temporaryPassword,
+            hasNationalId,
+            passwordType,
+            "Member created successfully. Credentials are ready for delivery."
+        );
     }
 
     @Transactional
@@ -170,6 +212,8 @@ public class MemberService {
                 // Generate secure temporary password
                 temporaryPassword = PasswordGenerator.generateTemporaryPassword();
                 user.setPassword(passwordEncoder.encode(temporaryPassword));
+                // Store temporarily for retrieval in controller
+                generatedPasswords.put(member.getId(), temporaryPassword);
             }
             
             user.setRole(User.Role.MEMBER);
@@ -206,6 +250,13 @@ public class MemberService {
             credential.setEmailSent(false); // Admin needs to manually deliver credentials
             credential.setPasswordChanged(false);
             credential.setCreatedAt(LocalDateTime.now());
+            
+            // Store the temporary password if generated, or indicate National ID usage
+            if (hasNationalId) {
+                credential.setPassword(member.getNationalId());
+            } else {
+                credential.setPassword(temporaryPassword);
+            }
             
             memberCredentialRepository.save(credential);
             
@@ -322,6 +373,20 @@ public class MemberService {
 
     public void deleteMember(Long id) {
         memberRepository.deleteById(id);
+    }
+
+    /**
+     * Retrieves and removes the temporarily stored generated password for a member
+     */
+    protected String getLastGeneratedPassword(Long memberId) {
+        return generatedPasswords.remove(memberId);
+    }
+
+    /**
+     * Stores a generated password temporarily for retrieval (for UI display)
+     */
+    protected void storeGeneratedPassword(Long memberId, String password) {
+        generatedPasswords.put(memberId, password);
     }
 
     public List<Member> getMembersByStatus(Member.Status status) {

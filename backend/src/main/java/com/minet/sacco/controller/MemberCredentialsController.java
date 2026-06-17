@@ -1,7 +1,6 @@
 package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
-import com.minet.sacco.dto.MemberCredentialDTO;
 import com.minet.sacco.entity.MemberCredential;
 import com.minet.sacco.repository.MemberCredentialRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,130 +9,113 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/admin/member-credentials")
+@RequestMapping("/api/member-credentials")
 @CrossOrigin
-@PreAuthorize("hasAnyRole('ADMIN', 'TREASURER', 'CUSTOMER_SUPPORT')")
 public class MemberCredentialsController {
-    
+
     @Autowired
     private MemberCredentialRepository memberCredentialRepository;
-    
+
     /**
-     * Get all member credentials with password delivery status
+     * Get all member credentials (admin/treasurer/customer support only)
      */
     @GetMapping
-    public ResponseEntity<ApiResponse<List<MemberCredentialDTO>>> getAllCredentials() {
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<List<MemberCredential>>> getAllCredentials() {
         List<MemberCredential> credentials = memberCredentialRepository.findAll();
-        
-        List<MemberCredentialDTO> dtos = credentials.stream()
-            .map(this::convertToDTO)
-            .collect(Collectors.toList());
-            
-        return ResponseEntity.ok(new ApiResponse<>(true, "Member credentials retrieved successfully", dtos));
+        return ResponseEntity.ok(ApiResponse.success("Member credentials retrieved successfully", credentials));
     }
-    
+
     /**
-     * Get members awaiting password setup
+     * Get credential by ID
      */
-    @GetMapping("/pending-setup")
-    public ResponseEntity<ApiResponse<List<MemberCredentialDTO>>> getPendingPasswordSetup() {
-        List<MemberCredential> credentials = memberCredentialRepository.findMembersAwaitingPasswordSetup();
-        
-        List<MemberCredentialDTO> dtos = credentials.stream()
-            .map(this::convertToDTO)
-            .collect(Collectors.toList());
-            
-        return ResponseEntity.ok(new ApiResponse<>(true, "Pending password setups retrieved", dtos));
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<MemberCredential>> getCredentialById(@PathVariable(name = "id") Long credentialId) {
+        return memberCredentialRepository.findById(credentialId)
+                .map(credential -> ResponseEntity.ok(ApiResponse.success("Credential found", credential)))
+                .orElse(ResponseEntity.notFound().build());
     }
-    
+
     /**
-     * Get members who need their credentials delivered (no email sent)
+     * Get password for a specific credential (requires authorization)
+     * Returns only the temporary password if it hasn't been changed
      */
-    @GetMapping("/pending-delivery")
-    public ResponseEntity<ApiResponse<List<MemberCredentialDTO>>> getPendingDelivery() {
-        List<MemberCredential> credentials = memberCredentialRepository.findByEmailSentFalse();
-        
-        List<MemberCredentialDTO> dtos = credentials.stream()
-            .map(this::convertToDTO)
-            .collect(Collectors.toList());
-            
-        return ResponseEntity.ok(new ApiResponse<>(true, "Pending credential deliveries retrieved", dtos));
+    @GetMapping("/{id}/password")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<PasswordResponse>> getCredentialPassword(@PathVariable(name = "id") Long credentialId) {
+        return memberCredentialRepository.findById(credentialId)
+                .map(credential -> {
+                    PasswordResponse response = new PasswordResponse();
+                    // Only return password if it hasn't been changed by the member
+                    if (!credential.isPasswordChanged()) {
+                        response.setPassword(credential.getPassword());
+                        return ResponseEntity.ok(ApiResponse.success("Password retrieved", response));
+                    } else {
+                        response.setPassword(null);
+                        return ResponseEntity.ok(ApiResponse.success("Password has been changed by member", response));
+                    }
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
-    
+
     /**
-     * Mark credentials as manually delivered to member
+     * Helper class for password response
      */
-    @PostMapping("/{credentialId}/mark-delivered")
-    public ResponseEntity<ApiResponse<String>> markAsDelivered(@PathVariable Long credentialId) {
-        MemberCredential credential = memberCredentialRepository.findById(credentialId)
-            .orElseThrow(() -> new RuntimeException("Credential record not found"));
-        
-        credential.setEmailSent(true);
-        credential.setEmailSentAt(java.time.LocalDateTime.now());
-        memberCredentialRepository.save(credential);
-        
-        return ResponseEntity.ok(new ApiResponse<>(true, "Credential marked as delivered", null));
-    }
-    
-    /**
-     * Get statistics
-     */
-    @GetMapping("/statistics")
-    public ResponseEntity<ApiResponse<CredentialStatistics>> getStatistics() {
-        long totalCredentials = memberCredentialRepository.count();
-        long emailsSent = memberCredentialRepository.countEmailsSent();
-        long passwordsChanged = memberCredentialRepository.countPasswordsChanged();
-        long pendingDelivery = memberCredentialRepository.findByEmailSentFalse().size();
-        long pendingPasswordSetup = memberCredentialRepository.findMembersAwaitingPasswordSetup().size();
-        
-        CredentialStatistics stats = new CredentialStatistics(
-            totalCredentials, emailsSent, passwordsChanged, pendingDelivery, pendingPasswordSetup
-        );
-        
-        return ResponseEntity.ok(new ApiResponse<>(true, "Statistics retrieved", stats));
-    }
-    
-    private MemberCredentialDTO convertToDTO(MemberCredential credential) {
-        return new MemberCredentialDTO(
-            credential.getId(),
-            credential.getMemberId(),
-            credential.getUsername(),
-            credential.getMemberName(),
-            credential.getEmail(),
-            credential.isHasNationalId(),
-            credential.isEmailSent(),
-            credential.getEmailSentAt(),
-            credential.isPasswordChanged(),
-            credential.getPasswordChangedAt(),
-            credential.getCreatedAt()
-        );
-    }
-    
-    // Statistics inner class
-    public static class CredentialStatistics {
-        private long totalCredentials;
-        private long emailsSent;
-        private long passwordsChanged;
-        private long pendingDelivery;
-        private long pendingPasswordSetup;
-        
-        public CredentialStatistics(long totalCredentials, long emailsSent, long passwordsChanged, 
-                                  long pendingDelivery, long pendingPasswordSetup) {
-            this.totalCredentials = totalCredentials;
-            this.emailsSent = emailsSent;
-            this.passwordsChanged = passwordsChanged;
-            this.pendingDelivery = pendingDelivery;
-            this.pendingPasswordSetup = pendingPasswordSetup;
+    public static class PasswordResponse {
+        private String password;
+
+        public String getPassword() {
+            return password;
         }
-        
-        // Getters
-        public long getTotalCredentials() { return totalCredentials; }
-        public long getEmailsSent() { return emailsSent; }
-        public long getPasswordsChanged() { return passwordsChanged; }
-        public long getPendingDelivery() { return pendingDelivery; }
-        public long getPendingPasswordSetup() { return pendingPasswordSetup; }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+    }
+
+    /**
+     * Search credentials by member name or username
+     */
+    @GetMapping("/search")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<List<MemberCredential>>> searchCredentials(@RequestParam String query) {
+        List<MemberCredential> credentials = memberCredentialRepository.findByMemberNameContainingIgnoreCaseOrUsernameContainingIgnoreCase(
+                query, query
+        );
+        return ResponseEntity.ok(ApiResponse.success("Search results", credentials));
+    }
+
+    /**
+     * Get credentials by member ID
+     */
+    @GetMapping("/member/{memberId}")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<MemberCredential>> getCredentialByMemberId(@PathVariable Long memberId) {
+        return memberCredentialRepository.findByMemberId(memberId)
+                .map(credential -> ResponseEntity.ok(ApiResponse.success("Credential found", credential)))
+                .orElse(ResponseEntity.ok(ApiResponse.success("No credential found for this member", null)));
+    }
+
+    /**
+     * Get credentials with email not sent (for reminder/follow-up)
+     */
+    @GetMapping("/pending-email")
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<List<MemberCredential>>> getPendingEmailCredentials() {
+        List<MemberCredential> credentials = memberCredentialRepository.findByEmailSentFalse();
+        return ResponseEntity.ok(ApiResponse.success("Credentials pending email send", credentials));
+    }
+
+    /**
+     * Get credentials that haven't been changed by member (still using temporary password)
+     */
+    @GetMapping("/password-not-changed")
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<List<MemberCredential>>> getPasswordNotChangedCredentials() {
+        List<MemberCredential> credentials = memberCredentialRepository.findByPasswordChangedFalse();
+        return ResponseEntity.ok(ApiResponse.success("Credentials with unchanged passwords", credentials));
     }
 }

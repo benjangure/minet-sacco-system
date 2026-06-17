@@ -39,7 +39,6 @@ public class Member {
     @Size(max = 15)
     private String phone;
 
-    @NotBlank(message = "National ID is required")
     @Size(max = 20)
     @Column(unique = true)
     private String nationalId;

@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DocumentUpload } from "@/components/DocumentUpload";
+import { CredentialDisplayModal } from "@/components/CredentialDisplayModal";
 
 import { getApiBaseUrl } from "../config/api";
 const API_BASE_URL = getApiBaseUrl();
@@ -48,6 +49,18 @@ interface Member {
   memberStatus?: string;
 }
 
+interface MemberCreationResponseDTO {
+  memberId: number;
+  memberNumber: string;
+  firstName: string;
+  lastName: string;
+  username: string;
+  password: string | null;
+  hasNationalId: boolean;
+  passwordType: string;
+  message: string;
+}
+
 const statusColors: Record<string, string> = {
   PENDING: "bg-yellow-100 text-yellow-800",
   APPROVED: "bg-blue-100 text-blue-800",
@@ -65,10 +78,14 @@ const Members = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewMember, setViewMember] = useState<Member | null>(null);
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [uploadDialog, setUploadDialog] = useState<Member | null>(null);
   const [approveDialog, setApproveDialog] = useState<Member | null>(null);
   const [rejectDialog, setRejectDialog] = useState<Member | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [credentialModalOpen, setCredentialModalOpen] = useState(false);
+  const [memberCredential, setMemberCredential] = useState<MemberCreationResponseDTO | null>(null);
   const { toast } = useToast();
   const { session, role } = useAuth();
 
@@ -288,10 +305,14 @@ const Members = () => {
       });
 
       if (response.ok) {
-        toast({ 
-          title: "Success", 
-          description: "Member registered successfully. Savings and Shares accounts have been created." 
-        });
+        const data = await response.json();
+        const createdMember = data.data;
+        
+        // Display credentials modal
+        setMemberCredential(createdMember);
+        setCredentialModalOpen(true);
+        
+        // Close registration dialog and reset form
         setDialogOpen(false);
         setForm({
           firstName: "", lastName: "", email: "", phone: "", nationalId: "",
@@ -299,6 +320,14 @@ const Members = () => {
           department: "", bankName: "", bankAccountNumber: "", bankBranch: "",
           nextOfKinName: "", nextOfKinPhone: "", nextOfKinRelationship: "",
         });
+        
+        // Show success toast
+        toast({ 
+          title: "Success", 
+          description: "Member registered successfully. View their credentials in the modal." 
+        });
+        
+        // Refresh members list
         fetchMembers();
       } else {
         const error = await response.json();
@@ -385,6 +414,39 @@ const Members = () => {
       }
     } catch (error) {
       toast({ title: "Error", description: "Failed to activate member", variant: "destructive" });
+    }
+  };
+
+  const handleUpdateMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/members/${editingMember.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.token}`,
+        },
+        body: JSON.stringify(editingMember),
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Member information updated successfully" });
+        setEditDialogOpen(false);
+        setEditingMember(null);
+        fetchMembers();
+      } else {
+        const error = await response.json();
+        toast({ 
+          title: "Error", 
+          description: error.message || "Failed to update member", 
+          variant: "destructive" 
+        });
+      }
+    } catch (error) {
+      console.error("Update error:", error);
+      toast({ title: "Error", description: "Failed to update member. Please try again.", variant: "destructive" });
     }
   };
 
@@ -792,7 +854,6 @@ const Members = () => {
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Department</TableHead>
-                <TableHead>Reg. Status</TableHead>
                 <TableHead>Member Status</TableHead>
                 <TableHead>Applied</TableHead>
                 <TableHead>Actions</TableHead>
@@ -800,16 +861,15 @@ const Members = () => {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
               ) : members.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No members found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No members found</TableCell></TableRow>
               ) : members.map(member => (
                 <TableRow key={member.id}>
                   <TableCell className="font-mono text-sm">{member.employeeId || member.memberNumber || "—"}</TableCell>
                   <TableCell className="font-medium">{member.firstName} {member.lastName}</TableCell>
                   <TableCell>{member.phone}</TableCell>
                   <TableCell>{member.department || "—"}</TableCell>
-                  <TableCell><Badge className={statusColors[member.status]}>{member.status}</Badge></TableCell>
                   <TableCell>
                     <Badge className={
                       member.memberStatus === "ACTIVE" ? "bg-green-100 text-green-800" :
@@ -826,6 +886,17 @@ const Members = () => {
                       <Button variant="ghost" size="icon" onClick={() => setViewMember(member)} title="View Details">
                         <Eye className="h-4 w-4" />
                       </Button>
+                      {(canCreateMembers || canApproveMembers) && member.status !== "EXITED" && (
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => { setEditingMember({...member}); setEditDialogOpen(true); }} 
+                          title="Edit Member"
+                          className="text-blue-600"
+                        >
+                          <span className="text-xs">✏️</span>
+                        </Button>
+                      )}
                       {(member.status === "PENDING" || member.status === "APPROVED") && canCreateMembers && (
                         <Button variant="ghost" size="icon" onClick={() => setUploadDialog(member)} title="Upload Documents" className="text-blue-600">
                           <Upload className="h-4 w-4" />
@@ -849,6 +920,176 @@ const Members = () => {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Credential Display Modal */}
+      <CredentialDisplayModal
+        isOpen={credentialModalOpen}
+        onClose={() => setCredentialModalOpen(false)}
+        credential={memberCredential}
+      />
+
+      {/* Edit Member Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Member Information</DialogTitle>
+          </DialogHeader>
+          {editingMember && (
+            <form onSubmit={handleUpdateMember} className="space-y-6">
+              <Tabs defaultValue="personal">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="personal">Personal Info</TabsTrigger>
+                  <TabsTrigger value="employment">Employment</TabsTrigger>
+                  <TabsTrigger value="other">Bank & Next of Kin</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="personal" className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>First Name</Label>
+                      <Input 
+                        value={editingMember.firstName} 
+                        onChange={e => setEditingMember({...editingMember, firstName: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Last Name</Label>
+                      <Input 
+                        value={editingMember.lastName} 
+                        onChange={e => setEditingMember({...editingMember, lastName: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Email</Label>
+                      <Input 
+                        type="email" 
+                        value={editingMember.email} 
+                        onChange={e => setEditingMember({...editingMember, email: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phone Number</Label>
+                      <Input 
+                        value={editingMember.phone} 
+                        onChange={e => setEditingMember({...editingMember, phone: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>National ID</Label>
+                      <Input 
+                        value={editingMember.nationalId || ""} 
+                        onChange={e => setEditingMember({...editingMember, nationalId: e.target.value})} 
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date of Birth</Label>
+                      <Input 
+                        type="date" 
+                        value={editingMember.dateOfBirth ? editingMember.dateOfBirth.split('T')[0] : ""} 
+                        onChange={e => setEditingMember({...editingMember, dateOfBirth: e.target.value})} 
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="employment" className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Employment Status</Label>
+                      <Select 
+                        value={editingMember.employmentStatus} 
+                        onValueChange={v => setEditingMember({...editingMember, employmentStatus: v})}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PERMANENT">Permanent</SelectItem>
+                          <SelectItem value="CONTRACT">Contract</SelectItem>
+                          <SelectItem value="TEMPORARY">Temporary</SelectItem>
+                          <SelectItem value="SELF_EMPLOYED">Self Employed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Employer</Label>
+                      <Input 
+                        value={editingMember.employer || ""} 
+                        onChange={e => setEditingMember({...editingMember, employer: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2 col-span-2">
+                      <Label>Department</Label>
+                      <Input 
+                        value={editingMember.department || ""} 
+                        onChange={e => setEditingMember({...editingMember, department: e.target.value})} 
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="other" className="space-y-4 pt-4">
+                  <h3 className="font-semibold">Bank Details</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Bank Name</Label>
+                      <Input 
+                        value={editingMember.bankName || ""} 
+                        onChange={e => setEditingMember({...editingMember, bankName: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Account Number</Label>
+                      <Input 
+                        value={editingMember.bankAccountNumber || ""} 
+                        onChange={e => setEditingMember({...editingMember, bankAccountNumber: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Branch</Label>
+                      <Input 
+                        value={editingMember.nextOfKinName || ""} 
+                        onChange={e => setEditingMember({...editingMember, nextOfKinName: e.target.value})} 
+                      />
+                    </div>
+                  </div>
+                  
+                  <h3 className="font-semibold mt-4">Next of Kin</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Name</Label>
+                      <Input 
+                        value={editingMember.nextOfKinName || ""} 
+                        onChange={e => setEditingMember({...editingMember, nextOfKinName: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phone</Label>
+                      <Input 
+                        value={editingMember.nextOfKinPhone || ""} 
+                        onChange={e => setEditingMember({...editingMember, nextOfKinPhone: e.target.value})} 
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+
+              <div className="flex gap-2">
+                <Button type="submit" className="flex-1">
+                  Save Changes
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => { setEditDialogOpen(false); setEditingMember(null); }} 
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

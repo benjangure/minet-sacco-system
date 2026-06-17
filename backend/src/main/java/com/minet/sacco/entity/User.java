@@ -43,6 +43,18 @@ public class User {
     @Column(name = "member_id")
     private Long memberId; // Set when role = MEMBER, links to members table
 
+    @Size(max = 100)
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Size(max = 100)
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Size(max = 20)
+    @Column(name = "phone")
+    private String phone;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -85,6 +97,15 @@ public class User {
 
     public Long getMemberId() { return memberId; }
     public void setMemberId(Long memberId) { this.memberId = memberId; }
+
+    public String getFirstName() { return firstName; }
+    public void setFirstName(String firstName) { this.firstName = firstName; }
+
+    public String getLastName() { return lastName; }
+    public void setLastName(String lastName) { this.lastName = lastName; }
+
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

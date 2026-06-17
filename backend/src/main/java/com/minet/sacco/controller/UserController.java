@@ -395,8 +395,43 @@ public class UserController {
                     .body(ApiResponse.error("Failed to change password: " + e.getMessage()));
         }
     }
+
+    @GetMapping("/profile/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<User>> getMyProfile(Authentication authentication) {
+        String username = authentication.getName();
+        User user = userService.getUserByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return ResponseEntity.ok(ApiResponse.success("Profile retrieved successfully", user));
+    }
+
+    @PutMapping("/profile/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<User>> updateMyProfile(
+            @Valid @RequestBody User profileUpdate,
+            Authentication authentication) {
+        
+        String username = authentication.getName();
+        User currentUser = userService.getUserByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        // Update only profile fields (not password, role, or enabled status)
+        if (profileUpdate.getFirstName() != null) {
+            currentUser.setFirstName(profileUpdate.getFirstName());
+        }
+        if (profileUpdate.getLastName() != null) {
+            currentUser.setLastName(profileUpdate.getLastName());
+        }
+        if (profileUpdate.getEmail() != null && !profileUpdate.getEmail().isBlank()) {
+            currentUser.setEmail(profileUpdate.getEmail());
+        }
+        if (profileUpdate.getPhone() != null) {
+            currentUser.setPhone(profileUpdate.getPhone());
+        }
+        
+        currentUser.setUpdatedAt(LocalDateTime.now());
+        User updatedUser = userService.updateUser(currentUser);
+        
+        return ResponseEntity.ok(ApiResponse.success("Profile updated successfully", updatedUser));
+    }
 }
-
-
-
-

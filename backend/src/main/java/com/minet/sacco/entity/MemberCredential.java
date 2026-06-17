@@ -27,6 +27,9 @@ public class MemberCredential {
     @Column(name = "email", length = 100)
     private String email;
     
+    @Column(name = "password", length = 255)
+    private String password;
+    
     @Column(name = "has_national_id", nullable = false)
     private boolean hasNationalId;
     
@@ -76,6 +79,9 @@ public class MemberCredential {
     
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+    
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
     
     public boolean isHasNationalId() { return hasNationalId; }
     public void setHasNationalId(boolean hasNationalId) { this.hasNationalId = hasNationalId; }
