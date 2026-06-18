@@ -735,105 +735,187 @@ public class BulkProcessingService {
 
     @Transactional
     private void processMemberItem(BulkMemberItem item) {
-        // Check if member already exists by national ID (only if national ID is provided)
-        if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
-            if (memberRepository.findByNationalId(item.getNationalId()).isPresent()) {
+        // Check if member already exists by employee ID (for update scenario)
+        Member member = null;
+        boolean isUpdate = false;
+        
+        if (item.getEmployeeId() != null && !item.getEmployeeId().isBlank()) {
+            Optional<Member> existingMember = memberRepository.findByEmployeeId(item.getEmployeeId());
+            if (existingMember.isPresent()) {
+                // Member exists - UPDATE scenario
+                member = existingMember.get();
+                isUpdate = true;
+            }
+        }
+        
+        // If not found by employee ID, check by national ID (only if national ID is provided)
+        if (member == null && item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
+            Optional<Member> existingByNationalId = memberRepository.findByNationalId(item.getNationalId());
+            if (existingByNationalId.isPresent()) {
                 throw new RuntimeException("Member with national ID already exists: " + item.getNationalId());
             }
         }
-        // Also check by employee ID to prevent duplicates
-        if (item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
-                && memberRepository.findByMemberNumber(item.getEmployeeId()).isPresent()) {
-            throw new RuntimeException("Member with Employee ID already exists: " + item.getEmployeeId());
-        }
-
-        Member member = new Member();
-        member.setFirstName(item.getFirstName());
-        member.setLastName(item.getLastName());
         
-        // Set email if provided, otherwise use generated email
-        if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
-            member.setEmail(item.getEmail());
+        if (isUpdate) {
+            // ===== UPDATE SCENARIO =====
+            // Only update fields that are provided in the upload
+            
+            // Update first name if provided
+            if (item.getFirstName() != null && !item.getFirstName().trim().isEmpty()) {
+                member.setFirstName(item.getFirstName());
+            }
+            
+            // Update last name if provided
+            if (item.getLastName() != null && !item.getLastName().trim().isEmpty()) {
+                member.setLastName(item.getLastName());
+            }
+            
+            // Update email if provided
+            if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
+                member.setEmail(item.getEmail());
+            }
+            
+            // Update phone if provided
+            if (item.getPhone() != null && !item.getPhone().trim().isEmpty()) {
+                member.setPhone(item.getPhone());
+            }
+            
+            // Update national ID if provided
+            if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
+                member.setNationalId(item.getNationalId());
+            }
+            
+            // Update date of birth if provided
+            if (item.getDateOfBirth() != null) {
+                member.setDateOfBirth(item.getDateOfBirth());
+            }
+            
+            // Update department if provided
+            if (item.getDepartment() != null && !item.getDepartment().trim().isEmpty()) {
+                member.setDepartment(item.getDepartment());
+            }
+            
+            // Update employer if provided
+            if (item.getEmployer() != null && !item.getEmployer().trim().isEmpty()) {
+                member.setEmployer(item.getEmployer());
+            }
+            
+            // Update bank details if provided
+            if (item.getBank() != null && !item.getBank().trim().isEmpty()) {
+                member.setBankName(item.getBank());
+            }
+            if (item.getBankAccount() != null && !item.getBankAccount().trim().isEmpty()) {
+                member.setBankAccountNumber(item.getBankAccount());
+            }
+            if (item.getBankBranch() != null && !item.getBankBranch().trim().isEmpty()) {
+                member.setBankBranch(item.getBankBranch());
+            }
+            
+            // Update next of kin details if provided
+            if (item.getNextOfKin() != null && !item.getNextOfKin().trim().isEmpty()) {
+                member.setNextOfKinName(item.getNextOfKin());
+            }
+            if (item.getNokPhone() != null && !item.getNokPhone().trim().isEmpty()) {
+                member.setNextOfKinPhone(item.getNokPhone());
+            }
+            if (item.getNokRelationship() != null && !item.getNokRelationship().trim().isEmpty()) {
+                member.setNextOfKinRelationship(item.getNokRelationship());
+            }
+            
+            // Save updated member (DO NOT recreate accounts for update)
+            member = memberRepository.save(member);
+            
         } else {
-            // Generate a placeholder email if not provided
+            // ===== CREATE SCENARIO =====
+            // Create new member with provided values
+            member = new Member();
+            member.setFirstName(item.getFirstName());
+            member.setLastName(item.getLastName());
+            
+            // Set email if provided, otherwise use generated email
+            if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
+                member.setEmail(item.getEmail());
+            } else {
+                // Generate a placeholder email if not provided
+                String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
+                    ? item.getEmployeeId()
+                    : generateMemberNumber();
+                member.setEmail(identifier + "@minet.sacco");
+            }
+            
+            member.setPhone(item.getPhone());
+            
+            // Set national ID if provided (now optional)
+            if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
+                member.setNationalId(item.getNationalId());
+            }
+            
+            member.setDateOfBirth(item.getDateOfBirth());
+            member.setDepartment(item.getDepartment());
+            member.setEmployeeId(item.getEmployeeId());
+            member.setEmploymentStatus("PERMANENT");
+            
+            // Set employer if provided (now optional)
+            if (item.getEmployer() != null && !item.getEmployer().trim().isEmpty()) {
+                member.setEmployer(item.getEmployer());
+            }
+            
+            // Set bank details if provided (now optional)
+            if (item.getBank() != null && !item.getBank().trim().isEmpty()) {
+                member.setBankName(item.getBank());
+            }
+            if (item.getBankAccount() != null && !item.getBankAccount().trim().isEmpty()) {
+                member.setBankAccountNumber(item.getBankAccount());
+            }
+            if (item.getBankBranch() != null && !item.getBankBranch().trim().isEmpty()) {
+                member.setBankBranch(item.getBankBranch());
+            }
+            
+            // Set next of kin details if provided (now optional)
+            if (item.getNextOfKin() != null && !item.getNextOfKin().trim().isEmpty()) {
+                member.setNextOfKinName(item.getNextOfKin());
+            }
+            if (item.getNokPhone() != null && !item.getNokPhone().trim().isEmpty()) {
+                member.setNextOfKinPhone(item.getNokPhone());
+            }
+            if (item.getNokRelationship() != null && !item.getNokRelationship().trim().isEmpty()) {
+                member.setNextOfKinRelationship(item.getNokRelationship());
+            }
+
+            // Use employeeId as memberNumber
             String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
                 ? item.getEmployeeId()
                 : generateMemberNumber();
-            member.setEmail(identifier + "@minet.sacco");
-        }
-        
-        member.setPhone(item.getPhone());
-        
-        // Set national ID if provided (now optional)
-        if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
-            member.setNationalId(item.getNationalId());
-        }
-        
-        member.setDateOfBirth(item.getDateOfBirth());
-        member.setDepartment(item.getDepartment());
-        member.setEmployeeId(item.getEmployeeId());
-        member.setEmploymentStatus("PERMANENT");
-        
-        // Set employer if provided (now optional)
-        if (item.getEmployer() != null && !item.getEmployer().trim().isEmpty()) {
-            member.setEmployer(item.getEmployer());
-        }
-        
-        // Set bank details if provided (now optional)
-        if (item.getBank() != null && !item.getBank().trim().isEmpty()) {
-            member.setBankName(item.getBank());
-        }
-        if (item.getBankAccount() != null && !item.getBankAccount().trim().isEmpty()) {
-            member.setBankAccountNumber(item.getBankAccount());
-        }
-        if (item.getBankBranch() != null && !item.getBankBranch().trim().isEmpty()) {
-            member.setBankBranch(item.getBankBranch());
-        }
-        
-        // Set next of kin details if provided (now optional)
-        if (item.getNextOfKin() != null && !item.getNextOfKin().trim().isEmpty()) {
-            member.setNextOfKinName(item.getNextOfKin());
-        }
-        if (item.getNokPhone() != null && !item.getNokPhone().trim().isEmpty()) {
-            member.setNextOfKinPhone(item.getNokPhone());
-        }
-        if (item.getNokRelationship() != null && !item.getNokRelationship().trim().isEmpty()) {
-            member.setNextOfKinRelationship(item.getNokRelationship());
-        }
+            member.setMemberNumber(identifier);
 
-        // Use employeeId as memberNumber
-        String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
-            ? item.getEmployeeId()
-            : generateMemberNumber();
-        member.setMemberNumber(identifier);
+            // Members are ACTIVE immediately upon bulk upload
+            member.setStatus(Member.Status.ACTIVE);
+            member.setApprovedAt(LocalDateTime.now());
 
-        // Members are ACTIVE immediately upon bulk upload
-        member.setStatus(Member.Status.ACTIVE);
-        member.setApprovedAt(LocalDateTime.now());
+            // Use date joined from template if provided, otherwise default to now
+            if (item.getDateJoined() != null) {
+                member.setCreatedAt(item.getDateJoined().atStartOfDay());
+            } else {
+                member.setCreatedAt(LocalDateTime.now());
+            }
 
-        // Use date joined from template if provided, otherwise default to now
-        if (item.getDateJoined() != null) {
-            member.setCreatedAt(item.getDateJoined().atStartOfDay());
-        } else {
-            member.setCreatedAt(LocalDateTime.now());
+            member = memberRepository.save(member);
+
+            // Determine opening balances - defaults: savings=0, shares=3000
+            BigDecimal openingSavings = item.getOpeningSavingsBalance() != null
+                ? item.getOpeningSavingsBalance()
+                : BigDecimal.ZERO;
+            BigDecimal openingShares = item.getOpeningSharesBalance() != null
+                ? item.getOpeningSharesBalance()
+                : new BigDecimal("3000.00");
+
+            // Create accounts with opening balances and transaction records (ONLY for new members)
+            User systemUser = item.getBatch().getUploadedBy();
+            createDefaultAccountsWithOpeningBalances(member, openingSavings, openingShares, systemUser);
+
+            // Create mobile app login credentials (ONLY for new members)
+            createMemberLoginCredentials(member);
         }
-
-        member = memberRepository.save(member);
-
-        // Determine opening balances - defaults: savings=0, shares=3000
-        BigDecimal openingSavings = item.getOpeningSavingsBalance() != null
-            ? item.getOpeningSavingsBalance()
-            : BigDecimal.ZERO;
-        BigDecimal openingShares = item.getOpeningSharesBalance() != null
-            ? item.getOpeningSharesBalance()
-            : new BigDecimal("3000.00");
-
-        // Create accounts with opening balances and transaction records
-        User systemUser = item.getBatch().getUploadedBy();
-        createDefaultAccountsWithOpeningBalances(member, openingSavings, openingShares, systemUser);
-
-        // Create mobile app login credentials
-        createMemberLoginCredentials(member);
 
         item.setMember(member);
     }

@@ -256,9 +256,10 @@ public class BulkValidationService {
             String employeeId = item.getEmployeeId().trim();
             if (employeeId.length() > 50) {
                 errors.add("Row " + rowNumber + ": Employee ID must be max 50 characters (current: " + employeeId.length() + ")");
-            } else if (memberRepository.existsByEmployeeId(employeeId)) {
-                errors.add("Row " + rowNumber + ": Employee ID '" + employeeId + "' is already registered in the system");
             }
+            // NOTE: We no longer reject duplicate employee IDs here.
+            // The system now supports UPDATING existing members via bulk upload.
+            // If employee ID exists, it will be updated; if not, a new member will be created.
         }
         
         // ========== OPTIONAL FIELDS (Can be edited later) ==========
