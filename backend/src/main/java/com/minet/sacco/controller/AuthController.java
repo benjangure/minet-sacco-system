@@ -113,14 +113,20 @@ public class AuthController {
             User user = userRepository.findByUsername(authRequest.getUsername())
                     .orElseThrow(() -> new Exception("User not found"));
             
+            System.out.println("DEBUG: User found - id=" + user.getId() + ", role=" + user.getRole() + ", firstLogin=" + user.isFirstLogin());
+            
             // Only MEMBER role can login to member portal
             if (user.getRole() != User.Role.MEMBER) {
                 System.err.println("ERROR: Non-member user attempting member login: " + authRequest.getUsername());
                 throw new Exception("Staff users must use the staff login page. Please use the staff login.");
             }
             
+            System.out.println("DEBUG: Generating JWT token with memberId=" + user.getMemberId() + ", firstLogin=" + user.isFirstLogin());
+            
             // Generate token with memberId and first-login status for member users
             final String jwt = jwtUtil.generateTokenWithMemberId(userDetails, user.getMemberId(), user.isFirstLogin());
+            
+            System.out.println("DEBUG: JWT token generated successfully, first login flag: " + user.isFirstLogin());
             
             return ResponseEntity.ok(new AuthResponse(jwt, user.getMemberId(), user.isFirstLogin()));
         } catch (Exception e) {
@@ -137,42 +143,60 @@ public class AuthController {
     @PostMapping("/member/setup-password")
     public ResponseEntity<?> setupPassword(@RequestBody SetupPasswordRequest request) throws Exception {
         try {
+            System.out.println("DEBUG: setup-password endpoint called for user: " + request.getUsername());
+            
             // Find user by username
             User user = userRepository.findByUsername(request.getUsername())
                     .orElseThrow(() -> new Exception("User not found"));
             
+            System.out.println("DEBUG: User found, id=" + user.getId() + ", firstLogin=" + user.isFirstLogin());
+            
             // Verify user is a member
             if (user.getRole() != User.Role.MEMBER) {
+                System.err.println("ERROR: Non-member user attempted password setup: " + request.getUsername());
                 throw new Exception("Only members can use this endpoint");
             }
             
             // Verify user is on first login
             if (!user.isFirstLogin()) {
+                System.err.println("ERROR: Password setup attempt by non-first-login user: " + request.getUsername());
                 throw new Exception("Password setup is only allowed for first-time login");
             }
             
             // Verify current password matches
+            System.out.println("DEBUG: Verifying current password");
             if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+                System.err.println("ERROR: Current password mismatch for user: " + request.getUsername());
                 throw new Exception("Current password is incorrect");
             }
+            
+            System.out.println("DEBUG: Current password verified, encoding new password");
             
             // Update password and mark first login as complete
             user.setPassword(passwordEncoder.encode(request.getNewPassword()));
             user.setFirstLogin(false);
             user.setUpdatedAt(LocalDateTime.now());
-            userRepository.save(user);
+            User savedUser = userRepository.save(user);
+            
+            System.out.println("DEBUG: User password updated and firstLogin set to false. New firstLogin value: " + savedUser.isFirstLogin());
             
             // Update credential tracking record and PURGE temporary password for security
             memberCredentialRepository.findByMemberId(user.getMemberId())
                 .ifPresent(credential -> {
+                    System.out.println("DEBUG: Updating member credential record");
                     credential.setPasswordChanged(true);
                     credential.setPasswordChangedAt(LocalDateTime.now());
                     credential.setPassword(null); // SECURITY: Purge temporary password from database
                     memberCredentialRepository.save(credential);
+                    System.out.println("DEBUG: Member credential record updated");
                 });
+            
+            System.out.println("DEBUG: Password setup completed successfully for user: " + request.getUsername());
             
             return ResponseEntity.ok(new ApiResponse<>(true, "Password setup successful", null));
         } catch (Exception e) {
+            System.err.println("ERROR: Password setup failed: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.badRequest().body(new ApiResponse<>(false, e.getMessage(), null));
         }
     }

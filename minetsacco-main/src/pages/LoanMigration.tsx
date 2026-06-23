@@ -148,92 +148,28 @@ export default function LoanMigration() {
     }
   };
 
-  const downloadTemplate = () => {
-    // Use real product names if available, otherwise use placeholders
-    const product1 = loanProducts[0]?.name || "Standard Loan";
-    const product2 = loanProducts[1]?.name || "Emergency Loan";
-
-    const headers = [
-      "Employee ID",
-      "Loan Product Name",
-      "Principal Amount",
-      "Term (Months)",
-      "Interest Rate % (informational only - system uses product configured rate)",
-      "Disbursement Date (DD/MM/YYYY)",
-      "Loan Status (DISBURSED/REPAID/DEFAULTED)",
-      "Outstanding Balance",
-      "Guarantorship Type (NORMAL/SELF)",
-      "Guarantor 1 Employee ID",
-      "Guarantor 1 Pledge Amount",
-      "Guarantor 2 Employee ID",
-      "Guarantor 2 Pledge Amount",
-      "Guarantor 3 Employee ID",
-      "Guarantor 3 Pledge Amount",
-      "Guarantor 4 Employee ID",
-      "Guarantor 4 Pledge Amount",
-      "Guarantor 5 Employee ID",
-      "Guarantor 5 Pledge Amount",
-      "Guarantor 6 Employee ID",
-      "Guarantor 6 Pledge Amount",
-      "Purpose (optional)",
-    ];
-    const exampleRow = [
-      "EMP001",
-      product1,
-      "100000",
-      "12",
-      "",
-      "15/01/2024",
-      "DISBURSED",
-      "75000",
-      "NORMAL",
-      "EMP002",
-      "50000",
-      "EMP003",
-      "50000",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "School fees",
-    ];
-    const selfExample = [
-      "EMP004",
-      product2,
-      "50000",
-      "6",
-      "",
-      "01/03/2024",
-      "REPAID",
-      "0",
-      "SELF",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "Emergency",
-    ];
-
-    const csv = [headers, exampleRow, selfExample].map((r) => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "loan_migration_template.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  const downloadTemplate = async () => {
+    try {
+      const response = await api.get("/loan-migration/template/download", {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "loan_migration_template.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Template Downloaded",
+        description: "Loan migration template downloaded successfully.",
+      });
+    } catch (err) {
+      toast({
+        title: "Download Failed",
+        description: "Could not download the template. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const formatCurrency = (amount: number | null) => {

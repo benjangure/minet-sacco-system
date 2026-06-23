@@ -37,6 +37,8 @@ interface Loan {
 interface LoanRepayment {
   id: number;
   amount: number;
+  principalAmount?: number;
+  interestAmount?: number;
   paymentMethod: string;
   referenceNumber: string;
   paymentDate: string;
@@ -61,15 +63,19 @@ const LoanRepaymentRecording = () => {
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
   const [repayments, setRepayments] = useState<LoanRepayment[]>([]);
   const [schedule, setSchedule] = useState<AmortizationSchedule | null>(null);
+  const [totalInterestCollected, setTotalInterestCollected] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [repaymentDialogOpen, setRepaymentDialogOpen] = useState(false);
   const [repaymentForm, setRepaymentForm] = useState({
     amount: "",
+    principalAmount: "",
+    interestAmount: "",
     paymentMethod: "CASH",
     referenceNumber: "",
     paymentDate: new Date().toISOString().split("T")[0],
   });
+  const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
   const { session, role } = useAuth();
@@ -114,6 +120,11 @@ const LoanRepaymentRecording = () => {
       if (repaymentRes.ok) {
         const data = await repaymentRes.json();
         setRepayments(data.data || []);
+        // Calculate total interest collected from all repayments
+        const totalInterest = (data.data || []).reduce((sum: number, repayment: LoanRepayment) => {
+          return sum + (repayment.interestAmount || 0);
+        }, 0);
+        setTotalInterestCollected(totalInterest);
       }
 
       if (scheduleRes.ok) {
@@ -136,12 +147,43 @@ const LoanRepaymentRecording = () => {
     e.preventDefault();
     if (!selectedLoan) return;
 
+    setValidationError("");
+
+    // Validate amount
     if (!repaymentForm.amount || parseFloat(repaymentForm.amount) <= 0) {
-      toast({ title: "Error", description: "Please enter a valid amount", variant: "destructive" });
+      toast({ title: "Error", description: "Please enter a valid total amount", variant: "destructive" });
       return;
     }
 
-    if (parseFloat(repaymentForm.amount) > selectedLoan.outstandingBalance) {
+    // Validate principal amount (REQUIRED)
+    if (!repaymentForm.principalAmount || parseFloat(repaymentForm.principalAmount) <= 0) {
+      toast({ title: "Error", description: "Principal amount is required and must be greater than zero", variant: "destructive" });
+      return;
+    }
+
+    // Validate interest amount (REQUIRED)
+    if (!repaymentForm.interestAmount || parseFloat(repaymentForm.interestAmount) < 0) {
+      toast({ title: "Error", description: "Interest amount is required (can be zero, but must be entered)", variant: "destructive" });
+      return;
+    }
+
+    // Validate principal + interest = total
+    const principal = parseFloat(repaymentForm.principalAmount);
+    const interest = parseFloat(repaymentForm.interestAmount);
+    const total = parseFloat(repaymentForm.amount);
+    
+    if (Math.abs((principal + interest) - total) > 0.01) {
+      const sum = principal + interest;
+      setValidationError(`Principal (${principal.toFixed(2)}) + Interest (${interest.toFixed(2)}) = ${sum.toFixed(2)}, but Total Amount is ${total.toFixed(2)}. They must match exactly.`);
+      toast({ 
+        title: "Validation Error", 
+        description: "Principal + Interest must equal Total Amount", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    if (total > selectedLoan.outstandingBalance) {
       toast({ 
         title: "Error", 
         description: `Amount cannot exceed outstanding balance of KES ${selectedLoan.outstandingBalance.toLocaleString()}`, 
@@ -180,6 +222,8 @@ const LoanRepaymentRecording = () => {
         },
         body: JSON.stringify({
           amount: parseFloat(repaymentForm.amount),
+          principalAmount: parseFloat(repaymentForm.principalAmount),
+          interestAmount: parseFloat(repaymentForm.interestAmount),
           paymentMethod: repaymentForm.paymentMethod,
           referenceNumber: repaymentForm.referenceNumber,
           paymentDate: new Date(repaymentForm.paymentDate).toISOString(),
@@ -191,10 +235,13 @@ const LoanRepaymentRecording = () => {
         setRepaymentDialogOpen(false);
         setRepaymentForm({
           amount: "",
+          principalAmount: "",
+          interestAmount: "",
           paymentMethod: "CASH",
           referenceNumber: "",
           paymentDate: new Date().toISOString().split("T")[0],
         });
+        setValidationError("");
         // Refresh loan details
         fetchLoanDetails(selectedLoan.id);
       } else {
@@ -357,14 +404,14 @@ const LoanRepaymentRecording = () => {
               </Card>
               <Card>
                 <CardContent className="pt-6">
-                  <p className="text-xs text-muted-foreground">Outstanding</p>
-                  <p className="text-lg font-bold text-red-600">KES {schedule.outstandingBalance.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Interest Collected</p>
+                  <p className="text-lg font-bold text-blue-600">KES {totalInterestCollected.toLocaleString()}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
-                  <p className="text-xs text-muted-foreground">Remaining Months</p>
-                  <p className="text-lg font-bold">{schedule.remainingMonths} / {schedule.totalMonths}</p>
+                  <p className="text-xs text-muted-foreground">Outstanding</p>
+                  <p className="text-lg font-bold text-red-600">KES {schedule.outstandingBalance.toLocaleString()}</p>
                 </CardContent>
               </Card>
             </div>
@@ -385,20 +432,104 @@ const LoanRepaymentRecording = () => {
                 <DialogTitle>Record Loan Repayment</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleRecordRepayment} className="space-y-4">
+                {validationError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{validationError}</AlertDescription>
+                  </Alert>
+                )}
+
                 <div>
-                  <Label className="text-xs">Amount (KES) *</Label>
+                  <Label className="text-xs">Principal Amount (KES) *</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={repaymentForm.principalAmount}
+                    onChange={(e) => {
+                      setRepaymentForm({ ...repaymentForm, principalAmount: e.target.value });
+                      setValidationError("");
+                    }}
+                    placeholder="Amount toward loan principal"
+                    className="text-sm"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Amount that reduces the principal balance
+                  </p>
+                </div>
+
+                <div>
+                  <Label className="text-xs">Interest Amount (KES) *</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={repaymentForm.interestAmount}
+                    onChange={(e) => {
+                      setRepaymentForm({ ...repaymentForm, interestAmount: e.target.value });
+                      setValidationError("");
+                    }}
+                    placeholder="Amount toward accrued interest"
+                    className="text-sm"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Amount that covers interest (can be zero, but must be entered)
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                  <p className="text-xs font-semibold text-blue-900 mb-2">Calculated Total:</p>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span>Principal:</span>
+                      <span className="font-medium">{repaymentForm.principalAmount ? `KES ${parseFloat(repaymentForm.principalAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : "—"}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span>Interest:</span>
+                      <span className="font-medium">{repaymentForm.interestAmount ? `KES ${parseFloat(repaymentForm.interestAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : "—"}</span>
+                    </div>
+                    <div className="flex justify-between text-xs border-t border-blue-200 pt-1 mt-1">
+                      <span className="font-semibold">Total:</span>
+                      <span className="font-bold text-blue-900">
+                        {repaymentForm.principalAmount && repaymentForm.interestAmount ? 
+                          `KES ${(parseFloat(repaymentForm.principalAmount) + parseFloat(repaymentForm.interestAmount)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` 
+                          : "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs">Total Amount (KES) *</Label>
                   <Input
                     type="number"
                     step="0.01"
                     value={repaymentForm.amount}
-                    onChange={(e) => setRepaymentForm({ ...repaymentForm, amount: e.target.value })}
-                    placeholder={`Max: KES ${selectedLoan.outstandingBalance.toLocaleString()}`}
+                    onChange={(e) => {
+                      setRepaymentForm({ ...repaymentForm, amount: e.target.value });
+                      setValidationError("");
+                    }}
+                    placeholder="Must equal principal + interest"
                     className="text-sm"
                     required
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     Outstanding: KES {selectedLoan.outstandingBalance.toLocaleString()}
                   </p>
+                  {repaymentForm.principalAmount && repaymentForm.interestAmount && repaymentForm.amount &&
+                    Math.abs((parseFloat(repaymentForm.principalAmount) + parseFloat(repaymentForm.interestAmount)) - parseFloat(repaymentForm.amount)) > 0.01 && (
+                    <p className="text-xs text-red-600 mt-1 font-semibold">
+                      ✗ Principal + Interest must equal Total
+                    </p>
+                  )}
+                  {repaymentForm.principalAmount && repaymentForm.interestAmount && repaymentForm.amount &&
+                    Math.abs((parseFloat(repaymentForm.principalAmount) + parseFloat(repaymentForm.interestAmount)) - parseFloat(repaymentForm.amount)) <= 0.01 && (
+                    <p className="text-xs text-green-600 mt-1 font-semibold">
+                      ✓ Amounts match
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -423,6 +554,7 @@ const LoanRepaymentRecording = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="SALARY_DEDUCTION">Salary Deduction</SelectItem>
                       <SelectItem value="CASH">Cash</SelectItem>
                       <SelectItem value="MPESA">M-Pesa</SelectItem>
                       <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>

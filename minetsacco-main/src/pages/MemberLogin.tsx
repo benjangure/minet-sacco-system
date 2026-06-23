@@ -30,6 +30,45 @@ export default function MemberLogin() {
   const { memberSignIn } = useAuth();
 
   useEffect(() => {
+    // If already logged in with valid token, redirect to dashboard
+    const sessionStr = localStorage.getItem('session');
+    if (sessionStr) {
+      try {
+        const session = JSON.parse(sessionStr);
+        if (session.token && typeof session.token === 'string') {
+          // Validate token hasn't expired
+          try {
+            const tokenParts = session.token.split('.');
+            if (tokenParts.length === 3) {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              // Check if token has exp claim and if it's expired
+              if (payload.exp) {
+                const expirationTime = payload.exp * 1000; // Convert to milliseconds
+                const currentTime = Date.now();
+                if (currentTime < expirationTime) {
+                  // Token is valid and not expired
+                  console.log('DEBUG: Valid session exists in localStorage, redirecting to dashboard');
+                  navigate('/member/dashboard', { replace: true });
+                  return;
+                }
+              } else {
+                // No expiration claim, assume token is valid
+                console.log('DEBUG: Session exists (no expiry), redirecting to dashboard');
+                navigate('/member/dashboard', { replace: true });
+                return;
+              }
+            }
+          } catch (tokenErr) {
+            console.error('Failed to validate token:', tokenErr);
+            // Token is invalid, clear it and continue to login
+            localStorage.removeItem('session');
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse session:', e);
+      }
+    }
+
     // Check if there's an access error from ProtectedRoute
     const error = localStorage.getItem('accessError');
     if (error) {
@@ -46,22 +85,33 @@ export default function MemberLogin() {
     const currentUrl = getBackendUrl();
     setBackendUrlLocal(currentUrl);
     setTempUrl(currentUrl);
-  }, [location.state]);
+  }, [location.state, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
+    console.log('DEBUG: Member login attempt starting for user:', username);
+
     try {
       const result = await memberSignIn(username, password);
 
+      console.log('DEBUG: memberSignIn result:', { 
+        error: result.error?.message, 
+        firstLogin: result.firstLogin,
+        username: result.username 
+      });
+
       if (result.error) {
+        console.error('DEBUG: Login error received:', result.error.message);
         setError(result.error.message);
+        setLoading(false);
         return;
       }
 
       if (result.firstLogin) {
+        console.log('DEBUG: First login detected - redirecting to password setup');
         // Redirect to password setup page with credentials
         navigate('/member/password-setup', { 
           state: { 
@@ -74,7 +124,24 @@ export default function MemberLogin() {
       }
 
       // Normal login successful - redirect to dashboard
-      navigate('/member/dashboard');
+      console.log('DEBUG: Login successful, redirecting to member dashboard');
+      // Verify session is in localStorage before navigating
+      const sessionCheck = localStorage.getItem('session');
+      console.log('DEBUG: Session in localStorage before navigate:', sessionCheck ? 'YES' : 'NO');
+      if (sessionCheck) {
+        try {
+          const parsed = JSON.parse(sessionCheck);
+          console.log('DEBUG: Session has token:', parsed.token ? 'YES' : 'NO');
+        } catch (e) {
+          console.error('DEBUG: Failed to parse session:', e);
+        }
+      }
+      console.log('DEBUG: Current URL before navigate:', window.location.href);
+      console.log('DEBUG: About to call navigate("/member/dashboard", { replace: true })');
+      
+      // No delay needed - session is already written and validated
+      navigate('/member/dashboard', { replace: true });
+      console.log('DEBUG: Navigate called, current URL is now:', window.location.href);
     } catch (err: any) {
       console.error('Login error:', err);
       
@@ -88,8 +155,8 @@ export default function MemberLogin() {
         errorMsg = err.message;
       }
       
+      console.error('DEBUG: Final error message:', errorMsg);
       setError(errorMsg);
-    } finally {
       setLoading(false);
     }
   };

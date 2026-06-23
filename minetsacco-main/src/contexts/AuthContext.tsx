@@ -12,6 +12,7 @@ interface User {
 }
 
 interface Session {
+  role: string;
   token: string;
   user: User;
 }
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedVersion !== APP_VERSION) {
       // Version mismatch, clear all sessions
       localStorage.removeItem("session");
+      localStorage.removeItem("token");
       localStorage.setItem("appVersion", APP_VERSION);
       setLoading(false);
       return;
@@ -117,6 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const memberSignIn = async (username: string, password: string) => {
     try {
+      console.log('DEBUG: memberSignIn - fetching from', `${getApiBaseUrl()}/auth/member/login`);
+      
       const response = await fetch(`${getApiBaseUrl()}/auth/member/login`, {
         method: "POST",
         headers: {
@@ -125,15 +129,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ username, password }),
       });
 
+      console.log('DEBUG: memberSignIn - response status:', response.status);
+
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('DEBUG: memberSignIn - error response:', errorData);
         throw new Error(errorData.message || "Login failed");
       }
 
       const data = await response.json();
+      console.log('DEBUG: memberSignIn - success response received, firstLogin:', data.firstLogin);
       
       // Check if this is a first login
       if (data.firstLogin) {
+        console.log('DEBUG: memberSignIn - first login detected');
         return { 
           error: null, 
           firstLogin: true, 
@@ -154,7 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: username,
           role: (payload.role || "MEMBER") as AppRole,
         },
+        role: ""
       };
+
+      console.log('DEBUG: memberSignIn - setting session for user:', payload.sub);
 
       setSession(sessionData);
       setUser(sessionData.user);
@@ -165,10 +177,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatar_url: null,
       });
 
+      // Store under "session" (used by AuthContext's own restore logic)
+      // AND under "token" (used by MemberSettings.tsx, notificationService.ts,
+      // and other member-portal pages that read the raw token directly)
       localStorage.setItem("session", JSON.stringify(sessionData));
+      localStorage.setItem("token", data.token);
+
+      console.log('DEBUG: memberSignIn - session saved to localStorage');
 
       return { error: null, firstLogin: false };
     } catch (error) {
+      console.error('DEBUG: memberSignIn - catch block error:', error);
       return { error: error as Error };
     }
   };
@@ -202,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: username,
           role: (payload.role || "ADMIN") as AppRole,
         },
+        role: ""
       };
 
       setSession(sessionData);
@@ -232,6 +252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(null);
     setProfile(null);
     localStorage.removeItem("session");
+    localStorage.removeItem("token");
     // Clear browser history and navigate to login
     navigate("/login", { replace: true });
     // Clear the history stack to prevent back button from returning to previous pages

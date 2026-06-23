@@ -50,29 +50,32 @@ const api = axios.create({
   },
 });
 
-api.interceptors.request.use((config) => {
-  const isMemberRoute = window.location.pathname.startsWith('/member');
-  let token = null;
-
-  if (isMemberRoute) {
-    token = localStorage.getItem('token');
-  } else {
+export const getAuthToken = (): string | null => {
+  // Try session object first (where AuthContext stores token)
+  let token = localStorage.getItem('token');
+  if (!token) {
     const sessionStr = localStorage.getItem('session');
     if (sessionStr) {
       try {
         const session = JSON.parse(sessionStr);
-        token = session.token;
+        if (session.token && typeof session.token === 'string') {
+          token = session.token;
+        }
       } catch (e) {
-        token = localStorage.getItem('token');
+        console.error('Failed to parse session:', e);
       }
-    } else {
-      token = localStorage.getItem('token');
     }
   }
+  return token;
+};
+
+api.interceptors.request.use((config) => {
+  const token = getAuthToken();
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
   return config;
 });
 

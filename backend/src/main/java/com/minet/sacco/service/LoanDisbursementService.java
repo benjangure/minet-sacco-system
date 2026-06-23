@@ -51,56 +51,11 @@ public class LoanDisbursementService {
             throw new RuntimeException("Loan must be APPROVED before disbursement. Current status: " + freshLoan.getStatus());
         }
         
-        // RESTRUCTURED: Check that treasurer has set interest before disbursement
-        if (freshLoan.getTotalInterest() == null || freshLoan.getTotalRepayable() == null || freshLoan.getMonthlyRepayment() == null) {
-            throw new RuntimeException("Cannot disburse loan without interest set. Treasurer must approve with interest amount first. Loan ID: " + freshLoan.getId());
-        }
+        // REDUCING BALANCE: Interest is NOT set at approval/disbursement anymore
+        // Outstanding balance will be set to principal only
+        // Interest will be determined during repayments based on reducing balance method
         
         loan = freshLoan;
-
-        // Verify and recalculate loan calculations if they're missing or zero
-        if (loan.getMonthlyRepayment() == null || loan.getMonthlyRepayment().compareTo(BigDecimal.ZERO) == 0 ||
-            loan.getTotalInterest() == null || loan.getTotalInterest().compareTo(BigDecimal.ZERO) == 0 ||
-            loan.getTotalRepayable() == null || loan.getTotalRepayable().compareTo(BigDecimal.ZERO) == 0) {
-            
-            // Recalculate from amount, interest rate, and term
-            if (loan.getAmount() != null && loan.getInterestRate() != null && loan.getTermMonths() != null) {
-                BigDecimal principal = loan.getAmount();
-                BigDecimal annualRate = loan.getInterestRate();
-                Integer termMonths = loan.getTermMonths();
-                
-                // Simple interest calculation: Interest = Principal * Rate * Time
-                BigDecimal rate = annualRate.divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP);
-                BigDecimal timeInYears = BigDecimal.valueOf(termMonths).divide(BigDecimal.valueOf(12), 4, java.math.RoundingMode.HALF_UP);
-                BigDecimal totalInterest = principal.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
-                BigDecimal totalRepayable = principal.add(totalInterest);
-                BigDecimal monthlyRepayment = totalRepayable.divide(BigDecimal.valueOf(termMonths), 2, java.math.RoundingMode.HALF_UP);
-                
-                loan.setTotalInterest(totalInterest);
-                loan.setTotalRepayable(totalRepayable);
-                loan.setMonthlyRepayment(monthlyRepayment);
-                loan.setOutstandingBalance(totalRepayable);
-                loan.setInterestRemaining(totalInterest);
-            }
-        }
-        
-        // IMPORTANT: Always ensure outstandingBalance equals totalRepayable at disbursement
-        // This ensures accurate repayment tracking from the start
-        // Also handle cases where outstandingBalance is incorrectly set to a higher value
-        if (loan.getTotalRepayable() != null && 
-            (loan.getOutstandingBalance() == null || 
-             loan.getOutstandingBalance().compareTo(loan.getTotalRepayable()) != 0)) {
-            loan.setOutstandingBalance(loan.getTotalRepayable());
-        }
-        if (loan.getTotalInterest() != null && loan.getInterestRemaining() == null) {
-            loan.setInterestRemaining(loan.getTotalInterest());
-        }
-        
-        // Safety check: if outstanding balance is somehow greater than total repayable, fix it
-        if (loan.getOutstandingBalance() != null && loan.getTotalRepayable() != null &&
-            loan.getOutstandingBalance().compareTo(loan.getTotalRepayable()) > 0) {
-            loan.setOutstandingBalance(loan.getTotalRepayable());
-        }
 
         // Generate and assign loan number (only if not already assigned)
         if (loan.getLoanNumber() == null || loan.getLoanNumber().isEmpty()) {
@@ -115,6 +70,27 @@ public class LoanDisbursementService {
                 String loanNumber = loanNumberGenerationService.generateLoanNumber(loan);
                 loan.setLoanNumber(loanNumber);
             }
+        }
+
+        // REDUCING BALANCE: Set outstanding balance to principal only
+        // This is the new behavior - interest is not added upfront
+        BigDecimal principal = loan.getAmount();
+        loan.setOutstandingBalance(principal);
+
+        // DEFENSIVE NULL-SAFETY: Set safe defaults for fields no longer calculated upfront
+        // These fields are now computed during repayment based on reducing balance method
+        // Setting to safe defaults prevents NullPointerException in reporting, dashboards, etc.
+        if (loan.getTotalInterest() == null) {
+            loan.setTotalInterest(BigDecimal.ZERO);
+        }
+        if (loan.getTotalRepayable() == null) {
+            loan.setTotalRepayable(principal);
+        }
+        if (loan.getMonthlyRepayment() == null) {
+            loan.setMonthlyRepayment(BigDecimal.ZERO);
+        }
+        if (loan.getInterestRemaining() == null) {
+            loan.setInterestRemaining(BigDecimal.ZERO);
         }
 
         // Update loan status

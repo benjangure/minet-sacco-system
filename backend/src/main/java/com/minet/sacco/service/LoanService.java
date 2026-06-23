@@ -76,6 +76,9 @@ public class LoanService {
     @Autowired
     private GuarantorTrackingService guarantorTrackingService;
 
+    @Autowired
+    private EligibilityCalculationService eligibilityCalculationService;
+
     public Member getMemberById(Long memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new RuntimeException("Member not found"));
@@ -130,6 +133,24 @@ public class LoanService {
         }
         if (loanProduct.getMaxAmount() != null && request.getAmount().compareTo(loanProduct.getMaxAmount()) > 0) {
             throw new RuntimeException("Loan amount exceeds maximum");
+        }
+
+        // EMERGENCY LOAN CONSTRAINT: Check cumulative borrowing limit on this product
+        if (loanProduct.getMaxTotalBorrowingLimit() != null && 
+            loanProduct.getMaxTotalBorrowingLimit().compareTo(BigDecimal.ZERO) > 0) {
+            
+            BigDecimal currentOutstanding = eligibilityCalculationService
+                    .getOutstandingBalanceByProduct(member, loanProduct.getId());
+            BigDecimal availableCapacity = loanProduct.getMaxTotalBorrowingLimit()
+                    .subtract(currentOutstanding);
+            
+            if (request.getAmount().compareTo(availableCapacity) > 0) {
+                throw new RuntimeException(
+                    "Loan amount exceeds available borrowing capacity on this product. " +
+                    "Maximum allowed: KES " + loanProduct.getMaxTotalBorrowingLimit() + 
+                    ", Already borrowed: KES " + currentOutstanding + 
+                    ", Available to borrow: KES " + availableCapacity);
+            }
         }
 
         // Validate term against loan product limits
@@ -385,32 +406,10 @@ public class LoanService {
             } else if (currentStatus == Loan.Status.PENDING_TREASURER) {
                 nextStatus = Loan.Status.APPROVED;
                 
-                // Treasurer must set total interest amount (not percentage) at this stage
-                if (request.getInterestRate() == null || request.getInterestRate().compareTo(BigDecimal.ZERO) < 0) {
-                    throw new RuntimeException("Total interest amount must be provided by Treasurer for final approval");
-                }
-                
-                // Set the total interest amount directly (as provided by HR)
-                BigDecimal totalInterestAmount = request.getInterestRate(); // This is actually the total interest in KES
-                loan.setTotalInterest(totalInterestAmount);
-                loan.setInterestRemaining(totalInterestAmount);
-                
-                // Calculate derived fields:
-                // totalRepayable = principal + totalInterest
-                loan.setTotalRepayable(loan.getAmount().add(totalInterestAmount));
-                
-                // monthlyRepayment = totalRepayable / termMonths
-                if (loan.getTermMonths() != null && loan.getTermMonths() > 0) {
-                    BigDecimal monthlyRepayment = loan.getTotalRepayable().divide(
-                        new BigDecimal(loan.getTermMonths()),
-                        2,
-                        java.math.RoundingMode.HALF_UP
-                    );
-                    loan.setMonthlyRepayment(monthlyRepayment);
-                }
-                
-                // Set outstanding balance to total repayable initially (will be updated as loan is repaid)
-                loan.setOutstandingBalance(loan.getTotalRepayable());
+                // REDUCING BALANCE: No interest calculation at approval
+                // Treasurer simply approves the loan for disbursement
+                // Interest will be recorded during repayments based on reducing balance method
+                // Outstanding balance will be set to principal only at disbursement
                 
                 notificationMessage = "Your loan application for KES " + loan.getAmount() + " has been approved and is ready for disbursement.";
                 notificationRole = null; // Notify member
@@ -541,22 +540,48 @@ public class LoanService {
         repayment.setInterestAmount(interestAmount);
         repayment.setRecordedBy(createdBy);
         repayment.setPaymentDate(LocalDateTime.now());
+        
+        // Set payment method from request if provided
+        if (request.getPaymentMethod() != null && !request.getPaymentMethod().trim().isEmpty()) {
+            String normalizedMethod = request.getPaymentMethod().trim().toUpperCase().replace(" ", "_");
+            // Common aliases that should map to the canonical enum value
+            if (normalizedMethod.equals("SALARY")) {
+                normalizedMethod = "SALARY_DEDUCTION";
+            }
+            try {
+                repayment.setPaymentMethod(LoanRepayment.PaymentMethod.valueOf(normalizedMethod));
+                System.out.println("[MAKE_REPAYMENT] Payment method set to: " + repayment.getPaymentMethod());
+            } catch (IllegalArgumentException e) {
+                System.out.println("[MAKE_REPAYMENT] WARNING: Invalid payment method '" + request.getPaymentMethod() + "', defaulting to CASH. Valid values: SALARY_DEDUCTION, CASH, MPESA, BANK_TRANSFER, CHEQUE, OTHER");
+                repayment.setPaymentMethod(LoanRepayment.PaymentMethod.CASH);
+            }
+        } else {
+            System.out.println("[MAKE_REPAYMENT] No payment method provided, using default: CASH");
+        }
+        
+        // Set transaction reference from request if provided
+        if (request.getTransactionReference() != null && !request.getTransactionReference().trim().isEmpty()) {
+            repayment.setReferenceNumber(request.getTransactionReference());
+            System.out.println("[MAKE_REPAYMENT] Reference number set to: " + repayment.getReferenceNumber());
+        } else {
+            System.out.println("[MAKE_REPAYMENT] No reference number provided");
+        }
+        
         repayment = loanRepaymentRepository.save(repayment);
 
-        // Calculate new outstanding balance
-        BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loan.getId());
-        BigDecimal totalDue = calculateTotalDue(loan);
-        BigDecimal newOutstanding = totalDue.subtract(totalRepaid != null ? totalRepaid : BigDecimal.ZERO);
+        // Calculate new outstanding balance using principal amount repaid only
+        BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(loan.getId());
+        BigDecimal outstandingBalance = loan.getAmount().subtract(totalPrincipalRepaid != null ? totalPrincipalRepaid : BigDecimal.ZERO);
         
         // Update loan's outstanding balance
-        loan.setOutstandingBalance(newOutstanding);
+        loan.setOutstandingBalance(outstandingBalance);
 
         // Track pledge reduction for guarantors (proportional to repayment)
         // This also unfreezes proportional savings for self-guarantors
         guarantorTrackingService.trackPledgeReduction(loan, request.getAmount());
 
         // Check if loan is fully repaid
-        if (newOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
+        if (outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
             loan.setStatus(Loan.Status.REPAID);
             loanRepository.save(loan);
             // Release all guarantor pledges — their savings are no longer frozen
@@ -581,10 +606,10 @@ public class LoanService {
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
-        BigDecimal totalDue = calculateTotalDue(loan);
-        BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loanId);
+        // Use principal amount repaid, not total amount, for accurate outstanding balance
+        BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(loanId);
 
-        return totalDue.subtract(totalRepaid != null ? totalRepaid : BigDecimal.ZERO);
+        return loan.getAmount().subtract(totalPrincipalRepaid != null ? totalPrincipalRepaid : BigDecimal.ZERO);
     }
 
     public List<Guarantor> getGuarantorsForLoan(Long loanId) {

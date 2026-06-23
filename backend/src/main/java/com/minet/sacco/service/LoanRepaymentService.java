@@ -52,28 +52,38 @@ public class LoanRepaymentService {
             throw new RuntimeException("Can only record repayments for DISBURSED loans");
         }
 
-        BigDecimal principal = principalAmount != null ? principalAmount.setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
-        BigDecimal interest = interestAmount != null ? interestAmount.setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
-
-        if ((amount == null || amount.compareTo(BigDecimal.ZERO) == 0)
-                && (principal.compareTo(BigDecimal.ZERO) > 0 || interest.compareTo(BigDecimal.ZERO) > 0)) {
-            amount = principal.add(interest);
+        // PHASE 2: Principal and interest amounts are MANDATORY - no defaults or fallbacks
+        if (principalAmount == null) {
+            throw new RuntimeException("Principal amount is mandatory and cannot be null");
+        }
+        if (interestAmount == null) {
+            throw new RuntimeException("Interest amount is mandatory and cannot be null");
         }
 
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("Repayment amount must be greater than zero");
+        BigDecimal principal = principalAmount.setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal interest = interestAmount.setScale(2, java.math.RoundingMode.HALF_UP);
+
+        // Validate principal is positive
+        if (principal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Principal amount must be greater than zero");
         }
 
-        if (principal.compareTo(BigDecimal.ZERO) < 0) {
-            throw new RuntimeException("Principal amount cannot be negative");
-        }
-
+        // Validate interest is non-negative
         if (interest.compareTo(BigDecimal.ZERO) < 0) {
             throw new RuntimeException("Interest amount cannot be negative");
         }
 
-        if (principal.add(interest).compareTo(amount) != 0) {
-            throw new RuntimeException("Repayment total must equal principal plus interest");
+        // Validate total amount is provided
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Repayment amount must be greater than zero");
+        }
+
+        // CRITICAL: Enforce principal + interest must exactly equal total amount
+        BigDecimal calculatedTotal = principal.add(interest);
+        if (calculatedTotal.compareTo(amount) != 0) {
+            throw new RuntimeException("Repayment validation failed: Principal (" + principal + ") + Interest (" + 
+                                     interest + ") = " + calculatedTotal + " but Total Amount is " + amount + 
+                                     ". These must match exactly.");
         }
 
         if (amount.compareTo(loan.getOutstandingBalance()) > 0) {
@@ -95,8 +105,13 @@ public class LoanRepaymentService {
 
         LoanRepayment savedRepayment = loanRepaymentRepository.save(repayment);
 
-        // Update loan outstanding balance
-        BigDecimal newOutstandingBalance = loan.getOutstandingBalance().subtract(amount);
+        // PHASE 2: Update loan outstanding balance by PRINCIPAL AMOUNT ONLY
+        // Interest is recorded separately and does not reduce outstanding balance
+        // Outstanding balance tracks remaining principal only
+        BigDecimal newOutstandingBalance = loan.getOutstandingBalance().subtract(principal);
+        if (newOutstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
+            newOutstandingBalance = BigDecimal.ZERO;
+        }
         loan.setOutstandingBalance(newOutstandingBalance);
 
         if (interest.compareTo(BigDecimal.ZERO) > 0 && loan.getInterestRemaining() != null) {
@@ -189,57 +204,61 @@ public class LoanRepaymentService {
 
         BigDecimal totalRepaid = getTotalRepaidAmount(loanId);
         BigDecimal outstandingBalance = loan.getOutstandingBalance();
-        BigDecimal monthlyPayment = loan.getMonthlyRepayment();
         
-        // Calculate remaining months based on multiple factors
+        // PHASE 6 (REDUCING BALANCE): monthlyRepayment is NO LONGER pre-calculated
+        // Use time-based calculation only since we don't know the expected monthly payment upfront
+        
+        // Calculate remaining months based on time elapsed and term
         int remainingMonths = 0;
         
+        // Get the reference date for calculating elapsed time
+        // Priority: disbursementDate > approvalDate > applicationDate
+        LocalDateTime referenceDate = null;
         if (loan.getDisbursementDate() != null) {
+            referenceDate = loan.getDisbursementDate();
+        } else if (loan.getApprovalDate() != null) {
+            referenceDate = loan.getApprovalDate();
+        } else if (loan.getApplicationDate() != null) {
+            referenceDate = loan.getApplicationDate();
+        }
+        
+        if (referenceDate != null) {
             LocalDateTime now = LocalDateTime.now();
-            LocalDateTime disbursementDate = loan.getDisbursementDate();
             
-            // Calculate actual months elapsed with partial month consideration
-            long totalMonthsElapsed = java.time.temporal.ChronoUnit.MONTHS.between(disbursementDate, now);
-            int daysInMonth = disbursementDate.plusMonths(1).getDayOfMonth() - disbursementDate.getDayOfMonth();
-            long totalDaysElapsed = java.time.temporal.ChronoUnit.DAYS.between(disbursementDate, now);
-            int daysElapsed = (int) (totalDaysElapsed % 30);
-            double partialMonth = daysElapsed / (double)daysInMonth;
-            double monthsElapsed = totalMonthsElapsed + partialMonth;
+            // Calculate actual months elapsed using proper month counting
+            long monthsElapsed = java.time.temporal.ChronoUnit.MONTHS.between(referenceDate, now);
             
-            // Calculate expected remaining based on time
+            // For reducing balance: remaining months = term - months_elapsed
+            // This represents how many more months are expected in the loan term
             int timeBasedRemaining = Math.max(0, (int)(loan.getTermMonths() - monthsElapsed));
             
-            // Calculate remaining based on actual outstanding balance
-            if (outstandingBalance.compareTo(BigDecimal.ZERO) > 0 && monthlyPayment.compareTo(BigDecimal.ZERO) > 0) {
-                int paymentBasedRemaining = (int) Math.ceil(outstandingBalance.divide(monthlyPayment, 0, java.math.RoundingMode.UP).doubleValue());
-                remainingMonths = Math.min(timeBasedRemaining, paymentBasedRemaining);
-            } else if (outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
+            // Check if loan is fully repaid
+            if (outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
                 remainingMonths = 0; // Loan fully paid
             } else {
-                remainingMonths = timeBasedRemaining; // Use time-based if payment calculation fails
+                // Loan still has outstanding balance - use time-based remaining
+                remainingMonths = timeBasedRemaining;
             }
             
             // Apply loan status adjustments
-            if ("DEFAULTED".equals(loan.getStatus())) {
+            if (Loan.Status.DEFAULTED.equals(loan.getStatus())) {
                 // For defaulted loans, show all remaining months as due
                 remainingMonths = timeBasedRemaining;
-            } else if ("COMPLETED".equals(loan.getStatus())) {
+            } else if (Loan.Status.REPAID.equals(loan.getStatus())) {
                 remainingMonths = 0;
-            } else if ("APPROVED".equals(loan.getStatus()) && loan.getDisbursementDate() == null) {
-                remainingMonths = loan.getTermMonths(); // Not yet disbursed
             }
         } else {
-            // No disbursement date - use total term
+            // No reference date available - use total term (loan not yet disbursed or no dates set)
             remainingMonths = loan.getTermMonths();
         }
 
         return new LoanAmortizationSchedule(
             loan.getId(),
             loan.getAmount(),
-            loan.getTotalRepayable(),
+            null,  // totalRepayable no longer pre-calculated (was removed in reducing balance system)
             totalRepaid,
             outstandingBalance,
-            monthlyPayment,
+            null,  // monthlyPayment no longer pre-calculated (was removed in reducing balance system)
             remainingMonths,
             loan.getTermMonths()
         );

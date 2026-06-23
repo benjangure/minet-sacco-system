@@ -43,6 +43,8 @@ interface Transaction {
 interface LoanRepayment {
   id: number;
   amount: number;
+  principalAmount?: number;
+  interestAmount?: number;
   paymentMethod: string;
   referenceNumber: string;
   paymentDate: string;
@@ -113,7 +115,20 @@ function MemberDepositsView() {
 
   const handleViewReceipt = async (depositId: number) => {
     try {
-      const token = localStorage.getItem('token');
+      // Get token from session object first (where AuthContext stores it)
+      let token = localStorage.getItem('token');
+      if (!token) {
+        const sessionStr = localStorage.getItem('session');
+        if (sessionStr) {
+          try {
+            const session = JSON.parse(sessionStr);
+            token = session.token;
+          } catch (e) {
+            console.error('Failed to parse session:', e);
+          }
+        }
+      }
+
       const response = await fetch(`${API_BASE_URL}/member/deposit-requests/${depositId}/receipt/download`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -267,8 +282,22 @@ export default function MemberDashboard() {
 
   const fetchDashboard = async () => {
     try {
-      const token = localStorage.getItem('token');
+      // Get token from session object first (where AuthContext stores it)
+      let token = localStorage.getItem('token');
       if (!token) {
+        const sessionStr = localStorage.getItem('session');
+        if (sessionStr) {
+          try {
+            const session = JSON.parse(sessionStr);
+            token = session.token;
+          } catch (e) {
+            console.error('Failed to parse session:', e);
+          }
+        }
+      }
+
+      if (!token) {
+        console.log('DEBUG: No token found, redirecting to member login');
         navigate('/member');
         return;
       }
@@ -282,6 +311,7 @@ export default function MemberDashboard() {
       setError('Failed to load dashboard');
       if (err.response?.status === 401) {
         localStorage.removeItem('token');
+        localStorage.removeItem('session');
         navigate('/member');
       }
     } finally {
@@ -291,6 +321,7 @@ export default function MemberDashboard() {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('session');  // ✅ Also remove session
     localStorage.removeItem('userRole');
     localStorage.removeItem('memberId');
     localStorage.removeItem('username');
@@ -407,7 +438,20 @@ export default function MemberDashboard() {
 
   const fetchUnreadNotifications = async () => {
     try {
-      const token = localStorage.getItem('token');
+      // Get token from session object first (where AuthContext stores it)
+      let token = localStorage.getItem('token');
+      if (!token) {
+        const sessionStr = localStorage.getItem('session');
+        if (sessionStr) {
+          try {
+            const session = JSON.parse(sessionStr);
+            token = session.token;
+          } catch (e) {
+            console.error('Failed to parse session:', e);
+          }
+        }
+      }
+      
       if (!token) return;
 
       const response = await api.get('/member/notifications/unread-count');
@@ -1169,7 +1213,9 @@ export default function MemberDashboard() {
                                 <div className="flex justify-between text-sm mb-1">
                                   <span className="text-muted-foreground">Progress</span>
                                   <span className="font-medium">
-                                    {formatCurrency(Math.max(0, loan.totalRepayable - loan.outstandingBalance))} / {formatCurrency(loan.totalRepayable)}
+                                    {loan.totalRepayable && loan.totalRepayable > 0
+                                      ? `${formatCurrency(Math.max(0, loan.totalRepayable - loan.outstandingBalance))} / ${formatCurrency(loan.totalRepayable)}`
+                                      : `${formatCurrency(loan.amount)} [No calc]`}
                                   </span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
@@ -1177,11 +1223,15 @@ export default function MemberDashboard() {
                                     className={`h-2 rounded-full transition-all duration-300 ${
                                       loan.status === 'REPAID' ? 'bg-green-600' : 'bg-green-600'
                                     }`}
-                                    style={{ width: `${Math.min(Math.max(0, ((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100), 100)}%` }}
+                                    style={{ width: loan.totalRepayable && loan.totalRepayable > 0
+                                      ? `${Math.min(Math.max(0, ((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100), 100)}%`
+                                      : loan.outstandingBalance === 0 ? "100%" : "0%" }}
                                   />
                                 </div>
                                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                                  <span>{Math.max(0, Math.round(((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100))}% repaid</span>
+                                  <span>{loan.totalRepayable && loan.totalRepayable > 0
+                                    ? `${Math.max(0, Math.round(((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100))}% repaid`
+                                    : loan.outstandingBalance === 0 ? "100% repaid" : "0% repaid"}</span>
                                   <span>
                                     {loan.status === 'REPAID' 
                                       ? '✓ Fully Repaid' 

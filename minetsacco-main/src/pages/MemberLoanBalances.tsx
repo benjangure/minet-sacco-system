@@ -185,10 +185,6 @@ export default function MemberLoanBalances() {
                       <p className="text-lg font-semibold text-red-600">{formatCurrency(loan.outstandingBalance)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase">Monthly Payment</p>
-                      <p className="text-lg font-semibold">{formatCurrency(loan.monthlyRepayment)}</p>
-                    </div>
-                    <div>
                       <p className="text-xs text-muted-foreground uppercase">Interest Rate</p>
                       <p className="text-lg font-semibold">{loan.interestRate}%</p>
                     </div>

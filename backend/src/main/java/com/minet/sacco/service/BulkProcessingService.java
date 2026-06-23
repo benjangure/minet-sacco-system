@@ -656,10 +656,17 @@ public class BulkProcessingService {
             // Set payment method from bulk item (defaults to SALARY_DEDUCTION)
             repaymentRequest.setPaymentMethod(item.getLoanRepaymentPaymentMethod());
             
-            // Set reference number if provided
+            // Set reference number — prefer explicit reference column if provided,
+            // otherwise fall back to the loan number itself since it's the most
+            // meaningful identifier available for this repayment
             if (item.getLoanRepaymentReferenceNumber() != null && !item.getLoanRepaymentReferenceNumber().trim().isEmpty()) {
                 repaymentRequest.setTransactionReference(item.getLoanRepaymentReferenceNumber());
+            } else if (item.getLoanNumber() != null && !item.getLoanNumber().trim().isEmpty()) {
+                repaymentRequest.setTransactionReference(item.getLoanNumber());
             }
+            
+            System.out.println("[BULK_REPAYMENT_REQUEST] Payment Method: " + repaymentRequest.getPaymentMethod() 
+                + " | Reference: " + repaymentRequest.getTransactionReference());
             
             // Get outstanding balance BEFORE repayment for accurate notification
             BigDecimal outstandingBefore = loan.getOutstandingBalance();
@@ -669,12 +676,12 @@ public class BulkProcessingService {
             // Refresh loan to get updated status and balance
             Loan updatedLoan = loanRepository.findById(loan.getId()).orElse(loan);
             
-            // Recalculate outstanding balance to ensure accuracy (totalRepayable - totalRepaid)
-            BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(updatedLoan.getId());
-            if (totalRepaid == null) {
-                totalRepaid = BigDecimal.ZERO;
+            // Recalculate outstanding balance using principal repaid only
+            BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(updatedLoan.getId());
+            if (totalPrincipalRepaid == null) {
+                totalPrincipalRepaid = BigDecimal.ZERO;
             }
-            BigDecimal outstandingAfter = updatedLoan.getTotalRepayable().subtract(totalRepaid);
+            BigDecimal outstandingAfter = updatedLoan.getAmount().subtract(totalPrincipalRepaid);
             if (outstandingAfter.compareTo(BigDecimal.ZERO) < 0) {
                 outstandingAfter = BigDecimal.ZERO;
             }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api, { API_BASE_URL, getAuthToken } from '@/config/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Upload, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { API_BASE_URL } from '@/config/api';
 
 interface Account {
   id: number;
@@ -41,11 +40,9 @@ export default function DepositRequestForm({ open, onOpenChange, onSuccess }: De
   }, [open]);
 
   const fetchAccounts = async () => {
+    setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/member/accounts`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/member/accounts`);
       // Filter out SHARES account - this SACCO does not accept share deposits
       const filteredAccounts = (response.data || []).filter((a: Account) => a.accountType !== 'SHARES');
       setAccounts(filteredAccounts);
@@ -90,8 +87,6 @@ export default function DepositRequestForm({ open, onOpenChange, onSuccess }: De
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('token');
-      
       // Create FormData to send file
       const formData = new FormData();
       formData.append('accountId', selectedAccount);
@@ -99,12 +94,11 @@ export default function DepositRequestForm({ open, onOpenChange, onSuccess }: De
       formData.append('description', description);
       formData.append('receiptFile', receiptFile);
       
-      await axios.post(
-        `${API_BASE_URL}/member/deposit-requests`,
+      await api.post(
+        `/member/deposit-requests`,
         formData,
         {
           headers: { 
-            Authorization: `Bearer ${token}`,
             'Content-Type': 'multipart/form-data'
           }
         }

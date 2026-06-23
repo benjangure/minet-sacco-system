@@ -11,6 +11,8 @@ import com.minet.sacco.entity.UserDeletionRequest;
 import com.minet.sacco.repository.UserDeletionRequestRepository;
 import com.minet.sacco.service.UserService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -27,6 +29,8 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/users")
 @CrossOrigin
 public class UserController {
+
+    private static final Logger logger = LoggerFactory.getLogger(UserController.class);
 
     @Autowired
     private UserService userService;
@@ -411,6 +415,11 @@ public class UserController {
     public ResponseEntity<ApiResponse<User>> updateMyProfile(
             @Valid @RequestBody ProfileUpdateRequest profileUpdate,
             Authentication authentication) {
+        
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401)
+                    .body(ApiResponse.error("Authentication token not found or invalid"));
+        }
         
         String username = authentication.getName();
         User currentUser = userService.getUserByUsername(username)

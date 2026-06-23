@@ -442,9 +442,28 @@ const Loans = () => {
     }
   };
 
-  const handleEyeIconClick = (loan: Loan) => {
+  const handleEyeIconClick = async (loan: Loan) => {
     // Allow viewing any loan regardless of status
-    setSelectedLoanForDetails(loan);
+    const loanToDisplay = { ...loan };
+    
+    // Fetch interest collected from actual repayments for this loan
+    try {
+      const repaymentRes = await fetch(`${API_BASE_URL}/loans/${loan.id}/repayments`, {
+        headers: { "Authorization": `Bearer ${session?.token}` },
+      });
+      if (repaymentRes.ok) {
+        const repaymentData = await repaymentRes.json();
+        const repayments = repaymentData.data || [];
+        const interestCollected = repayments.reduce((sum: number, rep: any) => sum + (rep.interestAmount || 0), 0);
+        // Override totalInterest with actual collected interest
+        loanToDisplay.totalInterest = interestCollected;
+      }
+    } catch (error) {
+      console.error("Error fetching repayments for interest calculation:", error);
+      // Continue with existing data if repayment fetch fails
+    }
+    
+    setSelectedLoanForDetails(loanToDisplay);
     setLoanDetailsOpen(true);
   };
 
@@ -463,8 +482,8 @@ const Loans = () => {
           loanId: loan.id,
           approved: true,
           comments: actionNotes || "Approved",
-          // Treasurer includes interest rate when approving
-          interestRate: role === "TREASURER" && approvalReason ? parseFloat(approvalReason) : undefined,
+          // REDUCING BALANCE: No interest calculation at approval
+          // Treasurer simply approves the loan for disbursement
         };
       } else if (action === "reject") {
         url = `${API_BASE_URL}/loans/approve`;
@@ -490,7 +509,6 @@ const Loans = () => {
         toast({ title: "Success", description: `Loan ${action}d successfully` });
         setActionDialog(null);
         setActionNotes("");
-        setApprovalReason("");
         setLoanDetailsOpen(false);
         fetchLoans();
       } else {
@@ -1146,16 +1164,16 @@ const Loans = () => {
                     <p className="font-medium">{selectedLoanForDetails.termMonths} months</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-600">Interest</p>
-                    <p className="font-medium">KES {selectedLoanForDetails.totalInterest?.toLocaleString() || "0"}</p>
+                    <p className="text-xs text-gray-600">Interest Collected</p>
+                    <p className="font-medium text-blue-600">KES {selectedLoanForDetails.totalInterest?.toLocaleString() || "0"}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-600">Total</p>
-                    <p className="font-bold">KES {selectedLoanForDetails.totalRepayable?.toLocaleString() || "0"}</p>
+                    <p className="text-xs text-gray-600">Outstanding</p>
+                    <p className="font-bold text-red-600">KES {selectedLoanForDetails.outstandingBalance?.toLocaleString() || "0"}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-600">Monthly</p>
-                    <p className="font-bold">KES {selectedLoanForDetails.monthlyRepayment?.toLocaleString() || "0"}</p>
+                    <p className="text-xs text-gray-600">Status</p>
+                    <p className="font-medium">{selectedLoanForDetails.status}</p>
                   </div>
                 </div>
               </Card>
@@ -1170,34 +1188,38 @@ const Loans = () => {
                       <div className="flex justify-between mb-1">
                         <span className="text-xs text-gray-600">Repayment Status</span>
                         <span className="text-xs font-medium">
-                          {selectedLoanForDetails.totalRepayable && selectedLoanForDetails.outstandingBalance
+                          {selectedLoanForDetails.totalRepayable && selectedLoanForDetails.totalRepayable > 0 && selectedLoanForDetails.outstandingBalance !== undefined
                             ? `${Math.round(((selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.totalRepayable) * 100)}%`
-                            : "0%"}
+                            : selectedLoanForDetails.outstandingBalance === 0 ? "100%" : "0%"}
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div
                           className="bg-green-500 h-2 rounded-full transition-all"
                           style={{
-                            width: selectedLoanForDetails.totalRepayable && selectedLoanForDetails.outstandingBalance
-                              ? `${Math.min(((selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.totalRepayable) * 100, 100)}%`
-                              : "0%"
+                            width: selectedLoanForDetails.totalRepayable && selectedLoanForDetails.totalRepayable > 0 && selectedLoanForDetails.outstandingBalance !== undefined
+                              ? `${Math.min(Math.max(0, ((selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.totalRepayable) * 100), 100)}%`
+                              : selectedLoanForDetails.outstandingBalance === 0 ? "100%" : "0%"
                           }}
                         />
                       </div>
                     </div>
 
                     {/* Repayment Details Grid */}
-                    <div className="grid grid-cols-3 gap-1 text-xs">
+                    <div className="grid grid-cols-4 gap-1 text-xs">
                       <div className="bg-white rounded p-1.5 border border-blue-100">
-                        <p className="text-gray-600 text-xs">Disbursed</p>
+                        <p className="text-gray-600 text-xs">Principal</p>
                         <p className="font-bold text-blue-600">KES {selectedLoanForDetails.amount?.toLocaleString()}</p>
                       </div>
+                      <div className="bg-white rounded p-1.5 border border-orange-100">
+                        <p className="text-gray-600 text-xs">Interest Collected</p>
+                        <p className="font-bold text-orange-600">KES {selectedLoanForDetails.totalInterest?.toLocaleString() || "0"}</p>
+                      </div>
                       <div className="bg-white rounded p-1.5 border border-green-100">
-                        <p className="text-gray-600 text-xs">Repaid</p>
+                        <p className="text-gray-600 text-xs">Principal Repaid</p>
                         <p className="font-bold text-green-600">
-                          KES {selectedLoanForDetails.totalRepayable && selectedLoanForDetails.outstandingBalance
-                            ? Math.max(0, selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance).toLocaleString()
+                          KES {selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance
+                            ? Math.max(0, selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance).toLocaleString()
                             : "0"}
                         </p>
                       </div>
@@ -1323,38 +1345,19 @@ const Loans = () => {
                 <Card className="p-3 border-blue-200 bg-blue-50">
                   <p className="font-semibold text-xs mb-2">
                     {role === "TREASURER" && selectedLoanForDetails.status === "PENDING_TREASURER" 
-                      ? "Final Approval - Set Interest Rate & Confirm Disbursement"
+                      ? "Final Approval - Confirm Disbursement"
                       : "Approval Decision"}
                   </p>
                   <div className="space-y-2">
-                    {/* Treasurer Interest Amount Input */}
+                    {/* Treasurer Approval Section - No Interest Input Anymore */}
                     {role === "TREASURER" && selectedLoanForDetails.status === "PENDING_TREASURER" && (
-                      <div className="grid grid-cols-2 gap-2 p-2 bg-white rounded border border-blue-300">
-                        <div>
-                          <Label className="text-xs font-semibold">Total Interest Amount (KES) *</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="e.g., 5000"
-                            value={approvalReason}
-                            onChange={(e) => {
-                              setApprovalReason(e.target.value);
-                            }}
-                            className="text-xs h-8"
-                          />
-                          <p className="text-xs text-gray-600 mt-1">
-                            As informed by HR
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Loan Summary</Label>
-                          <div className="text-xs bg-gray-100 p-2 rounded mt-1">
-                            <p>Amount: KES {(selectedLoanForDetails.amount || 0).toLocaleString()}</p>
-                            <p>Term: {selectedLoanForDetails.termMonths} months</p>
-                            <p>Interest: KES {approvalReason ? parseFloat(approvalReason).toLocaleString() : 0}</p>
-                            <p className="font-semibold mt-1">Total: KES {(((selectedLoanForDetails.amount || 0) + (approvalReason ? parseFloat(approvalReason) : 0))).toLocaleString()}</p>
-                          </div>
+                      <div className="p-2 bg-white rounded border border-blue-300">
+                        <p className="text-sm font-semibold mb-2">Loan Summary</p>
+                        <div className="text-xs space-y-1">
+                          <p>Member: {selectedLoanForDetails.member.firstName} {selectedLoanForDetails.member.lastName}</p>
+                          <p>Amount: KES {(selectedLoanForDetails.amount || 0).toLocaleString()}</p>
+                          <p>Term: {selectedLoanForDetails.termMonths} months</p>
+                          <p className="text-gray-600 mt-2">Interest will be determined during repayments using reducing balance method.</p>
                         </div>
                       </div>
                     )}
@@ -1376,10 +1379,6 @@ const Loans = () => {
                         onClick={() => {
                           if (!actionNotes.trim()) {
                             toast({ title: "Required", description: "Please enter approval notes", variant: "destructive" });
-                            return;
-                          }
-                          if (role === "TREASURER" && selectedLoanForDetails.status === "PENDING_TREASURER" && !approvalReason) {
-                            toast({ title: "Required", description: "Please enter interest rate", variant: "destructive" });
                             return;
                           }
                           setActionDialog({ loan: selectedLoanForDetails, action: "approve" });

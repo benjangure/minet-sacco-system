@@ -438,7 +438,8 @@ public class ReportExportService {
                 row.createCell(3).setCellValue(entry.getAmount().doubleValue());
                 row.createCell(4).setCellValue(entry.getInterestRate().doubleValue());
                 row.createCell(5).setCellValue(entry.getTermMonths());
-                row.createCell(6).setCellValue(entry.getMonthlyRepayment().doubleValue());
+                // Defensive: handle null monthlyRepayment from reducing balance loans
+                row.createCell(6).setCellValue(entry.getMonthlyRepayment() != null ? entry.getMonthlyRepayment().doubleValue() : 0.0);
                 row.createCell(7).setCellValue(entry.getStatus());
                 row.createCell(8).setCellValue(entry.getOutstandingBalance().doubleValue());
             }
@@ -495,7 +496,8 @@ public class ReportExportService {
                 table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getAmount())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
                 table.addCell(new Cell().add(new Paragraph(entry.getInterestRate().toString()).setFontSize(8).setTextAlignment(TextAlignment.CENTER)));
                 table.addCell(new Cell().add(new Paragraph(String.valueOf(entry.getTermMonths())).setFontSize(8).setTextAlignment(TextAlignment.CENTER)));
-                table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getMonthlyRepayment())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+                // Defensive: handle null monthlyRepayment from reducing balance loans
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getMonthlyRepayment() != null ? entry.getMonthlyRepayment() : BigDecimal.ZERO)).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
                 table.addCell(new Cell().add(new Paragraph(entry.getStatus()).setFontSize(8)));
                 table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getOutstandingBalance())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
             }

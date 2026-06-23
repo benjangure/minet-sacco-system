@@ -73,4 +73,22 @@ public class LoanMigrationController {
     public ResponseEntity<List<LoanMigrationItem>> getBatchItems(@PathVariable Long batchId) {
         return ResponseEntity.ok(loanMigrationService.getMigrationItems(batchId));
     }
+
+    /**
+     * Download the loan migration Excel template with proper column order.
+     */
+    @GetMapping("/template/download")
+    public ResponseEntity<?> downloadLoanMigrationTemplate() {
+        try {
+            byte[] fileContent = loanMigrationService.generateLoanMigrationTemplate();
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=loan_migration_template.xlsx")
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .body(fileContent);
+        } catch (Exception e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "Failed to generate template: " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
 }

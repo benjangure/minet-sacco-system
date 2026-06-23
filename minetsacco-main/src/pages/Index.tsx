@@ -25,6 +25,7 @@ const Index = () => {
     totalDisbursedOutstanding: 0,
     totalDisbursedOutstandingPrincipal: 0,
     totalDisbursedOutstandingInterest: 0,
+    totalInterestCollected: 0,
   });
   const [loansByProduct, setLoansByProduct] = useState<any[]>([]);
   const [membersByStatus, setMembersByStatus] = useState<any[]>([]);
@@ -118,21 +119,29 @@ const Index = () => {
         const totalDisbursedPrincipal = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0);
         const totalDisbursedOutstanding = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.outstandingBalance || 0), 0);
         
-        // Calculate outstanding interest more accurately
-        const totalDisbursedOutstandingInterest = disbursedLoans.reduce((sum: number, l: any) => {
-          const outstanding = Number(l.outstandingBalance || 0);
-          const totalRepayable = Number(l.totalRepayable || 0);
-          const totalInterest = Number(l.totalInterest || 0);
-          if (outstanding <= 0 || totalRepayable <= 0 || totalInterest <= 0) return sum;
-          const interestRatio = Math.min(1, Math.max(0, totalInterest / totalRepayable));
-          return sum + (outstanding * interestRatio);
-        }, 0);
+        // Calculate total interest collected from all repayments across all disbursed loans
+        let totalInterestCollected = 0;
+        try {
+          for (const loan of disbursedLoans) {
+            const repaymentRes = await fetch(`${API_BASE_URL}/loans/${loan.id}/repayments`, {
+              headers: { "Authorization": `Bearer ${session.token}` },
+            });
+            if (repaymentRes.ok) {
+              const repaymentData = await repaymentRes.json();
+              const repayments = repaymentData.data || [];
+              totalInterestCollected += repayments.reduce((sum: number, rep: any) => sum + (rep.interestAmount || 0), 0);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching repayments for interest calculation:", error);
+          // Continue with 0 if repayment data unavailable
+        }
         
-        // Outstanding principal = outstanding balance minus outstanding interest
-        const totalDisbursedOutstandingPrincipal = Math.max(
-          0,
-          totalDisbursedOutstanding - totalDisbursedOutstandingInterest
-        );
+        // Calculate outstanding interest more accurately
+        // NOTE: In REDUCING BALANCE system, totalRepayable is NULL for new loans
+        // Outstanding interest is tracked from actual repayments, not pre-calculated
+        // So we skip this calculation for reducing balance loans
+        const totalDisbursedOutstandingInterest = 0; // Not applicable in reducing balance system
         
         // Repaid = Total Disbursed - Outstanding Balance
         const totalRepaidAmount = Math.max(0, totalDisbursedPrincipal - totalDisbursedOutstanding);
@@ -155,14 +164,15 @@ const Index = () => {
           pendingDeposits: pendingDepositsData.length,
           totalDisbursedPrincipal,
           totalDisbursedOutstanding,
-          totalDisbursedOutstandingPrincipal,
-          totalDisbursedOutstandingInterest,
+          totalDisbursedOutstandingPrincipal: totalDisbursedOutstanding, // For reducing balance: all outstanding is principal
+          totalDisbursedOutstandingInterest: 0,
+          totalInterestCollected,
         });
 
-        // Pie chart breakdown: Outstanding Principal + Outstanding Interest + Repaid
+        // Pie chart breakdown: Outstanding Principal + Repaid
+        // In reducing balance system, we don't show estimated interest breakdown
         setLoanPortfolioBreakdown([
-          { name: "Outstanding Principal", value: totalDisbursedOutstandingPrincipal },
-          { name: "Outstanding Interest (Est.)", value: totalDisbursedOutstandingInterest },
+          { name: "Outstanding Principal", value: totalDisbursedOutstanding },
           { name: "Repaid", value: totalRepaidAmount },
         ]);
 
@@ -363,7 +373,7 @@ const Index = () => {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-4">
               <Card
                 className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow"
                 onClick={() => navigate("/loans?status=DISBURSED")}
@@ -391,14 +401,26 @@ const Index = () => {
                     {loading ? "..." : `KES ${stats.totalDisbursedOutstanding.toLocaleString()}`}
                   </div>
                   <p className="text-xs mt-1 text-muted-foreground">
-                    Principal: KES {stats.totalDisbursedOutstandingPrincipal.toLocaleString()} | Interest (est.): KES {stats.totalDisbursedOutstandingInterest.toLocaleString()}
+                    Principal remaining to be repaid
                   </p>
                 </CardContent>
               </Card>
 
               <Card className="border-none shadow-sm">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding Split vs Repaid</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Interest Collected</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {loading ? "..." : `KES ${stats.totalInterestCollected.toLocaleString()}`}
+                  </div>
+                  <p className="text-xs mt-1 text-muted-foreground">Total from all repayments</p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-none shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Repayment Progress</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {loanPortfolioBreakdown.some((d: any) => Number(d.value) > 0) ? (

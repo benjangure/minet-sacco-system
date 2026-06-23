@@ -92,19 +92,6 @@ public class BulkValidationService {
         if (item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) < 0) {
             errors.add("Row " + rowNumber + ": Loan repayment interest amount cannot be negative");
         }
-        if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) == 0 &&
-            (item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) > 0 ||
-             item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) > 0)) {
-            item.setLoanRepaymentAmount(item.getLoanRepaymentPrincipalAmount().add(item.getLoanRepaymentInterestAmount()));
-        }
-        if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0 &&
-            (item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) > 0 ||
-             item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) > 0)) {
-            BigDecimal splitTotal = item.getLoanRepaymentPrincipalAmount().add(item.getLoanRepaymentInterestAmount());
-            if (splitTotal.compareTo(item.getLoanRepaymentAmount()) != 0) {
-                errors.add("Row " + rowNumber + ": Loan repayment total must equal principal plus interest");
-            }
-        }
         if (item.getBenevolentFundAmount().compareTo(BigDecimal.ZERO) < 0) {
             errors.add("Row " + rowNumber + ": Benevolent fund amount cannot be negative");
         }
@@ -133,34 +120,70 @@ public class BulkValidationService {
             errors.add("Row " + rowNumber + ": At least one amount must be greater than zero");
         }
         
-        // Validate loan if repayment specified
-        if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
+        if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0 ||
+            item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) > 0 ||
+            item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) > 0) {
+            
+            // PHASE 3: MANDATORY SPLIT VALIDATION
+            // If any repayment-related field is filled, principal and interest are REQUIRED
+            if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
+                // Loan repayment is provided - principal and interest are MANDATORY
+                if (item.getLoanRepaymentPrincipalAmount() == null || 
+                    item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                    errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan Repayment Principal Amount is required and must be greater than zero when Loan Repayment is provided");
+                    return errors; // Block entire row on first mandatory field failure
+                }
+                if (item.getLoanRepaymentInterestAmount() == null || 
+                    item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) < 0) {
+                    errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan Repayment Interest Amount is required when Loan Repayment is provided (can be zero, but field must be filled)");
+                    return errors; // Block entire row on mandatory field failure
+                }
+                
+                // Validate principal + interest = total (EXACTLY)
+                BigDecimal calculatedTotal = item.getLoanRepaymentPrincipalAmount().add(item.getLoanRepaymentInterestAmount());
+                if (calculatedTotal.compareTo(item.getLoanRepaymentAmount()) != 0) {
+                    errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Principal (" + 
+                             item.getLoanRepaymentPrincipalAmount() + ") + Interest (" + 
+                             item.getLoanRepaymentInterestAmount() + ") = " + calculatedTotal + 
+                             ", but Loan Repayment total is " + item.getLoanRepaymentAmount() + 
+                             ". These must match exactly.");
+                    return errors; // Block entire row
+                }
+            }
+            
+            // Validate loan if any repayment specified
             if (item.getLoanNumber() == null || item.getLoanNumber().trim().isEmpty()) {
-                errors.add("Row " + rowNumber + ": Loan number is required when loan repayment amount is specified");
+                errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan number is required when loan repayment amount is specified");
+                return errors; // Block entire row
             } else {
                 Optional<Loan> loanOpt = loanRepository.findByLoanNumber(item.getLoanNumber());
                 if (loanOpt.isEmpty()) {
-                    errors.add("Row " + rowNumber + ": Loan '" + item.getLoanNumber() + "' not found");
+                    errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan '" + item.getLoanNumber() + "' not found");
+                    return errors; // Block entire row
                 } else {
                     Loan loan = loanOpt.get();
                     
                     // Validate loan belongs to member
                     if (!loan.getMember().getId().equals(member.getId())) {
-                        errors.add("Row " + rowNumber + ": Loan '" + item.getLoanNumber() + "' does not belong to member '" + item.getMemberNumber() + "'");
+                        errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan '" + item.getLoanNumber() + "' does not belong to member '" + item.getMemberNumber() + "'");
+                        return errors; // Block entire row
                     }
                     
                     // Validate loan is active
-                    if (loan.getStatus() != Loan.Status.APPROVED && loan.getStatus() != Loan.Status.DISBURSED) {
-                        errors.add("Row " + rowNumber + ": Loan is not active (Status: " + loan.getStatus() + ")");
+                    if (loan.getStatus() != Loan.Status.DISBURSED && loan.getStatus() != Loan.Status.REPAID) {
+                        errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan is not active (Status: " + loan.getStatus() + ")");
+                        return errors; // Block entire row
                     }
                     
-                    // Validate repayment amount doesn't exceed outstanding balance
-                    // Round both to 2 decimal places to avoid floating point precision issues
-                    BigDecimal repaymentRounded = item.getLoanRepaymentAmount().setScale(2, java.math.RoundingMode.HALF_UP);
-                    BigDecimal outstandingRounded = loan.getOutstandingBalance().setScale(2, java.math.RoundingMode.HALF_UP);
-                    if (repaymentRounded.compareTo(outstandingRounded) > 0) {
-                        errors.add("Row " + rowNumber + ": Repayment amount (KES " + repaymentRounded + 
-                                 ") exceeds outstanding balance (KES " + outstandingRounded + ")");
+                    // Validate repayment amount doesn't exceed outstanding balance (if amount is specified)
+                    if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal repaymentRounded = item.getLoanRepaymentAmount().setScale(2, java.math.RoundingMode.HALF_UP);
+                        BigDecimal outstandingRounded = loan.getOutstandingBalance().setScale(2, java.math.RoundingMode.HALF_UP);
+                        if (repaymentRounded.compareTo(outstandingRounded) > 0) {
+                            errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Repayment amount (KES " + repaymentRounded + 
+                                     ") exceeds outstanding balance (KES " + outstandingRounded + ")");
+                            return errors; // Block entire row
+                        }
                     }
                     
                     item.setLoan(loan);

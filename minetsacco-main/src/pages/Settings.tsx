@@ -25,6 +25,11 @@ const Settings = () => {
   const { session, role } = useAuth();
   const { toast } = useToast();
   
+  // Log token availability for debugging
+  useEffect(() => {
+    console.log("Settings: Session token available:", !!session?.token);
+  }, [session?.token]);
+  
   // Profile fields
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
@@ -44,12 +49,17 @@ const Settings = () => {
   // Load profile data on mount
   useEffect(() => {
     const fetchProfile = async () => {
+      if (!session?.token) {
+        setLoadingProfile(false);
+        return;
+      }
+
       try {
         const response = await fetch(`${API_BASE_URL}/users/profile/me`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${session?.token}`,
+            "Authorization": `Bearer ${session.token}`,
           },
         });
 
@@ -59,22 +69,27 @@ const Settings = () => {
           setProfile(profileData);
           setProfileFormData(profileData);
         } else {
+          console.error("Failed to load profile, status:", response.status);
           toast({ title: "Error", description: "Failed to load profile", variant: "destructive" });
         }
       } catch (error) {
+        console.error("Error loading profile:", error);
         toast({ title: "Error", description: "Failed to load profile. Please refresh.", variant: "destructive" });
       } finally {
         setLoadingProfile(false);
       }
     };
 
-    if (session?.token) {
-      fetchProfile();
-    }
-  }, [session?.token]);
+    fetchProfile();
+  }, [session?.token, toast]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!session?.token) {
+      toast({ title: "Error", description: "Authentication session expired. Please log in again.", variant: "destructive" });
+      return;
+    }
 
     if (!profileFormData.email?.trim()) {
       toast({ title: "Error", description: "Email is required", variant: "destructive" });
@@ -92,7 +107,7 @@ const Settings = () => {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${session?.token}`,
+          "Authorization": `Bearer ${session.token}`,
         },
         body: JSON.stringify({
           firstName: profileFormData.firstName || null,
@@ -109,6 +124,13 @@ const Settings = () => {
         setProfileFormData(updatedProfile);
         setEditingProfile(false);
         toast({ title: "Success", description: "Profile updated successfully" });
+      } else if (response.status === 401) {
+        // Authentication failed - token is invalid or expired
+        // Similar to password change, redirect to re-login
+        toast({ title: "Session Expired", description: "Your authentication session has expired. Please log in again to continue." });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 1500);
       } else {
         const error = await response.json();
         toast({ title: "Error", description: error.message || "Failed to update profile", variant: "destructive" });
@@ -153,10 +175,15 @@ const Settings = () => {
       });
 
       if (response.ok) {
-        toast({ title: "Success", description: "Password changed successfully" });
+        toast({ title: "Success", description: "Password changed successfully. Please log in again with your new password." });
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
+        
+        // Clear session and redirect to login since JWT is now invalid
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 1500);
       } else {
         const error = await response.json();
         toast({ title: "Error", description: error.message || "Failed to change password", variant: "destructive" });

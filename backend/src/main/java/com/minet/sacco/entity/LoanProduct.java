@@ -39,6 +39,10 @@ public class LoanProduct {
     @Column(name = "max_term_months")
     private Integer maxTermMonths;
 
+    @Column(name = "max_total_borrowing_limit")
+    @DecimalMin(value = "0.00")
+    private BigDecimal maxTotalBorrowingLimit;
+
     private Boolean isActive = true;
 
     private LocalDateTime createdAt;
@@ -67,6 +71,9 @@ public class LoanProduct {
 
     public Integer getMaxTermMonths() { return maxTermMonths; }
     public void setMaxTermMonths(Integer maxTermMonths) { this.maxTermMonths = maxTermMonths; }
+
+    public BigDecimal getMaxTotalBorrowingLimit() { return maxTotalBorrowingLimit; }
+    public void setMaxTotalBorrowingLimit(BigDecimal maxTotalBorrowingLimit) { this.maxTotalBorrowingLimit = maxTotalBorrowingLimit; }
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }

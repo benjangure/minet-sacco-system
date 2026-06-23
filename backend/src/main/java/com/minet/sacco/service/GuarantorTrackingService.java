@@ -51,7 +51,13 @@ public class GuarantorTrackingService {
         BigDecimal outstandingBalance = loan.getOutstandingBalance();
         BigDecimal originalLoanAmount = loan.getAmount();
         BigDecimal originalPrincipal = loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : originalLoanAmount;
+        
+        // PHASE 5: Handle migrated loans where totalRepayable may be NULL
+        // Fallback to outstanding balance for historical loans without upfront interest calculation
         BigDecimal totalRepayable = loan.getTotalRepayable();
+        if (totalRepayable == null) {
+            totalRepayable = loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : originalLoanAmount;
+        }
 
         // Derive outstanding principal from outstanding balance.
         // outstandingBalance starts at totalRepayable and decreases with each repayment.

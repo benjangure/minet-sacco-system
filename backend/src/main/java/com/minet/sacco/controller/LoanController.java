@@ -10,14 +10,19 @@ import com.minet.sacco.entity.Loan;
 import com.minet.sacco.entity.LoanRepayment;
 import com.minet.sacco.entity.User;
 import com.minet.sacco.entity.Guarantor;
+import com.minet.sacco.entity.LoanProduct;
+import com.minet.sacco.entity.Member;
 import com.minet.sacco.repository.LoanRepository;
 import com.minet.sacco.repository.GuarantorRepository;
+import com.minet.sacco.repository.LoanProductRepository;
+import com.minet.sacco.repository.MemberRepository;
 import com.minet.sacco.service.LoanService;
 import com.minet.sacco.service.UserService;
 import com.minet.sacco.service.GuarantorValidationService;
 import com.minet.sacco.service.GuarantorApprovalService;
 import com.minet.sacco.service.GuarantorTrackingService;
 import com.minet.sacco.service.NotificationService;
+import com.minet.sacco.service.EligibilityCalculationService;
 import jakarta.validation.Valid;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +52,15 @@ public class LoanController {
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private EligibilityCalculationService eligibilityCalculationService;
+
+    @Autowired
+    private LoanProductRepository loanProductRepository;
+
+    @Autowired
+    private MemberRepository memberRepository;
 
     @Autowired
     private GuarantorApprovalService guarantorApprovalService;
@@ -171,6 +185,58 @@ public class LoanController {
             result.put("guarantors", List.of());
             result.put("canProceed", memberResult.isEligible());
             return ResponseEntity.ok(ApiResponse.success("Pre-check completed", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/product/{productId}/available-capacity")
+    @PreAuthorize("hasAnyRole('ROLE_MEMBER', 'ROLE_LOAN_OFFICER', 'ROLE_TELLER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getAvailableBorrowingCapacity(
+            @PathVariable Long productId,
+            Authentication authentication) {
+        try {
+            Map<String, Object> result = new HashMap<>();
+
+            // Get current user
+            User user = userService.getUserByUsername(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            // Get member ID from user
+            Long memberId = user.getMemberId();
+            if (memberId == null) {
+                throw new RuntimeException("User is not linked to a member");
+            }
+
+            Member member = memberRepository.findById(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found"));
+
+            // Get loan product
+            LoanProduct product = loanProductRepository.findById(productId)
+                    .orElseThrow(() -> new RuntimeException("Loan product not found"));
+
+            // If no max limit set, return null
+            if (product.getMaxTotalBorrowingLimit() == null || 
+                product.getMaxTotalBorrowingLimit().compareTo(BigDecimal.ZERO) <= 0) {
+                result.put("hasLimit", false);
+                result.put("availableCapacity", null);
+                return ResponseEntity.ok(ApiResponse.success("No borrowing limit set for this product", result));
+            }
+
+            // Calculate current outstanding
+            BigDecimal currentOutstanding = eligibilityCalculationService
+                    .getOutstandingBalanceByProduct(member, productId);
+
+            // Calculate available
+            BigDecimal availableCapacity = product.getMaxTotalBorrowingLimit()
+                    .subtract(currentOutstanding);
+
+            result.put("hasLimit", true);
+            result.put("maxLimit", product.getMaxTotalBorrowingLimit());
+            result.put("currentOutstanding", currentOutstanding);
+            result.put("availableCapacity", availableCapacity);
+
+            return ResponseEntity.ok(ApiResponse.success("Available capacity retrieved", result));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }

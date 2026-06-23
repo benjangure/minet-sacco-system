@@ -80,4 +80,6 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
     List<Loan> findByMemberIdAndStatus(Long memberId, Loan.Status status);
 
     List<Loan> findByMemberIdAndStatusIn(Long memberId, java.util.List<Loan.Status> statuses);
+
+    List<Loan> findByMemberIdAndLoanProductId(Long memberId, Long loanProductId);
 }

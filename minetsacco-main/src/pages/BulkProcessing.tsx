@@ -872,14 +872,17 @@ export default function BulkProcessing() {
             fundColumns[fund.displayName] = 200; // Example amount
           });
 
-          // Base columns (always included) - SHARES removed as this SACCO does not accept share deposits
+          // Base columns (always included) - Column order must match ExcelParserService.parseMonthlyContributions
+          // Column order: Employee ID > Savings > Shares > Loan Repayment > Loan Number > Loan Principal > Loan Interest > Payment Method > Funds
           const baseRow = {
             "Employee ID": "EMP001",
             "Savings": 5000,
-            "Loan Repayment Principal Amount": "",
-            "Loan Repayment Interest Amount": "",
+            "Shares": 0,
             "Loan Repayment": "",
             "Loan Number": "",
+            "Loan Repayment Principal Amount": "",
+            "Loan Repayment Interest Amount": "",
+            "Loan Repayment Payment Method": "SALARY_DEDUCTION",
             ...fundColumns,
           };
 
@@ -887,20 +890,24 @@ export default function BulkProcessing() {
           const rowWithLoan = {
             "Employee ID": "EMP002",
             "Savings": 8000,
-            "Loan Repayment Principal Amount": 3500,
-            "Loan Repayment Interest Amount": 1500,
+            "Shares": 0,
             "Loan Repayment": 5000,
             "Loan Number": "LN-2026-002",
+            "Loan Repayment Principal Amount": 3500,
+            "Loan Repayment Interest Amount": 1500,
+            "Loan Repayment Payment Method": "SALARY_DEDUCTION",
             ...fundColumns,
           };
 
           const rowWithoutLoan = {
             "Employee ID": "EMP003",
             "Savings": 6000,
-            "Loan Repayment Principal Amount": "",
-            "Loan Repayment Interest Amount": "",
+            "Shares": 0,
             "Loan Repayment": "",
             "Loan Number": "",
+            "Loan Repayment Principal Amount": "",
+            "Loan Repayment Interest Amount": "",
+            "Loan Repayment Payment Method": "",
             ...fundColumns,
           };
 
@@ -1041,6 +1048,47 @@ export default function BulkProcessing() {
         
         const wsInstructions = XLSX.utils.aoa_to_sheet(instructionsData);
         XLSX.utils.book_append_sheet(wb, wsInstructions, "Instructions");
+      }
+
+      // Add instructions sheet for monthly contributions (PHASE 3)
+      if (batchType === "MONTHLY_CONTRIBUTIONS") {
+        const contributionsInstructions = [
+          ["PHASE 3: LOAN REPAYMENT MANDATORY SPLIT - IMPORTANT RULES"],
+          [""],
+          ["LOAN REPAYMENT COLUMNS (IF APPLICABLE):"],
+          ["When you enter a Loan Repayment amount, BOTH of these columns are REQUIRED:"],
+          ["• Loan Repayment Principal Amount - portion that reduces the loan principal"],
+          ["• Loan Repayment Interest Amount - portion that covers accrued interest"],
+          [""],
+          ["MANDATORY RULES:"],
+          ["1. Principal + Interest MUST exactly equal Loan Repayment total"],
+          ["   Example: If Loan Repayment = 5000, and Principal = 3500, then Interest MUST = 1500"],
+          ["2. Both fields must be filled - NO exceptions, NO auto-defaults"],
+          ["3. If Principal + Interest ≠ Loan Repayment, the ENTIRE ROW will be rejected"],
+          ["4. Set Loan Repayment Payment Method (default: SALARY_DEDUCTION)"],
+          ["   Valid values: SALARY_DEDUCTION, CASH, MPESA, BANK_TRANSFER, CHEQUE, OTHER"],
+          [""],
+          ["EXAMPLE (CORRECT):"],
+          ["Employee ID: EMP002"],
+          ["Loan Repayment: 5000"],
+          ["Loan Repayment Principal Amount: 3500"],
+          ["Loan Repayment Interest Amount: 1500"],
+          ["Loan Repayment Payment Method: SALARY_DEDUCTION"],
+          ["✓ Result: ROW ACCEPTED (3500 + 1500 = 5000)"],
+          [""],
+          ["EXAMPLE (INCORRECT - ROW WILL BE REJECTED):"],
+          ["Employee ID: EMP003"],
+          ["Loan Repayment: 5000"],
+          ["Loan Repayment Principal Amount: 3500"],
+          ["Loan Repayment Interest Amount: (left blank)"],
+          ["✗ Result: ENTIRE ROW REJECTED - Interest Amount is required"],
+          [""],
+          ["NO LOAN REPAYMENT:"],
+          ["If an employee has no loan repayment, leave all three fields blank - other transactions will process."],
+        ];
+        
+        const wsPhase3Instructions = XLSX.utils.aoa_to_sheet(contributionsInstructions);
+        XLSX.utils.book_append_sheet(wb, wsPhase3Instructions, "PHASE 3 Rules");
       }
 
       // Auto-size columns
@@ -1264,9 +1312,9 @@ export default function BulkProcessing() {
                 <AlertDescription>
                   <strong>Excel Template Format:</strong>
                   <br />
-                  Employee ID | Savings | Loan Repayment Principal Amount | Loan Repayment Interest Amount | Loan Repayment | Loan Number | Benevolent | Development | School Fees | Holiday | Emergency
+                  Employee ID | Savings | Shares | Loan Repayment | Loan Number | Loan Repayment Principal Amount | Loan Repayment Interest Amount | Loan Repayment Payment Method
                   <br />
-                  <span className="text-xs text-gray-600">All fund contributions are optional. Provide loan split values when you want to record principal and interest separately.</span>
+                  <span className="text-xs text-gray-600">Shares column must always be present (can be 0). Provide loan split values when you want to record principal and interest separately.</span>
                 </AlertDescription>
               </Alert>
 

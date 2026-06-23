@@ -214,63 +214,56 @@ public class EligibilityCalculationService {
         BigDecimal balance = account.isPresent() ? account.get().getBalance() : BigDecimal.ZERO;
         log.debug("Account Balance: {}", balance);
         
-        // Calculate frozen savings from self-guaranteed loans where THIS MEMBER is the BORROWER
-        List<Loan> memberLoans = loanRepository.findByMemberId(member.getId());
+        // PERFORMANCE OPTIMIZATION: Fetch all self-guarantees in a SINGLE query, not N+1
+        // This prevents a database query for each loan
+        List<Guarantor> allSelfGuarantees = guarantorRepository.findAllSelfGuaranteesByMemberId(member.getId());
+        
         BigDecimal frozenSelfGuarantee = BigDecimal.ZERO;
         
-        for (Loan loan : memberLoans) {
-            // Only count DISBURSED loans (not REPAID - fully repaid loans should not show as self-guaranteed)
-            if (loan.getStatus() != Loan.Status.DISBURSED) {
+        for (Guarantor guarantor : allSelfGuarantees) {
+            Loan loan = guarantor.getLoan();
+            if (loan == null) {
                 continue;
             }
             
-            // Get self-guarantee guarantor for THIS LOAN where member is the borrower
-            List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
-            for (Guarantor guarantor : guarantors) {
-                // Only count if: member is self-guarantor AND member is the loan borrower
-                if (guarantor.isSelfGuarantee() && guarantor.getMember().getId().equals(member.getId()) && 
-                    loan.getMember().getId().equals(member.getId())) {
-                    
-                    // Get original pledge amount (set at disbursement)
-                    BigDecimal originalPledge = guarantor.getPledgeAmount();
-                    if (originalPledge == null || originalPledge.compareTo(BigDecimal.ZERO) <= 0) {
-                        continue;
-                    }
-                    
-                    BigDecimal outstandingBalance = loan.getOutstandingBalance();
-                    if (outstandingBalance == null || outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
-                        continue;
-                    }
-                    
-                    BigDecimal originalPrincipal = loan.getOriginalPrincipal() != null ?
-                            loan.getOriginalPrincipal() : loan.getAmount();
-                    BigDecimal totalRepayable = loan.getTotalRepayable();
-
-                    // outstandingBalance starts at totalRepayable and decreases with each repayment.
-                    // Amount repaid = totalRepayable - outstandingBalance
-                    // Outstanding principal = originalPrincipal - amountRepaid
-                    BigDecimal outstandingPrincipal;
-                    if (totalRepayable != null && totalRepayable.compareTo(BigDecimal.ZERO) > 0) {
-                        BigDecimal amountRepaid = totalRepayable.subtract(outstandingBalance);
-                        outstandingPrincipal = originalPrincipal.subtract(amountRepaid);
-                    } else {
-                        outstandingPrincipal = originalPrincipal;
-                    }
-                    if (outstandingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
-                        outstandingPrincipal = BigDecimal.ZERO;
-                    }
-                    
-                    // Frozen = Original Pledge × (Outstanding Principal / Original Principal)
-                    BigDecimal proportionalFrozen = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
-                            originalPledge.multiply(outstandingPrincipal)
-                                    .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :
-                            BigDecimal.ZERO;
-                    
-                    frozenSelfGuarantee = frozenSelfGuarantee.add(proportionalFrozen);
-                    log.debug("Loan {}: OriginalPledge={}, TotalRepayable={}, OutstandingBalance={}, OutstandingPrincipal={}, Frozen={}",
-                            loan.getId(), originalPledge, totalRepayable, outstandingBalance, outstandingPrincipal, proportionalFrozen);
-                }
+            // Get original pledge amount (set at disbursement)
+            BigDecimal originalPledge = guarantor.getPledgeAmount();
+            if (originalPledge == null || originalPledge.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
             }
+            
+            BigDecimal outstandingBalance = loan.getOutstandingBalance();
+            if (outstandingBalance == null || outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            
+            BigDecimal originalPrincipal = loan.getOriginalPrincipal() != null ?
+                    loan.getOriginalPrincipal() : loan.getAmount();
+            BigDecimal totalRepayable = loan.getTotalRepayable();
+
+            // outstandingBalance starts at totalRepayable and decreases with each repayment.
+            // Amount repaid = totalRepayable - outstandingBalance
+            // Outstanding principal = originalPrincipal - amountRepaid
+            BigDecimal outstandingPrincipal;
+            if (totalRepayable != null && totalRepayable.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal amountRepaid = totalRepayable.subtract(outstandingBalance);
+                outstandingPrincipal = originalPrincipal.subtract(amountRepaid);
+            } else {
+                outstandingPrincipal = originalPrincipal;
+            }
+            if (outstandingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
+                outstandingPrincipal = BigDecimal.ZERO;
+            }
+            
+            // Frozen = Original Pledge × (Outstanding Principal / Original Principal)
+            BigDecimal proportionalFrozen = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
+                    originalPledge.multiply(outstandingPrincipal)
+                            .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :
+                    BigDecimal.ZERO;
+            
+            frozenSelfGuarantee = frozenSelfGuarantee.add(proportionalFrozen);
+            log.debug("Loan {}: OriginalPledge={}, TotalRepayable={}, OutstandingBalance={}, OutstandingPrincipal={}, Frozen={}",
+                    loan.getId(), originalPledge, totalRepayable, outstandingBalance, outstandingPrincipal, proportionalFrozen);
         }
         log.debug("Total Frozen from Self-Guarantees: {}", frozenSelfGuarantee);
         
@@ -301,61 +294,59 @@ public class EligibilityCalculationService {
      * CRITICAL: Uses proportional calculation based on outstanding PRINCIPAL
      * As loan is repaid, frozen amount reduces proportionally
      * Formula: Frozen = Original Pledge × (Outstanding Principal / Original Principal)
+     * 
+     * PERFORMANCE OPTIMIZATION: Uses batch query to avoid N+1 problem
      */
     private BigDecimal getSelfGuaranteeFrozenAmount(Member member) {
-        List<Loan> memberLoans = loanRepository.findByMemberId(member.getId());
+        // PERFORMANCE OPTIMIZATION: Fetch all self-guarantees in a SINGLE query
+        List<Guarantor> allSelfGuarantees = guarantorRepository.findAllSelfGuaranteesByMemberId(member.getId());
         BigDecimal frozenSelfGuaranteeOnly = BigDecimal.ZERO;
         
-        for (Loan loan : memberLoans) {
-            // Only count DISBURSED loans (not REPAID - fully repaid loans should not show as self-guaranteed)
-            if (loan.getStatus() != Loan.Status.DISBURSED) {
+        for (Guarantor guarantor : allSelfGuarantees) {
+            Loan loan = guarantor.getLoan();
+            if (loan == null) {
                 continue;
             }
             
-            List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
-            for (Guarantor guarantor : guarantors) {
-                if (guarantor.isSelfGuarantee() && guarantor.getMember().getId().equals(member.getId())) {
-                    BigDecimal originalPledge = guarantor.getPledgeAmount();
-                    if (originalPledge == null || originalPledge.compareTo(BigDecimal.ZERO) <= 0) {
-                        continue;
-                    }
-                    
-                    BigDecimal outstandingBalance = loan.getOutstandingBalance();
-                    if (outstandingBalance == null || outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
-                        continue;
-                    }
-                    
-                    BigDecimal originalPrincipal = loan.getOriginalPrincipal() != null ?
-                            loan.getOriginalPrincipal() : loan.getAmount();
-                    BigDecimal totalRepayable = loan.getTotalRepayable();
-
-                    // outstandingBalance starts at totalRepayable and decreases with each repayment.
-                    // Amount repaid = totalRepayable - outstandingBalance
-                    // Outstanding principal = originalPrincipal - amountRepaid
-                    BigDecimal outstandingPrincipal;
-                    if (totalRepayable != null && totalRepayable.compareTo(BigDecimal.ZERO) > 0) {
-                        BigDecimal amountRepaid = totalRepayable.subtract(outstandingBalance);
-                        outstandingPrincipal = originalPrincipal.subtract(amountRepaid);
-                    } else {
-                        outstandingPrincipal = originalPrincipal;
-                    }
-                    if (outstandingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
-                        outstandingPrincipal = BigDecimal.ZERO;
-                    }
-                    
-                    // Frozen = Original Pledge × (Outstanding Principal / Original Principal)
-                    // Interest is NOT frozen — only the principal portion is frozen
-                    BigDecimal proportionalFrozen = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
-                            originalPledge.multiply(outstandingPrincipal)
-                                    .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :
-                            BigDecimal.ZERO;
-                    
-                    frozenSelfGuaranteeOnly = frozenSelfGuaranteeOnly.add(proportionalFrozen);
-                    
-                    log.debug("Loan {}: OriginalPledge={}, TotalRepayable={}, OutstandingBalance={}, OutstandingPrincipal={}, Frozen={}",
-                            loan.getId(), originalPledge, totalRepayable, outstandingBalance, outstandingPrincipal, proportionalFrozen);
-                }
+            BigDecimal originalPledge = guarantor.getPledgeAmount();
+            if (originalPledge == null || originalPledge.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
             }
+            
+            BigDecimal outstandingBalance = loan.getOutstandingBalance();
+            if (outstandingBalance == null || outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            
+            BigDecimal originalPrincipal = loan.getOriginalPrincipal() != null ?
+                    loan.getOriginalPrincipal() : loan.getAmount();
+            BigDecimal totalRepayable = loan.getTotalRepayable();
+
+            // outstandingBalance starts at totalRepayable and decreases with each repayment.
+            // Amount repaid = totalRepayable - outstandingBalance
+            // Outstanding principal = originalPrincipal - amountRepaid
+            BigDecimal outstandingPrincipal;
+            if (totalRepayable != null && totalRepayable.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal amountRepaid = totalRepayable.subtract(outstandingBalance);
+                outstandingPrincipal = originalPrincipal.subtract(amountRepaid);
+            } else {
+                outstandingPrincipal = originalPrincipal;
+            }
+            if (outstandingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
+                outstandingPrincipal = BigDecimal.ZERO;
+            }
+            
+            // Frozen = Original Pledge × (Outstanding Principal / Original Principal)
+            // Interest is NOT frozen — only the principal portion is frozen
+            BigDecimal proportionalFrozen = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
+                    originalPledge.multiply(outstandingPrincipal)
+                            .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :
+                    BigDecimal.ZERO;
+            
+            frozenSelfGuaranteeOnly = frozenSelfGuaranteeOnly.add(proportionalFrozen);
+            
+            log.debug("Loan {}: OriginalPledge={}, TotalRepayable={}, OutstandingBalance={}, OutstandingPrincipal={}, Frozen={}",
+                    loan.getId(), originalPledge, totalRepayable, outstandingBalance, outstandingPrincipal, proportionalFrozen);
         }
         
         return frozenSelfGuaranteeOnly;
@@ -367,59 +358,55 @@ public class EligibilityCalculationService {
      * CRITICAL: Calculates frozen amounts dynamically from guarantor table instead of using cached frozenSavings
      * Uses proportional calculation based on outstanding PRINCIPAL (not total outstanding)
      * This ensures accuracy even if the account.frozenSavings field becomes out of sync
+     * 
+     * PERFORMANCE OPTIMIZATION: Uses batch query to avoid N+1 problem
      */
     private BigDecimal getTotalFrozenSavings(Member member) {
-        // Calculate frozen savings dynamically from self-guaranteed loans
-        List<Loan> selfGuaranteedLoans = loanRepository.findByMemberId(member.getId());
+        // PERFORMANCE OPTIMIZATION: Fetch all self-guarantees in a SINGLE query
+        List<Guarantor> allSelfGuarantees = guarantorRepository.findAllSelfGuaranteesByMemberId(member.getId());
         BigDecimal frozenSelfGuarantee = BigDecimal.ZERO;
         
-        for (Loan loan : selfGuaranteedLoans) {
-            // Only count DISBURSED loans (not REPAID - fully repaid loans should not show as self-guaranteed)
-            if (loan.getStatus() != Loan.Status.DISBURSED) {
+        for (Guarantor guarantor : allSelfGuarantees) {
+            Loan loan = guarantor.getLoan();
+            if (loan == null) {
                 continue;
             }
             
-            // Get self-guarantee guarantor for this loan
-            List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
-            for (Guarantor guarantor : guarantors) {
-                if (guarantor.isSelfGuarantee() && guarantor.getMember().getId().equals(member.getId())) {
-                    BigDecimal originalPledge = guarantor.getPledgeAmount();
-                    if (originalPledge == null || originalPledge.compareTo(BigDecimal.ZERO) <= 0) {
-                        continue;
-                    }
-                    
-                    BigDecimal outstandingBalance = loan.getOutstandingBalance();
-                    if (outstandingBalance == null || outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
-                        continue;
-                    }
-                    
-                    BigDecimal originalPrincipal = loan.getOriginalPrincipal() != null ?
-                            loan.getOriginalPrincipal() : loan.getAmount();
-                    BigDecimal totalRepayable = loan.getTotalRepayable();
-
-                    // outstandingBalance starts at totalRepayable and decreases with each repayment.
-                    // Amount repaid = totalRepayable - outstandingBalance
-                    // Outstanding principal = originalPrincipal - amountRepaid
-                    BigDecimal outstandingPrincipal;
-                    if (totalRepayable != null && totalRepayable.compareTo(BigDecimal.ZERO) > 0) {
-                        BigDecimal amountRepaid = totalRepayable.subtract(outstandingBalance);
-                        outstandingPrincipal = originalPrincipal.subtract(amountRepaid);
-                    } else {
-                        outstandingPrincipal = originalPrincipal;
-                    }
-                    if (outstandingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
-                        outstandingPrincipal = BigDecimal.ZERO;
-                    }
-                    
-                    // Frozen = Original Pledge × (Outstanding Principal / Original Principal)
-                    BigDecimal proportionalFrozen = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
-                            originalPledge.multiply(outstandingPrincipal)
-                                    .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :
-                            BigDecimal.ZERO;
-                    
-                    frozenSelfGuarantee = frozenSelfGuarantee.add(proportionalFrozen);
-                }
+            BigDecimal originalPledge = guarantor.getPledgeAmount();
+            if (originalPledge == null || originalPledge.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
             }
+            
+            BigDecimal outstandingBalance = loan.getOutstandingBalance();
+            if (outstandingBalance == null || outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            
+            BigDecimal originalPrincipal = loan.getOriginalPrincipal() != null ?
+                    loan.getOriginalPrincipal() : loan.getAmount();
+            BigDecimal totalRepayable = loan.getTotalRepayable();
+
+            // outstandingBalance starts at totalRepayable and decreases with each repayment.
+            // Amount repaid = totalRepayable - outstandingBalance
+            // Outstanding principal = originalPrincipal - amountRepaid
+            BigDecimal outstandingPrincipal;
+            if (totalRepayable != null && totalRepayable.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal amountRepaid = totalRepayable.subtract(outstandingBalance);
+                outstandingPrincipal = originalPrincipal.subtract(amountRepaid);
+            } else {
+                outstandingPrincipal = originalPrincipal;
+            }
+            if (outstandingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
+                outstandingPrincipal = BigDecimal.ZERO;
+            }
+            
+            // Frozen = Original Pledge × (Outstanding Principal / Original Principal)
+            BigDecimal proportionalFrozen = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
+                    originalPledge.multiply(outstandingPrincipal)
+                            .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :
+                    BigDecimal.ZERO;
+            
+            frozenSelfGuarantee = frozenSelfGuarantee.add(proportionalFrozen);
         }
         
         // Get frozen pledges from being a guarantor on other loans
@@ -580,6 +567,38 @@ public class EligibilityCalculationService {
             eligibilityRecovered,
             projectedEligibility
         );
+    }
+
+    /**
+     * Calculate total outstanding balance on a specific loan product for a member
+     * This is used to enforce product-level cumulative borrowing limits
+     * 
+     * Example: Emergency Loan 1 may have max_total_borrowing_limit of 150,000
+     * This method returns total outstanding on all Emergency Loan 1 loans
+     */
+    public BigDecimal getOutstandingBalanceByProduct(Member member, Long loanProductId) {
+        try {
+            // Get all loans for this member on this product that are not fully repaid
+            List<Loan> activeLoans = loanRepository.findByMemberIdAndLoanProductId(member.getId(), loanProductId)
+                    .stream()
+                    .filter(loan -> !loan.getStatus().equals(Loan.Status.REPAID) &&
+                                   !loan.getStatus().equals(Loan.Status.REJECTED))
+                    .collect(java.util.stream.Collectors.toList());
+            
+            BigDecimal totalOutstanding = BigDecimal.ZERO;
+            for (Loan loan : activeLoans) {
+                BigDecimal outstanding = loan.getOutstandingBalance() != null ? 
+                        loan.getOutstandingBalance() : BigDecimal.ZERO;
+                totalOutstanding = totalOutstanding.add(outstanding);
+            }
+            
+            log.debug("Member {} has {} outstanding on product {}", 
+                    member.getId(), totalOutstanding, loanProductId);
+            return totalOutstanding;
+        } catch (Exception e) {
+            log.error("Error calculating outstanding balance by product", e);
+            return BigDecimal.ZERO;
+        }
     }
 
     /**

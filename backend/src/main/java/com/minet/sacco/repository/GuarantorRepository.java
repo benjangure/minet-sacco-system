@@ -64,4 +64,13 @@ public interface GuarantorRepository extends JpaRepository<Guarantor, Long> {
     List<Guarantor> findByMemberIdAndSelfGuaranteeIsFalse(Long memberId);
 
     List<Guarantor> findByMemberIdAndSelfGuaranteeIsFalseAndStatusNotIn(Long memberId, List<Guarantor.Status> statuses);
+
+    /**
+     * PERFORMANCE OPTIMIZATION: Fetch all guarantors for a member's loans in a single query
+     * instead of N+1 queries (one per loan).
+     * This is used by EligibilityCalculationService to avoid the N+1 problem.
+     */
+    @Query("SELECT g FROM Guarantor g WHERE g.loan.member.id = :memberId " +
+           "AND g.selfGuarantee = true AND g.loan.status = 'DISBURSED'")
+    List<Guarantor> findAllSelfGuaranteesByMemberId(@Param("memberId") Long memberId);
 }

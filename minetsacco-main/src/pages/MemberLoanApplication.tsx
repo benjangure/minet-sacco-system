@@ -19,6 +19,7 @@ interface LoanProduct {
   interestRate: number;
   minTermMonths: number;
   maxTermMonths: number;
+  maxTotalBorrowingLimit?: number;
 }
 
 interface GuarantorInfo {
@@ -50,6 +51,8 @@ export default function MemberLoanApplication() {
   const [useSelfGuarantee, setUseSelfGuarantee] = useState(false);
   const [hypotheticalEligibility, setHypotheticalEligibility] = useState<any>(null);
   const [calculatingEligibility, setCalculatingEligibility] = useState(false);
+  const [availableBorrowingCapacity, setAvailableBorrowingCapacity] = useState<number | null>(null);
+  const [loadingCapacity, setLoadingCapacity] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -72,6 +75,33 @@ export default function MemberLoanApplication() {
       setHypotheticalEligibility(null);
     }
   }, [amount, selfGuaranteeAmount, useSelfGuarantee]);
+
+  // Calculate available borrowing capacity when product is selected
+  const calculateAvailableCapacity = async (productId: string) => {
+    const product = loanProducts.find(p => p.id === parseInt(productId));
+    
+    // Only show capacity if product has a max_total_borrowing_limit set
+    if (!product || !product.maxTotalBorrowingLimit || product.maxTotalBorrowingLimit <= 0) {
+      setAvailableBorrowingCapacity(null);
+      return;
+    }
+
+    try {
+      setLoadingCapacity(true);
+      // Call a new endpoint that returns current outstanding + available capacity
+      const response = await api.get(`/loans/product/${productId}/available-capacity`);
+      
+      if (response.data && response.data.data) {
+        const { availableCapacity } = response.data.data;
+        setAvailableBorrowingCapacity(availableCapacity);
+      }
+    } catch (error) {
+      console.error('Error calculating available capacity:', error);
+      setAvailableBorrowingCapacity(null);
+    } finally {
+      setLoadingCapacity(false);
+    }
+  };
 
   const fetchEligibility = async () => {
     try {
@@ -608,7 +638,10 @@ export default function MemberLoanApplication() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <Label htmlFor="product">Loan Product</Label>
-              <Select value={selectedProduct} onValueChange={setSelectedProduct}>
+              <Select value={selectedProduct} onValueChange={(value) => {
+                setSelectedProduct(value);
+                calculateAvailableCapacity(value);
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a loan product" />
                 </SelectTrigger>
@@ -627,6 +660,21 @@ export default function MemberLoanApplication() {
                 <p className="text-sm"><span className="font-semibold">Interest Rate:</span> {selectedProductData.interestRate}% per annum</p>
                 <p className="text-sm"><span className="font-semibold">Max Amount:</span> {formatCurrency(selectedProductData.maxAmount)}</p>
                 <p className="text-sm"><span className="font-semibold">Term Range:</span> {selectedProductData.minTermMonths} - {selectedProductData.maxTermMonths} months</p>
+                
+                {selectedProductData.maxTotalBorrowingLimit && (
+                  <div className="border-t pt-2 mt-2">
+                    {loadingCapacity ? (
+                      <p className="text-sm text-gray-600">Loading available capacity...</p>
+                    ) : availableBorrowingCapacity !== null ? (
+                      <div className="space-y-1">
+                        <p className="text-sm"><span className="font-semibold">Maximum Borrowing Limit:</span> {formatCurrency(selectedProductData.maxTotalBorrowingLimit)}</p>
+                        <p className={`text-sm ${availableBorrowingCapacity > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          <span className="font-semibold">Available to Borrow:</span> {formatCurrency(availableBorrowingCapacity)}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             )}
 

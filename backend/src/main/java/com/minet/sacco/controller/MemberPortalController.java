@@ -272,11 +272,12 @@ public class MemberPortalController {
                 // Skip outstanding balance calculation for loans still in approval stages
                 // These loans don't have totalRepayable set yet (it's calculated by treasurer)
                 if (loan.getTotalRepayable() != null) {
-                    BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loan.getId());
-                    if (totalRepaid == null) {
-                        totalRepaid = BigDecimal.ZERO;
+                    // Use principal amount repaid, not total amount, for accurate outstanding balance
+                    BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(loan.getId());
+                    if (totalPrincipalRepaid == null) {
+                        totalPrincipalRepaid = BigDecimal.ZERO;
                     }
-                    BigDecimal outstandingBalance = loan.getTotalRepayable().subtract(totalRepaid);
+                    BigDecimal outstandingBalance = loan.getAmount().subtract(totalPrincipalRepaid);
                     if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
                         outstandingBalance = BigDecimal.ZERO;
                     }
@@ -316,11 +317,12 @@ public class MemberPortalController {
             
             // Recalculate outstanding balance to ensure accuracy only for loans with totalRepayable set
             if (loanData.getTotalRepayable() != null) {
-                BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(id);
-                if (totalRepaid == null) {
-                    totalRepaid = BigDecimal.ZERO;
+                // Use principal amount repaid, not total amount, for accurate outstanding balance
+                BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(id);
+                if (totalPrincipalRepaid == null) {
+                    totalPrincipalRepaid = BigDecimal.ZERO;
                 }
-                BigDecimal outstandingBalance = loanData.getTotalRepayable().subtract(totalRepaid);
+                BigDecimal outstandingBalance = loanData.getAmount().subtract(totalPrincipalRepaid);
                 if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
                     outstandingBalance = BigDecimal.ZERO;
                 }
