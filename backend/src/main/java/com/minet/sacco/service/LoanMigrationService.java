@@ -83,24 +83,38 @@ public class LoanMigrationService {
         batch.setApprovedAt(LocalDateTime.now());
         batch = bulkBatchRepository.save(batch);
 
-        // Save items and validate each one
+        // First, validate ALL items without saving them
+        Map<LoanMigrationItem, List<String>> validationResults = new HashMap<>();
+        for (LoanMigrationItem item : items) {
+            List<String> errors = validateItem(item);
+            validationResults.put(item, errors);
+        }
+
+        // Now process validated items
         int successCount = 0;
         int failedCount = 0;
         BigDecimal totalPrincipal = BigDecimal.ZERO;
 
         for (LoanMigrationItem item : items) {
             item.setBatch(batch);
-            item = loanMigrationItemRepository.save(item);
-
-            List<String> errors = validateItem(item);
-            if (!errors.isEmpty()) {
+            
+            List<String> errors = validationResults.get(item);
+            if (errors != null && !errors.isEmpty()) {
+                // For failed items, set error fields and save them so the treasurer
+                // can see exactly which rows failed and why.
                 item.setStatus("FAILED");
                 item.setErrorMessage(String.join("; ", errors));
                 item.setProcessedAt(LocalDateTime.now());
+                // Always save failed items now that disbursement_date is nullable (V131) —
+                // every validation failure must be visible to the treasurer with its
+                // error message, regardless of which field caused the failure.
                 loanMigrationItemRepository.save(item);
                 failedCount++;
                 continue;
             }
+            
+            // Save validated item
+            item = loanMigrationItemRepository.save(item);
 
             // Process the item
             try {
@@ -309,25 +323,24 @@ public class LoanMigrationService {
         LoanProduct product = loanProductRepository.findByName(item.getLoanProductName())
             .orElseThrow(() -> new RuntimeException("Loan product not found: " + item.getLoanProductName()));
 
-        // ALWAYS use the product's configured interest rate - this ensures calculations
-        // match exactly what is shown on the Loan Products admin page.
-        // The interest rate column in the template is informational only and is ignored.
+        // PHASE 4: Loan migration imports outstanding_balance as a snapshot only.
+        // totalInterest is NOT imported or recalculated. We treat outstandingBalance as the single source of truth.
+        // All future repayments on migrated loans follow Phase 2's rules (mandatory principal/interest split).
+        // No special-casing or backfill of totalInterest from the old system.
+        
         BigDecimal interestRate = product.getInterestRate();
-
-        // Calculate loan financials using the same formula as the system (simple interest)
-        // Interest = Principal × (Rate/100) × (Term/12)
-        // This matches Loan.calculateRepaymentDetails()
         BigDecimal principal = item.getPrincipalAmount();
         Integer termMonths = item.getTermMonths();
+        
+        // Calculate monthly repayment for informational purposes only.
+        // Outstanding balance may differ from principal, but monthly repayment is consistent with original terms.
         BigDecimal rate = interestRate.divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
         BigDecimal timeInYears = new BigDecimal(termMonths).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
-        BigDecimal totalInterest = principal.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
-        BigDecimal totalRepayable = principal.add(totalInterest);
-        BigDecimal monthlyRepayment = totalRepayable.divide(new BigDecimal(termMonths), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal monthlyRepayment = principal.multiply(rate).multiply(timeInYears)
+            .divide(new BigDecimal(termMonths), 2, java.math.RoundingMode.HALF_UP);
 
-        // Store calculated values on item for reporting
-        item.setTotalInterest(totalInterest);
-        item.setTotalRepayable(totalRepayable);
+        // Store values on item for reporting - but totalInterest and totalRepayable are NOT set
+        // This ensures the loan migration process respects the historical snapshot
         item.setMonthlyRepayment(monthlyRepayment);
 
         // Create the loan
@@ -340,8 +353,8 @@ public class LoanMigrationService {
         loan.setInterestRate(interestRate);
         loan.setTermMonths(termMonths);
         loan.setMonthlyRepayment(monthlyRepayment);
-        loan.setTotalInterest(totalInterest);
-        loan.setTotalRepayable(totalRepayable);
+        // PHASE 4: Do NOT set totalInterest or totalRepayable
+        // Outstanding balance is the only snapshot we import - it represents current state, not calculated values
         loan.setOutstandingBalance(item.getOutstandingBalance());
         loan.setPurpose(item.getPurpose() != null ? item.getPurpose() : "Migrated loan");
         loan.setApplicationDate(item.getDisbursementDate().atStartOfDay());
@@ -486,5 +499,121 @@ public class LoanMigrationService {
 
     public List<LoanMigrationItem> getMigrationItems(Long batchId) {
         return loanMigrationItemRepository.findByBatch_Id(batchId);
+    }
+
+    /**
+     * Generate a properly formatted Excel template for loan migration.
+     * Columns MUST match the order expected by parseLoanMigration().
+     */
+    public byte[] generateLoanMigrationTemplate() {
+        try {
+            org.apache.poi.ss.usermodel.Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Loan Migration");
+
+            // Create header row with proper column order - MUST match parseLoanMigration() expectations exactly
+            org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
+            String[] headers = {
+                    "Employee ID",                                    // 0: Required
+                    "Loan Number",                                    // 1: Optional (can be blank, system generates if empty)
+                    "Loan Product Name",                             // 2: Required (e.g. Emergency Loan 1, Normal Loan)
+                    "Principal Amount",                              // 3: Required
+                    "Term (Months)",                                 // 4: Required
+                    "Interest Rate % (optional)",                    // 5: Optional (uses product default if empty)
+                    "Disbursement Date (DD/MM/YYYY)",               // 6: REQUIRED - This is CRITICAL!
+                    "Loan Status (DISBURSED/REPAID/DEFAULTED)",     // 7: Required
+                    "Outstanding Balance",                           // 8: Required
+                    "Guarantorship Type (NORMAL/SELF)",             // 9: Required
+                    "Guarantor 1 Employee ID",                       // 10-11: Optional
+                    "Guarantor 1 Pledge Amount",
+                    "Guarantor 2 Employee ID",                       // 12-13: Optional
+                    "Guarantor 2 Pledge Amount",
+                    "Guarantor 3 Employee ID",                       // 14-15: Optional
+                    "Guarantor 3 Pledge Amount",
+                    "Guarantor 4 Employee ID",                       // 16-17: Optional
+                    "Guarantor 4 Pledge Amount",
+                    "Guarantor 5 Employee ID",                       // 18-19: Optional
+                    "Guarantor 5 Pledge Amount",
+                    "Guarantor 6 Employee ID",                       // 20-21: Optional
+                    "Guarantor 6 Pledge Amount",
+                    "Purpose (optional)"                             // 22: Optional
+            };
+
+            // Create header cells with formatting
+            org.apache.poi.ss.usermodel.CellStyle headerStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.LIGHT_BLUE.getIndex());
+            headerStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+
+            for (int i = 0; i < headers.length; i++) {
+                org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Example row 1: Emergency Loan with guarantors
+            org.apache.poi.ss.usermodel.Row exampleRow1 = sheet.createRow(1);
+            exampleRow1.createCell(0).setCellValue("EMP041");                    // Employee ID
+            exampleRow1.createCell(1).setCellValue("");                          // Loan Number (optional - leave blank to auto-generate)
+            exampleRow1.createCell(2).setCellValue("Emergency Loan 1");           // Loan Product Name
+            exampleRow1.createCell(3).setCellValue(100000);                      // Principal Amount
+            exampleRow1.createCell(4).setCellValue(12);                          // Term (Months)
+            exampleRow1.createCell(5).setCellValue("");                          // Interest Rate % (optional)
+            exampleRow1.createCell(6).setCellValue("15/01/2024");                // DISBURSEMENT DATE - REQUIRED!
+            exampleRow1.createCell(7).setCellValue("DISBURSED");                 // Loan Status
+            exampleRow1.createCell(8).setCellValue(75000);                       // Outstanding Balance
+            exampleRow1.createCell(9).setCellValue("NORMAL");                    // Guarantorship Type
+            exampleRow1.createCell(10).setCellValue("EMP066");                   // Guarantor 1 ID
+            exampleRow1.createCell(11).setCellValue(50000);                      // Guarantor 1 Pledge
+            exampleRow1.createCell(12).setCellValue("EMP063");                   // Guarantor 2 ID
+            exampleRow1.createCell(13).setCellValue(50000);                      // Guarantor 2 Pledge
+            // Guarantors 3-6 left blank
+
+            // Example row 2: Normal loan with SELF guarantee (no guarantors)
+            org.apache.poi.ss.usermodel.Row exampleRow2 = sheet.createRow(2);
+            exampleRow2.createCell(0).setCellValue("EMP040");                    // Employee ID
+            exampleRow2.createCell(1).setCellValue("");                          // Loan Number (optional)
+            exampleRow2.createCell(2).setCellValue("Normal Loan");               // Loan Product Name
+            exampleRow2.createCell(3).setCellValue(300000);                      // Principal Amount
+            exampleRow2.createCell(4).setCellValue(60);                          // Term (Months)
+            exampleRow2.createCell(5).setCellValue("");                          // Interest Rate (optional)
+            exampleRow2.createCell(6).setCellValue("03/02/2025");                // DISBURSEMENT DATE - REQUIRED!
+            exampleRow2.createCell(7).setCellValue("DISBURSED");                 // Loan Status
+            exampleRow2.createCell(8).setCellValue(190000);                      // Outstanding Balance
+            exampleRow2.createCell(9).setCellValue("SELF");                      // Guarantorship Type (SELF = no guarantors needed)
+            // Leave guarantor columns blank
+
+            // Example row 3: Repaid loan
+            org.apache.poi.ss.usermodel.Row exampleRow3 = sheet.createRow(3);
+            exampleRow3.createCell(0).setCellValue("EMP042");
+            exampleRow3.createCell(1).setCellValue("");
+            exampleRow3.createCell(2).setCellValue("Emergency Loan 2");
+            exampleRow3.createCell(3).setCellValue(50000);
+            exampleRow3.createCell(4).setCellValue(6);
+            exampleRow3.createCell(5).setCellValue("");
+            exampleRow3.createCell(6).setCellValue("01/03/2024");                // DISBURSEMENT DATE - REQUIRED!
+            exampleRow3.createCell(7).setCellValue("REPAID");
+            exampleRow3.createCell(8).setCellValue(0);
+            exampleRow3.createCell(9).setCellValue("NORMAL");
+            exampleRow3.createCell(10).setCellValue("EMP054");
+            exampleRow3.createCell(11).setCellValue(35000);
+            exampleRow3.createCell(12).setCellValue("EMP055");
+            exampleRow3.createCell(13).setCellValue(15000);
+
+            // Auto-size columns for readability
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            // Write to byte array
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            workbook.write(baos);
+            workbook.close();
+            return baos.toByteArray();
+
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("Error generating loan migration template: " + e.getMessage());
+        }
     }
 }
