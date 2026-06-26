@@ -96,6 +96,13 @@ public class LoanDisbursementService {
         // Update loan status
         loan.setStatus(Loan.Status.DISBURSED);
         loan.setDisbursementDate(LocalDateTime.now());
+        
+        // Clear eligibility status fields on disbursed loans
+        // These were set during approval and are no longer relevant for active loans
+        loan.setMemberEligibilityStatus(null);
+        loan.setMemberEligibilityErrors(null);
+        loan.setMemberEligibilityWarnings(null);
+        
         Loan updatedLoan = loanRepository.save(loan);
 
         // NOTE: Loan amount goes to member's bank account (not savings)

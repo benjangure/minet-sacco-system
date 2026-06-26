@@ -85,6 +85,12 @@ public class BulkProcessingService {
     @Autowired
     private MemberCredentialRepository memberCredentialRepository;
 
+    @Autowired
+    private BulkLoanDataUpdateItemRepository bulkLoanDataUpdateItemRepository;
+
+    @Autowired
+    private LoanService loanService;
+
     public BulkBatch parseAndValidate(MultipartFile file, String batchType, User uploader) throws IOException {
         validateFile(file);
         String batchNumber = generateBatchNumber(batchType);
@@ -104,6 +110,8 @@ public class BulkProcessingService {
                 return parseLoanApplications(file, batch);
             case "LOAN_DISBURSEMENTS":
                 return parseLoanDisbursements(file, batch);
+            case "LOAN_DATA_UPDATE":
+                return parseLoanDataUpdates(file, batch);
             default:
                 throw new RuntimeException("Unknown batch type: " + batchType);
         }
@@ -280,6 +288,34 @@ public class BulkProcessingService {
         return batch;
     }
 
+    /**
+     * Phase A: Low-risk field editing - Bulk Loan Data Update
+     * Parse and validate loan data updates from file.
+     * Template: Employee ID, Loan Number, and optional Phase A fields.
+     */
+    @Transactional
+    private BulkBatch parseLoanDataUpdates(MultipartFile file, BulkBatch batch) throws IOException {
+        List<com.minet.sacco.entity.BulkLoanDataUpdateItem> items = excelParserService.parseLoanDataUpdates(file);
+        
+        batch.setTotalRecords(items.size());
+        batch.setTotalAmount(BigDecimal.ZERO); // No amount for field updates
+        batch.setStatus("PROCESSING");
+        batch = bulkBatchRepository.save(batch);
+
+        for (com.minet.sacco.entity.BulkLoanDataUpdateItem item : items) {
+            item.setBatch(batch);
+            bulkLoanDataUpdateItemRepository.save(item);
+        }
+
+        auditService.logAction(batch.getUploadedBy(), "BULK_UPLOAD", "BulkBatch", batch.getId(),
+            "Uploaded loan data update batch (Phase A): " + batch.getBatchNumber() + " with " + items.size() + " records", null, null);
+
+        // Process immediately
+        processLoanDataUpdates(batch);
+
+        return batch;
+    }
+
     private void validateFile(MultipartFile file) {
         if (file.isEmpty()) {
             throw new RuntimeException("File is empty");
@@ -357,6 +393,15 @@ public class BulkProcessingService {
 
     public List<BulkDisbursementItem> getBatchDisbursementItems(Long batchId) {
         return bulkDisbursementItemRepository.findByBatch_Id(batchId);
+    }
+
+    /**
+     * Get bulk loan data update items for a specific batch
+     */
+    public List<com.minet.sacco.entity.BulkLoanDataUpdateItem> getBatchLoanDataUpdateItems(Long batchId) {
+        BulkBatch batch = bulkBatchRepository.findById(batchId).orElse(null);
+        if (batch == null) return new ArrayList<>();
+        return bulkLoanDataUpdateItemRepository.findByBatch(batch);
     }
 
     /**
@@ -927,6 +972,124 @@ public class BulkProcessingService {
         item.setMember(member);
     }
 
+    /**
+     * Phase A: Process loan data updates in bulk
+     * Each item is processed independently; failures don't stop other items.
+     * Per-row error messages are captured and stored.
+     */
+    @Async
+    public void processLoanDataUpdates(BulkBatch batch) {
+        List<com.minet.sacco.entity.BulkLoanDataUpdateItem> items = 
+            bulkLoanDataUpdateItemRepository.findByBatch(batch);
+        
+        for (com.minet.sacco.entity.BulkLoanDataUpdateItem item : items) {
+            TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+            txTemplate.execute(status -> {
+                processLoanDataUpdateItem(item, batch);
+                return null;
+            });
+        }
+        
+        // Update batch status
+        long processedCount = bulkLoanDataUpdateItemRepository.findByBatchAndStatus(batch, "PROCESSED").size();
+        long failedCount = bulkLoanDataUpdateItemRepository.findByBatchAndStatus(batch, "FAILED").size();
+        
+        batch.setStatus(failedCount == 0 ? "COMPLETED" : "COMPLETED_WITH_ERRORS");
+        bulkBatchRepository.save(batch);
+        
+        auditService.logAction(batch.getUploadedBy(), "BULK_PROCESS", "BulkBatch", batch.getId(),
+            "Processed loan data update batch: " + batch.getBatchNumber() + " | Success: " + processedCount + " | Failed: " + failedCount, 
+            null, null);
+    }
+
+    /**
+     * Process a single loan data update item
+     * Validates and updates the loan with Phase A fields
+     * Per-row error messages capture specific validation failures
+     */
+    @Transactional
+    private void processLoanDataUpdateItem(com.minet.sacco.entity.BulkLoanDataUpdateItem item, BulkBatch batch) {
+        try {
+            // Validate required fields
+            if (item.getEmployeeId() == null || item.getEmployeeId().trim().isEmpty()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Employee ID is required");
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            
+            if (item.getLoanNumber() == null || item.getLoanNumber().trim().isEmpty()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Loan Number is required");
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            
+            // Find member by employee ID
+            Optional<Member> memberOpt = memberRepository.findByEmployeeId(item.getEmployeeId());
+            if (!memberOpt.isPresent()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Member not found with Employee ID: " + item.getEmployeeId());
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            Member member = memberOpt.get();
+            item.setMember(member);
+            
+            // Find loan by loan number
+            Optional<Loan> loanOpt = loanRepository.findByLoanNumber(item.getLoanNumber());
+            if (!loanOpt.isPresent()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Loan not found with Loan Number: " + item.getLoanNumber());
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            Loan loan = loanOpt.get();
+            item.setLoan(loan);
+            
+            // Verify loan belongs to member
+            if (!loan.getMember().getId().equals(member.getId())) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Loan does not belong to this member");
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            
+            // Check if there's any data to update
+            if (!item.hasDataToUpdate()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("No Phase A fields to update (at least one field is required)");
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            
+            // Prepare update DTO - only include non-null fields
+            com.minet.sacco.dto.LoanFieldUpdateDTO updateDTO = new com.minet.sacco.dto.LoanFieldUpdateDTO();
+            updateDTO.setLoanStatus(item.getLoanStatus());
+            updateDTO.setDisbursementDate(item.getDisbursementDate());
+            updateDTO.setInterestRate(item.getInterestRate());
+            updateDTO.setOutstandingBalance(item.getOutstandingBalance());
+            updateDTO.setPurpose(item.getPurpose());
+            
+            // Get treasurer user for audit logging
+            User treasurer = batch.getUploadedBy();
+            
+            // Call the service method to update loan fields
+            Loan updatedLoan = loanService.updateLoanFieldsOnly(loan.getId(), updateDTO, treasurer);
+            
+            item.setStatus("PROCESSED");
+            item.setProcessedAt(LocalDateTime.now());
+            item.setErrorMessage(null);
+            
+        } catch (Exception e) {
+            item.setStatus("FAILED");
+            item.setErrorMessage(e.getMessage() != null ? e.getMessage() : "Unknown error");
+            e.printStackTrace();
+        }
+        
+        bulkLoanDataUpdateItemRepository.save(item);
+    }
+
     private void createMemberLoginCredentials(Member member) {
         String username = member.getMemberNumber();
         if (username == null) {
@@ -1255,9 +1418,6 @@ public class BulkProcessingService {
 
     @Autowired
     private NotificationService notificationService;
-
-    @Autowired
-    private LoanService loanService;
 
     @Autowired
     private UserService userService;

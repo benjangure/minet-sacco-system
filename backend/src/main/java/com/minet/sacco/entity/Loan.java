@@ -36,9 +36,8 @@ public class Loan {
     @DecimalMin(value = "0.00")
     private BigDecimal interestRate;
 
-    @NotNull
     @Min(1)
-    private Integer termMonths;
+    private Integer termMonths; // Optional - can be set later during loan update for migrated loans
 
     @Enumerated(EnumType.STRING)
     private Status status = Status.PENDING;

@@ -341,20 +341,23 @@ public class ExcelParserService {
             for (Row row : sheet) {
                 if (row.getRowNum() == 0) continue; // skip header
 
-                // Skip completely empty rows
-                String employeeId = getCellValueAsString(row.getCell(0));
-                if (employeeId == null || employeeId.trim().isEmpty()) continue;
+                // Col 0: Loan Number (blank = CREATE, populated = UPDATE)
+                String loanNumber = getCellValueAsString(row.getCell(0));
+                
+                // Col 1: Employee ID
+                String employeeId = getCellValueAsString(row.getCell(1));
+                
+                // Skip row only if BOTH Loan Number and Employee ID are empty
+                if ((loanNumber == null || loanNumber.trim().isEmpty()) && 
+                    (employeeId == null || employeeId.trim().isEmpty())) continue;
 
                 com.minet.sacco.entity.LoanMigrationItem item = new com.minet.sacco.entity.LoanMigrationItem();
                 item.setRowNumber(rowNumber++);
 
-                // Col 0: Employee ID
-                item.setEmployeeId(employeeId.trim());
-                // Col 1: Loan Number (optional - for preserving historical loan numbers)
-                String loanNumber = getCellValueAsString(row.getCell(1));
                 if (loanNumber != null && !loanNumber.trim().isEmpty()) {
                     item.setLoanNumber(loanNumber.trim());
                 }
+                item.setEmployeeId(employeeId != null ? employeeId.trim() : null);
                 // Col 2: Loan Product Name
                 item.setLoanProductName(getCellValueAsString(row.getCell(2)));
                 // Col 3: Principal Amount
@@ -467,5 +470,57 @@ public class ExcelParserService {
         } catch (Exception e) {
             return null;
         }
+    }
+    
+    /**
+     * Parse Loan Data Update file (Phase A: Low-risk field editing)
+     * Template columns:
+     * 1. Employee ID (required)
+     * 2. Loan Number (required)
+     * 3. Loan Status (optional)
+     * 4. Disbursement Date (optional, format: YYYY-MM-DD)
+     * 5. Interest Rate (optional, %)
+     * 6. Outstanding Balance (optional, KES)
+     * 7. Purpose (optional)
+     */
+    public List<com.minet.sacco.entity.BulkLoanDataUpdateItem> parseLoanDataUpdates(MultipartFile file) throws IOException {
+        List<com.minet.sacco.entity.BulkLoanDataUpdateItem> items = new ArrayList<>();
+
+        try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
+            Sheet sheet = workbook.getSheetAt(0);
+
+            int rowNumber = 1;
+            for (Row row : sheet) {
+                if (row.getRowNum() == 0) continue; // skip header
+
+                // Employee ID and Loan Number are required
+                String employeeId = getCellValueAsString(row.getCell(0));
+                String loanNumber = getCellValueAsString(row.getCell(1));
+                
+                // Skip completely empty rows
+                if ((employeeId == null || employeeId.trim().isEmpty()) &&
+                    (loanNumber == null || loanNumber.trim().isEmpty())) {
+                    continue;
+                }
+
+                com.minet.sacco.entity.BulkLoanDataUpdateItem item = 
+                    new com.minet.sacco.entity.BulkLoanDataUpdateItem();
+                
+                item.setRowNumber(rowNumber++);
+                item.setEmployeeId(employeeId);
+                item.setLoanNumber(loanNumber);
+                
+                // Phase A fields (all optional)
+                item.setLoanStatus(getCellValueAsString(row.getCell(2)));
+                item.setDisbursementDate(parseDateCell(row.getCell(3)));
+                item.setInterestRate(getCellValueAsBigDecimal(row.getCell(4)));
+                item.setOutstandingBalance(getCellValueAsBigDecimal(row.getCell(5)));
+                item.setPurpose(getCellValueAsString(row.getCell(6)));
+
+                items.add(item);
+            }
+        }
+        
+        return items;
     }
 }

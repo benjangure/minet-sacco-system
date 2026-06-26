@@ -50,6 +50,9 @@ public class Guarantor {
     @Column(name = "migration_status")
     private String migrationStatus = "ACTIVE"; // ACTIVE or MIGRATED
 
+    @Column(name = "pledge_frozen_at_full_amount", nullable = true)
+    private Boolean pledgeFrozenAtFullAmount = false;  // true = manually set (don't apply reduction ratio), false = frozen at principal
+
     public enum Status {
         PENDING, ACCEPTED, REJECTED, REPLACED, ACTIVE, DECLINED, RELEASED, PENDING_REASSIGNMENT
     }
@@ -98,4 +101,7 @@ public class Guarantor {
 
     public String getMigrationStatus() { return migrationStatus; }
     public void setMigrationStatus(String migrationStatus) { this.migrationStatus = migrationStatus; }
+
+    public Boolean getPledgeFrozenAtFullAmount() { return pledgeFrozenAtFullAmount; }
+    public void setPledgeFrozenAtFullAmount(Boolean pledgeFrozenAtFullAmount) { this.pledgeFrozenAtFullAmount = pledgeFrozenAtFullAmount; }
 }

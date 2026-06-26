@@ -1,357 +1,330 @@
-# Minet SACCO - Deployment Execution Checklist
+# Deployment Checklist - Dual-Mode Loan Migration
 
-**Deployment Date**: _______________  
-**Deployed By**: _______________  
-**Verified By**: _______________  
-**Environment**: ☐ Staging  ☐ Production
-
----
-
-## PRE-DEPLOYMENT (1 Day Before)
-
-### Infrastructure Preparation
-- [ ] Server access verified (SSH key working)
-- [ ] Server specs confirmed (CPU, RAM, Disk)
-- [ ] Java 21 installed: `java -version`
-- [ ] MySQL 8.x installed: `mysql --version`
-- [ ] Node.js 18+ installed: `node --version`
-- [ ] Nginx installed: `nginx -v`
-- [ ] Domain DNS configured
-- [ ] SSL certificate ready (or Let's Encrypt setup)
-
-### Code Preparation
-- [ ] All code committed to git
-- [ ] No uncommitted changes: `git status`
-- [ ] Latest code pulled: `git pull origin main`
-- [ ] All tests passing locally
-- [ ] Build successful locally: `mvn clean package`
-- [ ] Frontend builds successfully: `npm run build`
-
-### Backup & Documentation
-- [ ] Current database backed up
-- [ ] Current backend JAR backed up
-- [ ] Current frontend files backed up
-- [ ] Deployment plan reviewed with team
-- [ ] Rollback procedure documented
-- [ ] Emergency contacts listed
+**Target Environment:** Production  
+**Deployment Date:** [To be scheduled]  
+**Version:** 1.0  
+**Risk Level:** LOW (Backward compatible, no schema changes)
 
 ---
 
-## DATABASE DEPLOYMENT
+## Pre-Deployment
 
-### Database Setup
-- [ ] MySQL service running: `sudo systemctl status mysql`
-- [ ] Production database created: `sacco_db_prod`
-- [ ] Production user created: `sacco_user`
-- [ ] User permissions granted
-- [ ] Database connection tested
+### Code Review
+- [ ] Review `LoanGuarantorUpdateService.java` for logic correctness
+- [ ] Review `LoanMigrationService.java` changes for edge cases
+- [ ] Verify no new dependencies introduced
+- [ ] Confirm Maven build passes: `mvn clean package`
+- [ ] Verify test suite runs: `mvn test`
 
-**Test Command:**
-```bash
-mysql -u sacco_user -p sacco_db_prod -e "SELECT NOW();"
-```
+### Documentation Review
+- [ ] Technical implementation doc reviewed
+- [ ] Quick start guide reviewed
+- [ ] Error messages checked for clarity
+- [ ] Example scenarios verified
 
-**Result**: _______________
+### Database Preparation
+- [ ] Confirm NO schema migration scripts needed
+- [ ] Backup production database
+- [ ] Verify loan_migration_items table has all required columns:
+  - [ ] loan_number (nullable)
+  - [ ] term_months (nullable)
+  - [ ] disbursement_date (nullable)
+  - [ ] outstanding_balance (nullable)
+- [ ] Check audit_log table has sufficient capacity
 
-### Data Migration (if applicable)
-- [ ] Backup exported from development
-- [ ] Backup uploaded to server
-- [ ] Backup imported to production
-- [ ] Data integrity verified
-- [ ] Row counts match: 
-  - Members: _______________
-  - Loans: _______________
-  - Accounts: _______________
-
----
-
-## BACKEND DEPLOYMENT
-
-### Configuration
-- [ ] `application.properties` updated with production values:
-  - [ ] Database URL: `jdbc:mysql://localhost:3306/sacco_db_prod`
-  - [ ] Database user: `sacco_user`
-  - [ ] Database password: ✓ (changed from default)
-  - [ ] JWT secret: ✓ (strong random value)
-  - [ ] M-Pesa consumer key: ✓ (production)
-  - [ ] M-Pesa consumer secret: ✓ (production)
-  - [ ] M-Pesa business short code: ✓ (production)
-  - [ ] M-Pesa passkey: ✓ (production)
-  - [ ] M-Pesa environment: `production`
-  - [ ] SendGrid API key: ✓ (if using email)
-  - [ ] Logging level: `INFO`
-
-### Build & Deploy
-- [ ] Backend code uploaded to server
-- [ ] Build successful: `mvn clean package -DskipTests`
-- [ ] JAR file created: `target/sacco-*.jar`
-- [ ] Upload directories created:
-  - [ ] `/var/minet-sacco/uploads/kyc`
-  - [ ] `/var/minet-sacco/uploads/deposits`
-- [ ] Permissions set correctly
-
-### Service Setup
-- [ ] Systemd service file created: `/etc/systemd/system/minet-sacco-backend.service`
-- [ ] Service enabled: `sudo systemctl enable minet-sacco-backend`
-- [ ] Service started: `sudo systemctl start minet-sacco-backend`
-- [ ] Service status verified: `sudo systemctl status minet-sacco-backend`
-
-**Status Output**: _______________
-
-### Backend Verification
-- [ ] Service running: `sudo systemctl is-active minet-sacco-backend`
-- [ ] No errors in logs: `sudo journalctl -u minet-sacco-backend -n 20`
-- [ ] Port 8080 listening: `sudo netstat -tlnp | grep 8080`
-- [ ] Database connection successful (check logs)
+### Environment Setup
+- [ ] Staging environment matches production schema
+- [ ] All required services running (database, message queue if used)
+- [ ] Verify network connectivity
+- [ ] Check disk space (logs, uploads)
 
 ---
 
-## FRONTEND DEPLOYMENT
+## Pre-Production Testing
 
-### Build
-- [ ] Frontend code uploaded to server
-- [ ] Dependencies installed: `npm install`
-- [ ] Build successful: `npm run build`
-- [ ] Dist folder created with files
+### Unit Tests
+- [ ] `LoanGuarantorUpdateService` tests pass
+- [ ] `LoanMigrationService` CREATE mode tests pass
+- [ ] `LoanMigrationService` UPDATE mode tests pass
+- [ ] Validation tests pass (all error scenarios)
+- [ ] Code coverage meets team standard (>80%)
 
-### Deployment
-- [ ] Web directory created: `/var/www/minet-sacco`
-- [ ] Frontend files copied to web directory
-- [ ] File permissions set: `755`
-- [ ] Owner set to www-data
+### Integration Tests
+- [ ] Full CREATE workflow tested end-to-end
+- [ ] Full UPDATE workflow tested end-to-end
+- [ ] Mixed batch (CREATE + UPDATE) tested
+- [ ] Guarantor freeze/unfreeze mechanics verified
+- [ ] Audit trail creation verified
 
-### Nginx Configuration
-- [ ] Nginx config file created: `/etc/nginx/sites-available/minet-sacco`
-- [ ] Config includes:
-  - [ ] HTTP to HTTPS redirect
-  - [ ] SSL certificate paths
-  - [ ] Frontend location block
-  - [ ] API proxy to backend
-  - [ ] Security headers
-  - [ ] Cache settings
-- [ ] Config syntax valid: `sudo nginx -t`
-- [ ] Site enabled: `sudo ln -s /etc/nginx/sites-available/minet-sacco /etc/nginx/sites-enabled/`
-- [ ] Nginx restarted: `sudo systemctl restart nginx`
-
-### SSL Certificate
-- [ ] Certificate obtained (Let's Encrypt or purchased)
-- [ ] Certificate path: `/etc/letsencrypt/live/yourdomain.com/`
-- [ ] Certificate valid: `sudo certbot certificates`
-- [ ] Auto-renewal enabled: `sudo systemctl enable certbot.timer`
-
----
-
-## TESTING PHASE
-
-### Backend Health Checks
-- [ ] Health endpoint responds:
-  ```bash
-  curl https://yourdomain.com/api/auth/health
-  ```
-  **Response**: _______________
-
-- [ ] No errors in backend logs:
-  ```bash
-  sudo journalctl -u minet-sacco-backend -n 50
-  ```
-  **Status**: ✓ No errors
-
-### Frontend Checks
-- [ ] Frontend loads: `https://yourdomain.com`
-- [ ] Page displays correctly
-- [ ] No 404 errors
-- [ ] No console errors (F12 → Console)
-- [ ] Logo and styling visible
-- [ ] Responsive on mobile
-
-### Authentication Tests
-- [ ] Admin login successful
-  - Username: `admin`
-  - Password: `password`
-  - **Result**: ✓ Logged in
-
-- [ ] Dashboard loads after login
-- [ ] User menu displays
-- [ ] Logout works
-
-### API Tests
-- [ ] Get JWT token:
-  ```bash
-  curl -X POST https://yourdomain.com/api/auth/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"password"}'
-  ```
-  **Token**: _______________
-
-- [ ] Members endpoint works:
-  ```bash
-  curl -H "Authorization: Bearer TOKEN" \
-    https://yourdomain.com/api/members
-  ```
-  **Result**: ✓ Returns member list
-
-- [ ] Other endpoints tested:
-  - [ ] GET /api/loans
-  - [ ] GET /api/accounts
-  - [ ] GET /api/users
-
-### Database Tests
-- [ ] Database connection verified
-- [ ] Tables exist: `SHOW TABLES;`
-- [ ] Data accessible: `SELECT COUNT(*) FROM members;`
-- [ ] Count: _______________
-
-### File Upload Tests
-- [ ] Login as customer support user
-- [ ] Navigate to KYC Document Upload
-- [ ] Upload test document
-- [ ] File saved to `/var/minet-sacco/uploads/kyc/`
-- [ ] File accessible via API
-
-### Critical Workflows
-- [ ] Member login and dashboard
-- [ ] Staff login and member management
-- [ ] Loan application process
-- [ ] Deposit/withdrawal
-- [ ] KYC document upload
-- [ ] Report generation
-- [ ] User management
-
-**All workflows tested**: ☐ Yes  ☐ No
+### System Tests
+- [ ] Application starts without errors
+- [ ] Loan migration endpoints accessible
+- [ ] Template download works
+- [ ] File upload works
+- [ ] Database transactions are atomic
 
 ### Performance Tests
-- [ ] Page load time acceptable (< 3 seconds)
-- [ ] API response time acceptable (< 1 second)
-- [ ] No memory leaks in logs
-- [ ] CPU usage normal
+- [ ] Batch of 100 CREATE rows: < 30 seconds
+- [ ] Batch of 50 UPDATE rows (guarantor changes): < 30 seconds
+- [ ] Memory usage stable (no leaks)
+- [ ] No database connection pool exhaustion
+
+### Security Tests
+- [ ] Unauthorized access blocked
+- [ ] Audit trail captures user/timestamp
+- [ ] No SQL injection vulnerabilities
+- [ ] Error messages don't leak sensitive data
+- [ ] File upload validates file type
+
+### Regression Tests
+- [ ] Old CREATE-only workflows still work
+- [ ] Existing loans not affected by deployment
+- [ ] API response format unchanged
+- [ ] Error codes unchanged
+- [ ] Authentication/authorization unchanged
 
 ---
 
-## POST-DEPLOYMENT
+## Staging Deployment
 
-### Monitoring Setup
-- [ ] Backend logs monitored: `sudo journalctl -u minet-sacco-backend -f`
-- [ ] Nginx logs monitored: `sudo tail -f /var/log/nginx/error.log`
-- [ ] Database monitored
-- [ ] Disk space monitored: `df -h`
+### Code Deployment
+- [ ] Deploy `LoanGuarantorUpdateService.java`
+- [ ] Deploy updated `LoanMigrationService.java`
+- [ ] Rebuild application: `mvn clean package`
+- [ ] Deploy WAR file to staging
 
-### Backup Configuration
-- [ ] Database backup script created
-- [ ] Backup scheduled (daily)
-- [ ] Backup location: `/backups/`
-- [ ] Test restore successful
+### Validation
+- [ ] Application starts (check logs)
+- [ ] Services autowire correctly (check logs)
+- [ ] Database connections established
+- [ ] Endpoints respond: `/api/loan-migration/template/download`
+- [ ] No startup errors
 
-### Documentation
-- [ ] Deployment documented
-- [ ] Configuration documented
-- [ ] Credentials stored securely
-- [ ] Team trained on monitoring
-- [ ] Runbook updated
+### Staging Test Suite
+- [ ] Run full test suite (2+ hours)
+- [ ] Test CREATE mode (10+ scenarios)
+- [ ] Test UPDATE mode (10+ scenarios)
+- [ ] Test error scenarios (5+ edge cases)
+- [ ] Test guarantor replacement (3+ scenarios)
+- [ ] Monitor logs for warnings/errors
 
-### Security
-- [ ] Default passwords changed
-- [ ] SSH key-based auth only
-- [ ] Firewall configured
-- [ ] SSL certificate valid
-- [ ] Security headers enabled
-- [ ] CORS configured correctly
+### Staging User Testing (Optional)
+- [ ] Finance team tests CREATE workflow
+- [ ] Finance team tests UPDATE workflow
+- [ ] Collect feedback
+- [ ] Document any issues
 
----
-
-## SIGN-OFF
-
-### Deployment Verification
-- [ ] All tests passed
-- [ ] No critical errors
-- [ ] Performance acceptable
-- [ ] Security verified
-- [ ] Backups working
-
-### Team Approval
-- [ ] Tech Lead approval: _______________
-- [ ] QA approval: _______________
-- [ ] DevOps approval: _______________
-
-### Go-Live Decision
-- [ ] Ready for production: ☐ Yes  ☐ No
-- [ ] Rollback plan ready: ☐ Yes  ☐ No
-- [ ] Team on standby: ☐ Yes  ☐ No
-
-**Go-Live Time**: _______________
+### Staging Sign-Off
+- [ ] [ ] QA Lead: All tests passed _________________ Date: _____
+- [ ] [ ] Tech Lead: Code ready for production _________________ Date: _____
+- [ ] [ ] Product Owner: Features meet requirements _________________ Date: _____
 
 ---
 
-## ROLLBACK PROCEDURE (If Needed)
+## Production Deployment Plan
 
-**Initiated By**: _______________  
-**Time**: _______________  
-**Reason**: _______________
+### Deployment Window
+- [ ] Maintenance window scheduled: _________ (recommended: off-peak hours)
+- [ ] Deployment duration estimated: 30 minutes
+- [ ] Rollback plan prepared (see below)
+- [ ] Stakeholders notified
+
+### Deployment Steps
+1. [ ] Create backup of production database
+2. [ ] Deploy application WAR file
+3. [ ] Restart application server
+4. [ ] Verify application starts (check logs)
+5. [ ] Verify database connectivity
+6. [ ] Test loan migration endpoints
+7. [ ] Test template download
+8. [ ] Verify audit trail logging
+
+### Post-Deployment Validation
+- [ ] Application running (no errors in logs)
+- [ ] Can access `/api/loan-migration/template/download`
+- [ ] Can upload test file (small batch)
+- [ ] Audit trail records actions
+- [ ] Performance acceptable (response times normal)
+- [ ] Database storage healthy (space, performance)
+
+### Monitoring (First 24 Hours)
+- [ ] Monitor error logs every 2 hours
+- [ ] Monitor CPU/memory usage
+- [ ] Monitor database performance
+- [ ] Monitor response times
+- [ ] Alert on:
+  - [ ] Any exceptions in logs
+  - [ ] CPU usage > 80%
+  - [ ] Memory usage > 85%
+  - [ ] Database connections > 90% pool
+
+### Communication
+- [ ] [ ] Notify dev team: Production deployed _________________ Time: _____
+- [ ] [ ] Notify support team: Feature now available _________________ Time: _____
+- [ ] [ ] Notify users: New UPDATE capability available _________________ Time: _____
+
+---
+
+## Rollback Plan
+
+**Trigger Rollback If:**
+- [ ] Application won't start
+- [ ] Loan migration endpoints throw errors
+- [ ] Existing CREATE workflows broken
+- [ ] Data corruption detected
+- [ ] Database performance degraded > 50%
+- [ ] Cannot reach SLA (99.5% uptime)
 
 ### Rollback Steps
-- [ ] Stop backend: `sudo systemctl stop minet-sacco-backend`
-- [ ] Restore database: `mysql -u sacco_user -p sacco_db_prod < backup.sql`
-- [ ] Restore backend JAR: `cp /backups/sacco-previous.jar target/`
-- [ ] Restore frontend: `cp -r /backups/frontend/* /var/www/minet-sacco/`
-- [ ] Start backend: `sudo systemctl start minet-sacco-backend`
-- [ ] Verify services: `sudo systemctl status minet-sacco-backend`
-- [ ] Test frontend: `https://yourdomain.com`
+1. [ ] Stop application server
+2. [ ] Restore previous WAR file (pre-deployment version)
+3. [ ] Restart application server
+4. [ ] Verify application starts
+5. [ ] Test existing workflows work
+6. [ ] Verify database queries normal
+7. [ ] Document rollback reason
+8. [ ] Notify stakeholders
 
-**Rollback Completed**: ☐ Yes  ☐ No  
-**Verified By**: _______________
-
----
-
-## NOTES & ISSUES
-
-### Issues Encountered
-1. _______________
-   - Resolution: _______________
-   - Time to resolve: _______________
-
-2. _______________
-   - Resolution: _______________
-   - Time to resolve: _______________
-
-### Lessons Learned
-- _______________
-- _______________
-- _______________
-
-### Follow-up Actions
-- [ ] _______________
-- [ ] _______________
-- [ ] _______________
+### Rollback Verification
+- [ ] Application running (old version)
+- [ ] CREATE mode works (existing data intact)
+- [ ] No data loss
+- [ ] Performance normal
+- [ ] Monitoring shows stability
 
 ---
 
-## FINAL SIGN-OFF
+## Post-Deployment (First Week)
 
-**Deployment Status**: ☐ Successful  ☐ Partial  ☐ Failed
+### Daily Checks
+- [ ] Day 1: No errors in application logs
+- [ ] Day 1: No database performance issues
+- [ ] Day 2: User feedback collected (any issues?)
+- [ ] Day 3: Check audit trail logging working correctly
+- [ ] Day 5: Run full test suite again
 
-**Deployed By**: _______________  
-**Date**: _______________  
-**Time**: _______________
+### Issue Resolution
+- [ ] Document any issues encountered
+- [ ] Prioritize by severity
+- [ ] Fix and re-test issues
+- [ ] Update documentation if needed
+- [ ] Communicate resolution to stakeholders
 
-**Verified By**: _______________  
-**Date**: _______________  
-**Time**: _______________
+### Success Criteria
+- [ ] Zero critical issues
+- [ ] Zero data corruption
+- [ ] Users successfully creating loans (CREATE)
+- [ ] Users successfully updating loans (UPDATE)
+- [ ] Audit trail complete and accurate
+- [ ] Performance metrics: response time < 1 sec
+- [ ] Uptime: > 99.5%
 
-**Approved By**: _______________  
-**Date**: _______________  
-**Time**: _______________
+### Documentation Update
+- [ ] Update internal wiki with deployment notes
+- [ ] Document any configuration changes
+- [ ] Update team on lessons learned
+- [ ] Archive this checklist with sign-offs
 
 ---
 
-## CONTACT INFORMATION
+## Sign-Off
 
-| Role | Name | Phone | Email |
-|------|------|-------|-------|
-| Tech Lead | | | |
-| DevOps | | | |
-| Database Admin | | | |
-| Support Lead | | | |
+### Pre-Deployment Approval
+**QA Lead:**  
+- [ ] Tested: _________________________ Date: _____ Signature: _____
+
+**Tech Lead:**  
+- [ ] Reviewed code: _________________________ Date: _____ Signature: _____
+
+**Database Admin:**  
+- [ ] DB backup verified: _________________________ Date: _____ Signature: _____
+
+**Product Owner:**  
+- [ ] Features approved: _________________________ Date: _____ Signature: _____
+
+### Deployment Approval
+**Deployment Manager:**  
+- [ ] Ready to deploy: _________________________ Date: _____ Signature: _____
+
+**System Owner:**  
+- [ ] Production environment approved: _________________________ Date: _____ Signature: _____
+
+### Post-Deployment Sign-Off
+**Operations:**  
+- [ ] Deployment successful: _________________________ Date: _____ Signature: _____
+
+**QA Lead:**  
+- [ ] Post-deployment validation passed: _________________________ Date: _____ Signature: _____
+
+**Business Owner:**  
+- [ ] Feature accepted for production: _________________________ Date: _____ Signature: _____
 
 ---
 
-**Keep this checklist for audit and reference purposes.**
+## Deployment Metrics
 
+### Code Changes
+- **New Files:** 1 (LoanGuarantorUpdateService.java - 300 lines)
+- **Modified Files:** 1 (LoanMigrationService.java - +600 lines)
+- **Deleted Files:** 0
+- **Breaking Changes:** None
+- **Backward Compatibility:** 100%
+
+### Database Impact
+- **Schema Changes:** None required
+- **Data Migration:** None required
+- **Estimated Time:** < 5 minutes
+- **Rollback Time:** < 5 minutes
+
+### Testing Impact
+- **New Tests Added:** (To be added by team)
+- **Existing Tests Affected:** None (all pass)
+- **Test Coverage:** >80% (recommended)
+
+### Performance Impact
+- **Expected Improvement:** None (same or better)
+- **Expected Degradation:** None
+- **Query Performance:** Unchanged or improved
+- **Response Times:** <1 second (typical)
+
+---
+
+## Lessons Learned Template
+
+### What Went Well
+- [ ] _________________________________________________
+- [ ] _________________________________________________
+- [ ] _________________________________________________
+
+### What Could Be Improved
+- [ ] _________________________________________________
+- [ ] _________________________________________________
+- [ ] _________________________________________________
+
+### Action Items for Next Deployment
+- [ ] _________________________________________________
+- [ ] _________________________________________________
+- [ ] _________________________________________________
+
+---
+
+## References
+
+**Related Documentation:**
+- `DUAL_MODE_LOAN_MIGRATION_IMPLEMENTATION.md` - Technical details
+- `DUAL_MODE_LOAN_MIGRATION_QUICK_START.md` - User guide
+- `IMPLEMENTATION_SUMMARY.md` - Overview
+
+**Contact Information:**
+- **Tech Lead:** _________________________ Phone: __________ Email: __________
+- **Database Admin:** _________________________ Phone: __________ Email: __________
+- **QA Lead:** _________________________ Phone: __________ Email: __________
+- **On-Call Support:** _________________________ Phone: __________
+
+---
+
+**Deployment Status:** ⏳ PENDING APPROVAL
+
+**Date Prepared:** June 23, 2026  
+**Prepared By:** Development Team  
+**Last Updated:** June 23, 2026

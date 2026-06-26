@@ -103,6 +103,9 @@ public class BulkProcessingController {
                 case "LOAN_DISBURSEMENTS":
                     items = bulkProcessingService.getBatchDisbursementItems(id);
                     break;
+                case "LOAN_DATA_UPDATE":
+                    items = bulkProcessingService.getBatchLoanDataUpdateItems(id);
+                    break;
                 default:
                     items = bulkProcessingService.getBatchItems(id);
             }

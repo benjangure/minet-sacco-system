@@ -50,6 +50,9 @@ public class LoanMigrationService {
     @Autowired
     private TransactionRepository transactionRepository;
 
+    @Autowired
+    private LoanGuarantorUpdateService loanGuarantorUpdateService;
+
     private static final List<String> VALID_STATUSES = List.of("DISBURSED", "REPAID", "DEFAULTED");
     private static final List<String> VALID_GUARANTORSHIP_TYPES = List.of("NORMAL", "SELF");
 
@@ -156,33 +159,47 @@ public class LoanMigrationService {
 
     /**
      * Validate a single loan migration item. Returns list of error messages.
+     * Supports two modes:
+     * - CREATE mode: Loan Number is blank/null → creates new loan
+     * - UPDATE mode: Loan Number is provided → updates existing loan
      */
     private List<String> validateItem(LoanMigrationItem item) {
         List<String> errors = new ArrayList<>();
         int row = item.getRowNumber();
 
-        // Employee ID
+        // Detect mode based on Loan Number presence
+        boolean isUpdateMode = item.getLoanNumber() != null && !item.getLoanNumber().trim().isEmpty();
+
+        if (isUpdateMode) {
+            // ============ UPDATE MODE VALIDATION ============
+            validateUpdateMode(item, errors);
+        } else {
+            // ============ CREATE MODE VALIDATION ============
+            validateCreateMode(item, errors);
+        }
+
+        return errors;
+    }
+
+    /**
+     * Validate CREATE mode: Loan Number is blank, creating a new loan
+     */
+    private void validateCreateMode(LoanMigrationItem item, List<String> errors) {
+        int row = item.getRowNumber();
+
+        // Employee ID - REQUIRED
         if (item.getEmployeeId() == null || item.getEmployeeId().isBlank()) {
             errors.add("Row " + row + ": Employee ID is required");
         } else if (memberRepository.findByMemberNumber(item.getEmployeeId()).isEmpty()) {
             errors.add("Row " + row + ": Member with Employee ID '" + item.getEmployeeId() + "' not found. Register the member first.");
         }
 
-        // Loan number (if provided)
-        if (item.getLoanNumber() != null && !item.getLoanNumber().trim().isEmpty()) {
-            String loanNumber = item.getLoanNumber().trim();
-            if (loanRepository.findByLoanNumber(loanNumber).isPresent()) {
-                errors.add("Row " + row + ": Loan number '" + loanNumber + "' already exists in the system");
-            }
-        }
-
-        // Loan product
+        // Loan product - REQUIRED
         if (item.getLoanProductName() == null || item.getLoanProductName().isBlank()) {
             errors.add("Row " + row + ": Loan product name is required");
         } else {
             try {
                 if (loanProductRepository.findByName(item.getLoanProductName()).isEmpty()) {
-                    // Build helpful error with available product names
                     List<String> availableNames = loanProductRepository.findAll().stream()
                         .filter(p -> p.getIsActive() != null && p.getIsActive())
                         .map(p -> "'" + p.getName() + "'")
@@ -190,60 +207,168 @@ public class LoanMigrationService {
                     errors.add("Row " + row + ": Loan product '" + item.getLoanProductName() + "' not found. Available products: " + String.join(", ", availableNames));
                 }
             } catch (Exception e) {
-                errors.add("Row " + row + ": Loan product '" + item.getLoanProductName() + "' is ambiguous - multiple products with this name exist. Please contact the administrator to resolve duplicate product names.");
+                errors.add("Row " + row + ": Loan product '" + item.getLoanProductName() + "' is ambiguous - multiple products with this name exist.");
             }
         }
 
-        // Principal
+        // Principal - REQUIRED
         if (item.getPrincipalAmount() == null || item.getPrincipalAmount().compareTo(BigDecimal.ZERO) <= 0) {
             errors.add("Row " + row + ": Principal amount must be greater than 0");
         }
 
-        // Term
-        if (item.getTermMonths() == null || item.getTermMonths() <= 0) {
-            errors.add("Row " + row + ": Term months must be greater than 0");
+        // Term - OPTIONAL (can be filled in later during update)
+        if (item.getTermMonths() != null && item.getTermMonths() <= 0) {
+            errors.add("Row " + row + ": Term months must be greater than 0 (or leave blank)");
         }
 
-        // Disbursement date
-        if (item.getDisbursementDate() == null) {
-            errors.add("Row " + row + ": Disbursement date is required (format: DD/MM/YYYY)");
-        } else if (item.getDisbursementDate().isAfter(java.time.LocalDate.now())) {
+        // Disbursement date - OPTIONAL (can be filled in later during update)
+        if (item.getDisbursementDate() != null && item.getDisbursementDate().isAfter(java.time.LocalDate.now())) {
             errors.add("Row " + row + ": Disbursement date cannot be in the future");
         }
 
-        // Loan status
+        // Loan status - REQUIRED
         if (item.getLoanStatus() == null || item.getLoanStatus().isBlank()) {
             errors.add("Row " + row + ": Loan status is required (DISBURSED, REPAID, or DEFAULTED)");
         } else if (!VALID_STATUSES.contains(item.getLoanStatus())) {
             errors.add("Row " + row + ": Invalid loan status '" + item.getLoanStatus() + "'. Must be DISBURSED, REPAID, or DEFAULTED");
         }
 
-        // Outstanding balance
-        if (item.getOutstandingBalance() == null || item.getOutstandingBalance().compareTo(BigDecimal.ZERO) < 0) {
-            errors.add("Row " + row + ": Outstanding balance must be 0 or greater");
-        } else if ("REPAID".equals(item.getLoanStatus()) && item.getOutstandingBalance().compareTo(BigDecimal.ZERO) != 0) {
-            errors.add("Row " + row + ": Outstanding balance must be 0 for REPAID loans");
-        } else if (item.getPrincipalAmount() != null && item.getOutstandingBalance().compareTo(item.getPrincipalAmount()) > 0) {
-            errors.add("Row " + row + ": Outstanding balance (" + item.getOutstandingBalance() + ") cannot exceed principal (" + item.getPrincipalAmount() + ")");
+        // Outstanding balance - OPTIONAL (remains null for new loans, can be set in UPDATE later)
+        if (item.getOutstandingBalance() != null) {
+            if (item.getOutstandingBalance().compareTo(BigDecimal.ZERO) < 0) {
+                errors.add("Row " + row + ": Outstanding balance must be 0 or greater (or leave blank)");
+            }
+            if ("REPAID".equals(item.getLoanStatus()) && item.getOutstandingBalance().compareTo(BigDecimal.ZERO) != 0) {
+                errors.add("Row " + row + ": Outstanding balance must be 0 for REPAID loans");
+            }
+            if (item.getPrincipalAmount() != null && item.getOutstandingBalance().compareTo(item.getPrincipalAmount()) > 0) {
+                errors.add("Row " + row + ": Outstanding balance cannot exceed principal");
+            }
         }
 
-        // Guarantorship type
-        if (item.getGuarantorshipType() == null || item.getGuarantorshipType().isBlank()) {
-            errors.add("Row " + row + ": Guarantorship type is required (NORMAL or SELF)");
-        } else if (!VALID_GUARANTORSHIP_TYPES.contains(item.getGuarantorshipType())) {
-            errors.add("Row " + row + ": Invalid guarantorship type '" + item.getGuarantorshipType() + "'. Must be NORMAL or SELF");
-        }
+        // Guarantorship type - OPTIONAL in CREATE (can be set later via UPDATE)
+        if (item.getGuarantorshipType() != null && !item.getGuarantorshipType().isBlank()) {
+            if (!VALID_GUARANTORSHIP_TYPES.contains(item.getGuarantorshipType())) {
+                errors.add("Row " + row + ": Invalid guarantorship type '" + item.getGuarantorshipType() + "'. Must be NORMAL or SELF");
+                return; // Can't validate guarantors if type is invalid
+            }
 
-        // If errors so far, skip guarantor validation (member/product may not be found)
-        if (!errors.isEmpty()) return errors;
+            // If errors so far, skip guarantor validation
+            if (!errors.isEmpty()) return;
 
-        // Guarantor-specific validation
-        if ("NORMAL".equals(item.getGuarantorshipType())) {
-            errors.addAll(validateNormalGuarantors(item));
-        } else if ("SELF".equals(item.getGuarantorshipType())) {
-            // Self-guarantee: no external guarantors should be provided
+            // Guarantor-specific validation only if type provided
+            if ("NORMAL".equals(item.getGuarantorshipType())) {
+                errors.addAll(validateNormalGuarantors(item));
+            } else if ("SELF".equals(item.getGuarantorshipType())) {
+                // Self-guarantee: no external guarantors should be provided
+                if (hasAnyGuarantor(item)) {
+                    errors.add("Row " + row + ": SELF guarantorship should not have external guarantors. Remove guarantor columns or use NORMAL type.");
+                }
+            }
+        } else {
+            // Guarantorship type not provided - validate that no guarantors are provided either
             if (hasAnyGuarantor(item)) {
-                errors.add("Row " + row + ": SELF guarantorship should not have external guarantors. Remove guarantor columns or use NORMAL type.");
+                errors.add("Row " + row + ": Guarantors provided but Guarantorship Type is blank. Specify NORMAL or SELF");
+            }
+        }
+    }
+
+    /**
+     * Validate UPDATE mode: Loan Number is provided, updating existing loan
+     */
+    private void validateUpdateMode(LoanMigrationItem item, List<String> errors) {
+        int row = item.getRowNumber();
+        String loanNumber = item.getLoanNumber().trim();
+
+        // Loan Number - REQUIRED and must exist
+        Optional<Loan> existingLoan = loanRepository.findByLoanNumber(loanNumber);
+        if (existingLoan.isEmpty()) {
+            errors.add("Row " + row + ": Loan '" + loanNumber + "' not found in system");
+            return; // Can't validate further without the loan
+        }
+
+        Loan loan = existingLoan.get();
+
+        // Loan should be DISBURSED for normal updates (warn if REPAID/DEFAULTED)
+        if (loan.getStatus() != Loan.Status.DISBURSED && 
+            loan.getStatus() != Loan.Status.REPAID && 
+            loan.getStatus() != Loan.Status.DEFAULTED) {
+            errors.add("Row " + row + ": Loan '" + loanNumber + "' has status " + loan.getStatus() + 
+                ". Can only update DISBURSED, REPAID, or DEFAULTED loans.");
+            return;
+        }
+
+        // Disbursement date - OPTIONAL in UPDATE (if provided, validate)
+        if (item.getDisbursementDate() != null && item.getDisbursementDate().isAfter(java.time.LocalDate.now())) {
+            errors.add("Row " + row + ": Disbursement date cannot be in the future");
+        }
+
+        // Outstanding balance - OPTIONAL in UPDATE (if provided, validate)
+        if (item.getOutstandingBalance() != null) {
+            if (item.getOutstandingBalance().compareTo(BigDecimal.ZERO) < 0) {
+                errors.add("Row " + row + ": Outstanding balance must be 0 or greater");
+            }
+            if (loan.getAmount() != null && item.getOutstandingBalance().compareTo(loan.getAmount()) > 0) {
+                errors.add("Row " + row + ": Outstanding balance cannot exceed principal (" + loan.getAmount() + ")");
+            }
+            if ("REPAID".equals(loan.getStatus()) && item.getOutstandingBalance().compareTo(BigDecimal.ZERO) != 0) {
+                errors.add("Row " + row + ": Outstanding balance must be 0 for REPAID loans");
+            }
+        }
+
+        // Term - OPTIONAL in UPDATE (if provided, validate)
+        if (item.getTermMonths() != null && item.getTermMonths() <= 0) {
+            errors.add("Row " + row + ": Term months must be greater than 0 (or leave blank)");
+        }
+
+        // Guarantors - OPTIONAL in UPDATE
+        if (hasAnyGuarantor(item)) {
+            // If any guarantor provided, validate them
+            errors.addAll(validateUpdateGuarantors(item, loan));
+        }
+    }
+
+    /**
+     * Validate guarantors for UPDATE mode (more lenient than CREATE mode)
+     */
+    private List<String> validateUpdateGuarantors(LoanMigrationItem item, Loan loan) {
+        List<String> errors = new ArrayList<>();
+        int row = item.getRowNumber();
+
+        // Collect all guarantor pairs
+        List<String[]> guarantorPairs = getGuarantorPairs(item);
+
+        if (guarantorPairs.isEmpty()) {
+            return errors; // No guarantors provided is fine
+        }
+
+        Set<String> seenGuarantors = new HashSet<>();
+        for (String[] pair : guarantorPairs) {
+            String gEmpId = pair[0];
+            String gPledgeStr = pair[1];
+            BigDecimal gPledge;
+
+            try {
+                gPledge = new BigDecimal(gPledgeStr);
+            } catch (Exception e) {
+                errors.add("Row " + row + ": Invalid pledge amount for guarantor '" + gEmpId + "'");
+                continue;
+            }
+
+            if (gPledge.compareTo(BigDecimal.ZERO) <= 0) {
+                errors.add("Row " + row + ": Pledge amount for guarantor '" + gEmpId + "' must be greater than 0");
+                continue;
+            }
+
+            if (seenGuarantors.contains(gEmpId.toUpperCase())) {
+                errors.add("Row " + row + ": Duplicate guarantor '" + gEmpId + "'");
+                continue;
+            }
+            seenGuarantors.add(gEmpId.toUpperCase());
+
+            if (memberRepository.findByMemberNumber(gEmpId).isEmpty()) {
+                errors.add("Row " + row + ": Guarantor with Employee ID '" + gEmpId + "' not found");
+                continue;
             }
         }
 
@@ -313,35 +438,38 @@ public class LoanMigrationService {
     }
 
     /**
-     * Process a validated loan migration item - create the loan and guarantors.
+     * Process a validated loan migration item - create new loan or update existing loan.
+     * Mode is auto-detected: Loan Number blank = CREATE, Loan Number present = UPDATE
      */
     @Transactional
     private void processItem(LoanMigrationItem item, User processor) {
+        boolean isUpdateMode = item.getLoanNumber() != null && !item.getLoanNumber().trim().isEmpty();
+
+        if (isUpdateMode) {
+            processUpdateItem(item, processor);
+        } else {
+            processCreateItem(item, processor);
+        }
+    }
+
+    /**
+     * CREATE mode: Create a brand new loan with minimal or complete data
+     * All validation should have already happened in validateItem() and validateCreateMode()
+     */
+    @Transactional
+    private void processCreateItem(LoanMigrationItem item, User processor) {
+        // Get required fields (already validated)
         Member borrower = memberRepository.findByMemberNumber(item.getEmployeeId())
             .orElseThrow(() -> new RuntimeException("Member not found: " + item.getEmployeeId()));
 
         LoanProduct product = loanProductRepository.findByName(item.getLoanProductName())
             .orElseThrow(() -> new RuntimeException("Loan product not found: " + item.getLoanProductName()));
 
-        // PHASE 4: Loan migration imports outstanding_balance as a snapshot only.
-        // totalInterest is NOT imported or recalculated. We treat outstandingBalance as the single source of truth.
-        // All future repayments on migrated loans follow Phase 2's rules (mandatory principal/interest split).
-        // No special-casing or backfill of totalInterest from the old system.
-        
         BigDecimal interestRate = product.getInterestRate();
         BigDecimal principal = item.getPrincipalAmount();
-        Integer termMonths = item.getTermMonths();
         
-        // Calculate monthly repayment for informational purposes only.
-        // Outstanding balance may differ from principal, but monthly repayment is consistent with original terms.
-        BigDecimal rate = interestRate.divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
-        BigDecimal timeInYears = new BigDecimal(termMonths).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
-        BigDecimal monthlyRepayment = principal.multiply(rate).multiply(timeInYears)
-            .divide(new BigDecimal(termMonths), 2, java.math.RoundingMode.HALF_UP);
-
-        // Store values on item for reporting - but totalInterest and totalRepayable are NOT set
-        // This ensures the loan migration process respects the historical snapshot
-        item.setMonthlyRepayment(monthlyRepayment);
+        // Term: use provided value, or null if not provided (can be filled in via UPDATE later)
+        Integer termMonths = item.getTermMonths();
 
         // Create the loan
         Loan loan = new Loan();
@@ -351,36 +479,46 @@ public class LoanMigrationService {
         loan.setOriginalPrincipal(principal);
         loan.setOriginalAmount(principal);
         loan.setInterestRate(interestRate);
-        loan.setTermMonths(termMonths);
-        loan.setMonthlyRepayment(monthlyRepayment);
-        // PHASE 4: Do NOT set totalInterest or totalRepayable
-        // Outstanding balance is the only snapshot we import - it represents current state, not calculated values
+        loan.setTermMonths(termMonths); // Can be null
         loan.setOutstandingBalance(item.getOutstandingBalance());
         loan.setPurpose(item.getPurpose() != null ? item.getPurpose() : "Migrated loan");
-        loan.setApplicationDate(item.getDisbursementDate().atStartOfDay());
-        loan.setApprovalDate(item.getDisbursementDate().atStartOfDay());
-        loan.setDisbursementDate(item.getDisbursementDate().atStartOfDay());
+        
+        // Calculate repayment details (sets totalInterest, totalRepayable, monthlyRepayment)
+        if (termMonths != null && termMonths > 0 && principal != null) {
+            loan.calculateRepaymentDetails();
+        }
+        
+        // Disbursement date: use provided or null
+        if (item.getDisbursementDate() != null) {
+            loan.setApplicationDate(item.getDisbursementDate().atStartOfDay());
+            loan.setApprovalDate(item.getDisbursementDate().atStartOfDay());
+            loan.setDisbursementDate(item.getDisbursementDate().atStartOfDay());
+        }
+        
         loan.setApprovedBy(processor);
         loan.setDisbursedBy(processor);
         loan.setCreatedBy(processor);
         loan.setMigrationStatus("MIGRATED");
-        loan.setMemberEligibilityStatus("APPROVED");
-
-        // Set status
+        
+        // Set status - determine based on loan status
         Loan.Status loanStatus = Loan.Status.valueOf(item.getLoanStatus());
+        
+        // Only set eligibility status if loan is in approval stages
+        // For disbursed, repaid, or defaulted loans, don't show eligibility status
+        if (loanStatus != Loan.Status.DISBURSED && 
+            loanStatus != Loan.Status.REPAID && 
+            loanStatus != Loan.Status.DEFAULTED) {
+            loan.setMemberEligibilityStatus("APPROVED");
+        }
+
         loan.setStatus(loanStatus);
 
-        // Use provided loan number if available, otherwise generate one
-        if (item.getLoanNumber() != null && !item.getLoanNumber().trim().isEmpty()) {
-            loan.setLoanNumber(item.getLoanNumber().trim());
-        } else {
-            loan.setLoanNumber(generateLoanNumber());
-        }
+        // Auto-generate loan number
+        loan.setLoanNumber(generateLoanNumber());
 
         loan = loanRepository.save(loan);
 
-        // Create LOAN_DISBURSEMENT transaction for audit trail and transaction history
-        // This ensures migrated loans appear in member's transaction history
+        // Create LOAN_DISBURSEMENT transaction for audit trail
         Optional<Account> savingsAccount = accountRepository.findByMemberIdAndAccountType(
             borrower.getId(), Account.AccountType.SAVINGS
         );
@@ -391,50 +529,133 @@ public class LoanMigrationService {
             disbursementTransaction.setAmount(principal);
             disbursementTransaction.setDescription("Loan disbursement - " + loan.getLoanNumber() +
                 (item.getPurpose() != null ? " (" + item.getPurpose() + ")" : "") + " [MIGRATED]");
-            disbursementTransaction.setTransactionDate(item.getDisbursementDate().atStartOfDay());
+            if (item.getDisbursementDate() != null) {
+                disbursementTransaction.setTransactionDate(item.getDisbursementDate().atStartOfDay());
+            } else {
+                disbursementTransaction.setTransactionDate(LocalDateTime.now());
+            }
             transactionRepository.save(disbursementTransaction);
         }
 
-        // Create guarantors
-        if ("SELF".equals(item.getGuarantorshipType())) {
-            // Self-guarantee: borrower guarantees their own loan
-            Guarantor selfGuarantor = new Guarantor();
-            selfGuarantor.setLoan(loan);
-            selfGuarantor.setMember(borrower);
-            selfGuarantor.setSelfGuarantee(true);
-            selfGuarantor.setGuaranteeAmount(principal);
-            selfGuarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? principal : BigDecimal.ZERO);
-            selfGuarantor.setStatus(loanStatus == Loan.Status.DISBURSED ? Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
-            selfGuarantor.setApprovedAt(item.getDisbursementDate().atStartOfDay());
-            selfGuarantor.setMigrationStatus("MIGRATED");
-            guarantorRepository.save(selfGuarantor);
+        // Create guarantors (only if guarantorship type is provided)
+        if (item.getGuarantorshipType() != null && !item.getGuarantorshipType().isBlank()) {
+            if ("SELF".equals(item.getGuarantorshipType())) {
+                Guarantor selfGuarantor = new Guarantor();
+                selfGuarantor.setLoan(loan);
+                selfGuarantor.setMember(borrower);
+                selfGuarantor.setSelfGuarantee(true);
+                selfGuarantor.setGuaranteeAmount(principal);
+                selfGuarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? principal : BigDecimal.ZERO);
+                selfGuarantor.setStatus(loanStatus == Loan.Status.DISBURSED ? Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
+                if (item.getDisbursementDate() != null) {
+                    selfGuarantor.setApprovedAt(item.getDisbursementDate().atStartOfDay());
+                } else {
+                    selfGuarantor.setApprovedAt(LocalDateTime.now());
+                }
+                selfGuarantor.setMigrationStatus("MIGRATED");
+                guarantorRepository.save(selfGuarantor);
 
-            // Freeze savings for active self-guaranteed loans
-            if (loanStatus == Loan.Status.DISBURSED) {
-                freezeSavings(borrower, principal);
+                // Freeze savings for active self-guaranteed loans
+                if (loanStatus == Loan.Status.DISBURSED) {
+                    freezeSavings(borrower, principal);
+                }
+            } else if ("NORMAL".equals(item.getGuarantorshipType())) {
+                // Normal guarantorship: create external guarantors
+                List<String[]> guarantorPairs = getGuarantorPairs(item);
+                for (String[] pair : guarantorPairs) {
+                    String gEmpId = pair[0];
+                    BigDecimal gPledge = new BigDecimal(pair[1]);
+
+                    Member guarantorMember = memberRepository.findByMemberNumber(gEmpId)
+                        .orElseThrow(() -> new RuntimeException("Guarantor not found: " + gEmpId));
+
+                    Guarantor guarantor = new Guarantor();
+                    guarantor.setLoan(loan);
+                    guarantor.setMember(guarantorMember);
+                    guarantor.setSelfGuarantee(false);
+                    guarantor.setGuaranteeAmount(gPledge);
+                    guarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? gPledge : BigDecimal.ZERO);
+                    guarantor.setStatus(loanStatus == Loan.Status.DISBURSED ? Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
+                    if (item.getDisbursementDate() != null) {
+                        guarantor.setApprovedAt(item.getDisbursementDate().atStartOfDay());
+                    } else {
+                        guarantor.setApprovedAt(LocalDateTime.now());
+                    }
+                    guarantor.setMigrationStatus("MIGRATED");
+                    guarantorRepository.save(guarantor);
+                }
             }
-        } else {
-            // Normal guarantorship: create external guarantors
+        }
+        // If guarantorship type is blank, no guarantors created (can be added later via UPDATE)
+
+        item.setLoan(loan);
+    }
+
+    /**
+     * UPDATE mode: Update an existing loan with provided fields
+     * Blank fields are skipped (not updated)
+     */
+    @Transactional
+    private void processUpdateItem(LoanMigrationItem item, User processor) {
+        String loanNumber = item.getLoanNumber().trim();
+        Loan loan = loanRepository.findByLoanNumber(loanNumber)
+            .orElseThrow(() -> new RuntimeException("Loan not found: " + loanNumber));
+
+        // Build audit trail of changes
+        StringBuilder changeLog = new StringBuilder();
+
+        // Only update fields if they are provided (non-null/non-blank)
+
+        // Term (if provided)
+        if (item.getTermMonths() != null && item.getTermMonths() > 0) {
+            if ((loan.getTermMonths() == null && item.getTermMonths() != null) ||
+                (loan.getTermMonths() != null && !loan.getTermMonths().equals(item.getTermMonths()))) {
+                changeLog.append("Term: ").append(loan.getTermMonths()).append(" → ").append(item.getTermMonths()).append("; ");
+                loan.setTermMonths(item.getTermMonths());
+            }
+        }
+
+        // Disbursement Date (if provided)
+        if (item.getDisbursementDate() != null) {
+            LocalDateTime newDisbursementDateTime = item.getDisbursementDate().atStartOfDay();
+            if (!newDisbursementDateTime.equals(loan.getDisbursementDate())) {
+                changeLog.append("Disbursement Date: ").append(loan.getDisbursementDate()).append(" → ").append(newDisbursementDateTime).append("; ");
+                loan.setDisbursementDate(newDisbursementDateTime);
+            }
+        }
+
+        // Outstanding Balance (if provided)
+        if (item.getOutstandingBalance() != null) {
+            if ((loan.getOutstandingBalance() == null && item.getOutstandingBalance() != null) ||
+                (loan.getOutstandingBalance() != null && loan.getOutstandingBalance().compareTo(item.getOutstandingBalance()) != 0)) {
+                changeLog.append("Outstanding Balance: ").append(loan.getOutstandingBalance()).append(" → ").append(item.getOutstandingBalance()).append("; ");
+                loan.setOutstandingBalance(item.getOutstandingBalance());
+            }
+        }
+
+        // Guarantors (if any provided - all-or-nothing replacement)
+        if (hasAnyGuarantor(item)) {
             List<String[]> guarantorPairs = getGuarantorPairs(item);
+            List<LoanGuarantorUpdateService.GuarantorPair> newGuarantors = new ArrayList<>();
             for (String[] pair : guarantorPairs) {
-                String gEmpId = pair[0];
-                BigDecimal gPledge = new BigDecimal(pair[1]);
-
-                Member guarantorMember = memberRepository.findByMemberNumber(gEmpId)
-                    .orElseThrow(() -> new RuntimeException("Guarantor not found: " + gEmpId));
-
-                Guarantor guarantor = new Guarantor();
-                guarantor.setLoan(loan);
-                guarantor.setMember(guarantorMember);
-                guarantor.setSelfGuarantee(false);
-                guarantor.setGuaranteeAmount(gPledge);
-                // Only freeze pledge for active (DISBURSED) loans
-                guarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? gPledge : BigDecimal.ZERO);
-                guarantor.setStatus(loanStatus == Loan.Status.DISBURSED ? Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
-                guarantor.setApprovedAt(item.getDisbursementDate().atStartOfDay());
-                guarantor.setMigrationStatus("MIGRATED");
-                guarantorRepository.save(guarantor);
+                newGuarantors.add(new LoanGuarantorUpdateService.GuarantorPair(pair[0], new BigDecimal(pair[1])));
             }
+            
+            try {
+                String guarantorChangeLog = loanGuarantorUpdateService.updateGuarantors(loan, newGuarantors, processor);
+                changeLog.append(guarantorChangeLog).append("; ");
+            } catch (RuntimeException e) {
+                throw new RuntimeException("Failed to update guarantors: " + e.getMessage());
+            }
+        }
+
+        // Save the updated loan
+        loan = loanRepository.save(loan);
+
+        // Log to audit trail
+        if (changeLog.length() > 0) {
+            auditService.logAction(processor, "LOAN_UPDATE_MIGRATION", "Loan", loan.getId(),
+                "Loan " + loanNumber + " updated: " + changeLog.toString(), null, null);
         }
 
         item.setLoan(loan);
@@ -503,6 +724,7 @@ public class LoanMigrationService {
 
     /**
      * Generate a properly formatted Excel template for loan migration.
+     * Supports DUAL MODE: CREATE (blank Loan #) and UPDATE (populated Loan #)
      * Columns MUST match the order expected by parseLoanMigration().
      */
     public byte[] generateLoanMigrationTemplate() {
@@ -510,32 +732,32 @@ public class LoanMigrationService {
             org.apache.poi.ss.usermodel.Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
             org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Loan Migration");
 
-            // Create header row with proper column order - MUST match parseLoanMigration() expectations exactly
+            // Create header row with proper column order
             org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
             String[] headers = {
-                    "Employee ID",                                    // 0: Required
-                    "Loan Number",                                    // 1: Optional (can be blank, system generates if empty)
-                    "Loan Product Name",                             // 2: Required (e.g. Emergency Loan 1, Normal Loan)
-                    "Principal Amount",                              // 3: Required
-                    "Term (Months)",                                 // 4: Required
-                    "Interest Rate % (optional)",                    // 5: Optional (uses product default if empty)
-                    "Disbursement Date (DD/MM/YYYY)",               // 6: REQUIRED - This is CRITICAL!
-                    "Loan Status (DISBURSED/REPAID/DEFAULTED)",     // 7: Required
-                    "Outstanding Balance",                           // 8: Required
-                    "Guarantorship Type (NORMAL/SELF)",             // 9: Required
-                    "Guarantor 1 Employee ID",                       // 10-11: Optional
+                    "Loan Number (blank=CREATE, populate=UPDATE)",    // 0
+                    "Employee ID (optional - required for CREATE, can omit for UPDATE)",              // 1
+                    "Loan Product Name (optional - required for CREATE, can omit for UPDATE)",        // 2
+                    "Principal Amount (optional - required for CREATE, can omit for UPDATE)",         // 3
+                    "Term Months (optional - can set via UPDATE)",  // 4
+                    "Interest Rate % (optional, uses product default)", // 5
+                    "Disbursement Date DD/MM/YYYY (optional)",        // 6
+                    "Loan Status (optional - can set via UPDATE)",              // 7
+                    "Outstanding Balance (optional, set via UPDATE)",  // 8
+                    "Guarantorship Type (optional - can be set via UPDATE later)",       // 9
+                    "Guarantor 1 Employee ID",                        // 10-11
                     "Guarantor 1 Pledge Amount",
-                    "Guarantor 2 Employee ID",                       // 12-13: Optional
+                    "Guarantor 2 Employee ID",                        // 12-13
                     "Guarantor 2 Pledge Amount",
-                    "Guarantor 3 Employee ID",                       // 14-15: Optional
+                    "Guarantor 3 Employee ID",                        // 14-15
                     "Guarantor 3 Pledge Amount",
-                    "Guarantor 4 Employee ID",                       // 16-17: Optional
+                    "Guarantor 4 Employee ID",                        // 16-17
                     "Guarantor 4 Pledge Amount",
-                    "Guarantor 5 Employee ID",                       // 18-19: Optional
+                    "Guarantor 5 Employee ID",                        // 18-19
                     "Guarantor 5 Pledge Amount",
-                    "Guarantor 6 Employee ID",                       // 20-21: Optional
+                    "Guarantor 6 Employee ID",                        // 20-21
                     "Guarantor 6 Pledge Amount",
-                    "Purpose (optional)"                             // 22: Optional
+                    "Purpose (optional)"                              // 22
             };
 
             // Create header cells with formatting
@@ -552,17 +774,17 @@ public class LoanMigrationService {
                 cell.setCellStyle(headerStyle);
             }
 
-            // Example row 1: Emergency Loan with guarantors
+            // Example row 1: CREATE mode - Emergency Loan with guarantors
             org.apache.poi.ss.usermodel.Row exampleRow1 = sheet.createRow(1);
-            exampleRow1.createCell(0).setCellValue("EMP041");                    // Employee ID
-            exampleRow1.createCell(1).setCellValue("");                          // Loan Number (optional - leave blank to auto-generate)
-            exampleRow1.createCell(2).setCellValue("Emergency Loan 1");           // Loan Product Name
+            exampleRow1.createCell(0).setCellValue("");                          // Loan Number (BLANK = CREATE)
+            exampleRow1.createCell(1).setCellValue("EMP041");                    // Employee ID
+            exampleRow1.createCell(2).setCellValue("Emergency Loan 1");          // Loan Product Name
             exampleRow1.createCell(3).setCellValue(100000);                      // Principal Amount
             exampleRow1.createCell(4).setCellValue(12);                          // Term (Months)
-            exampleRow1.createCell(5).setCellValue("");                          // Interest Rate % (optional)
-            exampleRow1.createCell(6).setCellValue("15/01/2024");                // DISBURSEMENT DATE - REQUIRED!
+            exampleRow1.createCell(5).setCellValue("");                          // Interest Rate (optional)
+            exampleRow1.createCell(6).setCellValue("15/01/2024");                // Disbursement Date
             exampleRow1.createCell(7).setCellValue("DISBURSED");                 // Loan Status
-            exampleRow1.createCell(8).setCellValue(75000);                       // Outstanding Balance
+            exampleRow1.createCell(8).setCellValue("");                          // Outstanding Balance (optional for CREATE)
             exampleRow1.createCell(9).setCellValue("NORMAL");                    // Guarantorship Type
             exampleRow1.createCell(10).setCellValue("EMP066");                   // Guarantor 1 ID
             exampleRow1.createCell(11).setCellValue(50000);                      // Guarantor 1 Pledge
@@ -570,36 +792,32 @@ public class LoanMigrationService {
             exampleRow1.createCell(13).setCellValue(50000);                      // Guarantor 2 Pledge
             // Guarantors 3-6 left blank
 
-            // Example row 2: Normal loan with SELF guarantee (no guarantors)
+            // Example row 2: CREATE mode - Self-guaranteed loan
             org.apache.poi.ss.usermodel.Row exampleRow2 = sheet.createRow(2);
-            exampleRow2.createCell(0).setCellValue("EMP040");                    // Employee ID
-            exampleRow2.createCell(1).setCellValue("");                          // Loan Number (optional)
+            exampleRow2.createCell(0).setCellValue("");                          // Loan Number (BLANK = CREATE)
+            exampleRow2.createCell(1).setCellValue("EMP040");                    // Employee ID
             exampleRow2.createCell(2).setCellValue("Normal Loan");               // Loan Product Name
             exampleRow2.createCell(3).setCellValue(300000);                      // Principal Amount
             exampleRow2.createCell(4).setCellValue(60);                          // Term (Months)
             exampleRow2.createCell(5).setCellValue("");                          // Interest Rate (optional)
-            exampleRow2.createCell(6).setCellValue("03/02/2025");                // DISBURSEMENT DATE - REQUIRED!
+            exampleRow2.createCell(6).setCellValue("03/02/2025");                // Disbursement Date
             exampleRow2.createCell(7).setCellValue("DISBURSED");                 // Loan Status
-            exampleRow2.createCell(8).setCellValue(190000);                      // Outstanding Balance
-            exampleRow2.createCell(9).setCellValue("SELF");                      // Guarantorship Type (SELF = no guarantors needed)
-            // Leave guarantor columns blank
+            exampleRow2.createCell(8).setCellValue("");                          // Outstanding Balance (optional)
+            exampleRow2.createCell(9).setCellValue("SELF");                      // Guarantorship Type (SELF)
 
-            // Example row 3: Repaid loan
+            // Example row 3: UPDATE mode - Update guarantors only
             org.apache.poi.ss.usermodel.Row exampleRow3 = sheet.createRow(3);
-            exampleRow3.createCell(0).setCellValue("EMP042");
-            exampleRow3.createCell(1).setCellValue("");
-            exampleRow3.createCell(2).setCellValue("Emergency Loan 2");
-            exampleRow3.createCell(3).setCellValue(50000);
-            exampleRow3.createCell(4).setCellValue(6);
-            exampleRow3.createCell(5).setCellValue("");
-            exampleRow3.createCell(6).setCellValue("01/03/2024");                // DISBURSEMENT DATE - REQUIRED!
-            exampleRow3.createCell(7).setCellValue("REPAID");
-            exampleRow3.createCell(8).setCellValue(0);
-            exampleRow3.createCell(9).setCellValue("NORMAL");
-            exampleRow3.createCell(10).setCellValue("EMP054");
-            exampleRow3.createCell(11).setCellValue(35000);
-            exampleRow3.createCell(12).setCellValue("EMP055");
-            exampleRow3.createCell(13).setCellValue(15000);
+            exampleRow3.createCell(0).setCellValue("L001");                      // Loan Number (POPULATED = UPDATE)
+            // Remaining fields blank or with updates only
+            exampleRow3.createCell(10).setCellValue("EMP010");                   // Guarantor 1 ID (update)
+            exampleRow3.createCell(11).setCellValue(100000);                     // Guarantor 1 Pledge (update)
+
+            // Example row 4: UPDATE mode - Update multiple fields
+            org.apache.poi.ss.usermodel.Row exampleRow4 = sheet.createRow(4);
+            exampleRow4.createCell(0).setCellValue("L002");                      // Loan Number (POPULATED = UPDATE)
+            exampleRow4.createCell(4).setCellValue(24);                          // Term (update from 12 to 24)
+            exampleRow4.createCell(6).setCellValue("15/03/2025");                // Disbursement Date (update)
+            exampleRow4.createCell(8).setCellValue(80000);                       // Outstanding Balance (update)
 
             // Auto-size columns for readability
             for (int i = 0; i < headers.length; i++) {

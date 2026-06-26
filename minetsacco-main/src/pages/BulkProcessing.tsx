@@ -88,6 +88,21 @@ interface BulkLoanItem {
   guarantor2EligibilityStatus?: string;
 }
 
+interface BulkLoanDataUpdateItem {
+  id: number;
+  rowNumber: number;
+  employeeId: string;
+  loanNumber: string;
+  loanStatus?: string;
+  disbursementDate?: string;
+  interestRate?: number;
+  outstandingBalance?: number;
+  purpose?: string;
+  status: string;
+  errorMessage?: string;
+  processedAt?: string;
+}
+
 const statusColors: Record<string, string> = {
   PENDING: "bg-yellow-100 text-yellow-800",
   VALIDATION_FAILED: "bg-red-100 text-red-800",
@@ -117,6 +132,7 @@ export default function BulkProcessing() {
   const [batchItems, setBatchItems] = useState<BulkTransactionItem[]>([]);
   const [memberItems, setMemberItems] = useState<BulkMemberItem[]>([]);
   const [loanItems, setLoanItems] = useState<BulkLoanItem[]>([]);
+  const [loanDataUpdateItems, setLoanDataUpdateItems] = useState<BulkLoanDataUpdateItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
@@ -423,6 +439,9 @@ export default function BulkProcessing() {
             break;
           case "LOAN_APPLICATIONS":
             setLoanItems(data.data || []);
+            break;
+          case "LOAN_DATA_UPDATE":
+            setLoanDataUpdateItems(data.data || []);
             break;
           default:
             setBatchItems(data.data || []);
@@ -843,6 +862,7 @@ export default function BulkProcessing() {
 
   const formatBatchType = (batchType: string) => {
     if (batchType === "LOAN_APPLICATIONS") return "Loan Migration (Historical)";
+    if (batchType === "LOAN_DATA_UPDATE") return "Loan Data Update (Phase A)";
     return batchType.replace(/_/g, " ");
   };
 
@@ -1008,6 +1028,40 @@ export default function BulkProcessing() {
           sheetName = "Members";
           break;
 
+        case "LOAN_DATA_UPDATE":
+          data = [
+            {
+              "Employee ID": "EMP001",
+              "Loan Number": "LN-2026-001",
+              "Loan Status": "DISBURSED",
+              "Disbursement Date": "2026-01-15",
+              "Interest Rate": 12.5,
+              "Outstanding Balance": 45000,
+              "Purpose": "Emergency",
+            },
+            {
+              "Employee ID": "EMP002",
+              "Loan Number": "LN-2026-002",
+              "Loan Status": "REPAID",
+              "Disbursement Date": "",
+              "Interest Rate": "",
+              "Outstanding Balance": 0,
+              "Purpose": "",
+            },
+            {
+              "Employee ID": "EMP003",
+              "Loan Number": "LN-2026-003",
+              "Loan Status": "",
+              "Disbursement Date": "",
+              "Interest Rate": 10.0,
+              "Outstanding Balance": 30000,
+              "Purpose": "School fees",
+            },
+          ];
+          filename = "Loan_Data_Update_Template.xlsx";
+          sheetName = "Loan Updates";
+          break;
+
         default:
           data = [
             {
@@ -1102,6 +1156,8 @@ export default function BulkProcessing() {
         title: "Template Downloaded",
         description: batchType === "MEMBER_REGISTRATION" 
           ? "Member Registration template downloaded. See 'Instructions' sheet for date format guidance."
+          : batchType === "LOAN_DATA_UPDATE"
+          ? "Loan Data Update template downloaded. Fill in Employee ID, Loan Number, and any fields to update (Phase A fields). Blank cells will not overwrite existing values."
           : `${batchType.replace(/_/g, " ")} template downloaded as Excel file. Fill in your data and upload.`,
       });
     });
@@ -1159,9 +1215,10 @@ export default function BulkProcessing() {
         </CardHeader>
         <CardContent className="text-xs space-y-2 py-3 px-4">
           <Tabs value={batchType} onValueChange={setBatchType} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 h-8">
+            <TabsList className="grid w-full grid-cols-3 h-8">
               <TabsTrigger value="MONTHLY_CONTRIBUTIONS" className="text-xs">Monthly</TabsTrigger>
               <TabsTrigger value="MEMBER_REGISTRATION" className="text-xs">Members</TabsTrigger>
+              <TabsTrigger value="LOAN_DATA_UPDATE" className="text-xs">Loan Update</TabsTrigger>
             </TabsList>
 
             <TabsContent value="MONTHLY_CONTRIBUTIONS" className="mt-2">
@@ -1250,6 +1307,41 @@ export default function BulkProcessing() {
                 </div>
               </div>
             </TabsContent>
+
+            <TabsContent value="LOAN_DATA_UPDATE" className="mt-2">
+              <div className="grid md:grid-cols-2 gap-2">
+                <div>
+                  <p className="font-semibold text-blue-900 mb-1">Phase A: Loan Field Updates (7 columns)</p>
+                  <ul className="space-y-0.5 text-blue-800 text-xs">
+                    <li>• <strong>Employee ID:</strong> Required (identifies member)</li>
+                    <li>• <strong>Loan Number:</strong> Required (identifies loan)</li>
+                    <li>• <strong>Loan Status:</strong> Optional (PENDING, APPROVED, DISBURSED, REPAID, DEFAULTED)</li>
+                    <li>• <strong>Disbursement Date:</strong> Optional (YYYY-MM-DD format)</li>
+                    <li>• <strong>Interest Rate:</strong> Optional (percentage, e.g., 12.5)</li>
+                    <li>• <strong>Outstanding Balance:</strong> Optional (KES amount)</li>
+                    <li>• <strong>Purpose:</strong> Optional (loan purpose text)</li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-semibold text-blue-900 mb-1">Progressive Fill Rules:</p>
+                  <ul className="space-y-0.5 text-blue-800 text-xs">
+                    <li>✓ Blank cells = NO change (leave existing value)</li>
+                    <li>✓ Filled cells = UPDATE that field only</li>
+                    <li>✓ No guarantor data (Phase A only)</li>
+                    <li>✓ Treasurer-only access</li>
+                    <li>✓ Per-row error messages shown</li>
+                    <li>✓ Failed rows stay visible</li>
+                    <li>✓ Max file size: 5MB</li>
+                  </ul>
+                </div>
+              </div>
+              <Alert className="mt-2 bg-amber-50 border-amber-200">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-xs text-amber-800">
+                  <strong>Progressive Fill Example:</strong> If you only fill Outstanding Balance and Purpose columns, other fields will remain untouched. This allows incremental data updates.
+                </AlertDescription>
+              </Alert>
+            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
@@ -1284,6 +1376,7 @@ export default function BulkProcessing() {
                   <SelectContent>
                     <SelectItem value="MONTHLY_CONTRIBUTIONS">Monthly Contributions</SelectItem>
                     <SelectItem value="MEMBER_REGISTRATION">Member Registration</SelectItem>
+                    <SelectItem value="LOAN_DATA_UPDATE">Loan Data Update (Phase A)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-600">
@@ -1896,6 +1989,8 @@ export default function BulkProcessing() {
                     ? "Member Items" 
                     : selectedBatch?.batchType === "LOAN_APPLICATIONS"
                     ? "Loan Application Items"
+                    : selectedBatch?.batchType === "LOAN_DATA_UPDATE"
+                    ? "Loan Data Update Items (Phase A)"
                     : "Transaction Items"}
                 </p>
                 <div className="overflow-x-auto text-xs">
@@ -2009,6 +2104,51 @@ export default function BulkProcessing() {
                                 )}
                               </TableCell>
                               <TableCell className="max-w-xs truncate text-xs" title={item.errorMessage}>
+                                {item.errorMessage || "-"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+
+                    {selectedBatch?.batchType === "LOAN_DATA_UPDATE" && (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Row</TableHead>
+                            <TableHead>Employee ID</TableHead>
+                            <TableHead>Loan #</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Rate</TableHead>
+                            <TableHead>Balance</TableHead>
+                            <TableHead>Purpose</TableHead>
+                            <TableHead>Result</TableHead>
+                            <TableHead>Error Message</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {loanDataUpdateItems.map((item) => (
+                            <TableRow key={item.id}>
+                              <TableCell className="text-xs">{item.rowNumber}</TableCell>
+                              <TableCell className="text-xs font-medium">{item.employeeId}</TableCell>
+                              <TableCell className="text-xs">{item.loanNumber}</TableCell>
+                              <TableCell className="text-xs">{item.loanStatus || "-"}</TableCell>
+                              <TableCell className="text-xs">{item.disbursementDate || "-"}</TableCell>
+                              <TableCell className="text-xs">{item.interestRate !== undefined ? item.interestRate + "%" : "-"}</TableCell>
+                              <TableCell className="text-xs">{item.outstandingBalance !== undefined ? formatCurrency(item.outstandingBalance) : "-"}</TableCell>
+                              <TableCell className="text-xs max-w-xs truncate">{item.purpose || "-"}</TableCell>
+                              <TableCell>
+                                {item.status === "PROCESSED" ? (
+                                  <Badge className="bg-green-100 text-green-800 text-xs">✓ Updated</Badge>
+                                ) : item.status === "FAILED" ? (
+                                  <Badge className="bg-red-100 text-red-800 text-xs">✗ Failed</Badge>
+                                ) : (
+                                  <Badge className="bg-yellow-100 text-yellow-800 text-xs">⏳ Pending</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="max-w-xs truncate text-xs text-red-600" title={item.errorMessage}>
                                 {item.errorMessage || "-"}
                               </TableCell>
                             </TableRow>

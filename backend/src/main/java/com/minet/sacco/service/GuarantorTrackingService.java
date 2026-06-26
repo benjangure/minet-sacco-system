@@ -84,6 +84,12 @@ public class GuarantorTrackingService {
         if (memberSelfGuarantee != null) {
             BigDecimal pledgeBefore = memberSelfGuarantee.getPledgeAmount();
             if (pledgeBefore != null && pledgeBefore.compareTo(BigDecimal.ZERO) > 0) {
+                // CRITICAL: If pledge was manually set (treasurer entered it explicitly), DO NOT apply reduction ratio
+                if (memberSelfGuarantee.getPledgeFrozenAtFullAmount() != null && memberSelfGuarantee.getPledgeFrozenAtFullAmount()) {
+                    // Manually-set pledges stay frozen at full amount - do NOT reduce on repayment
+                    return; // Exit early - no unfreezing for manually-set self-guarantees
+                }
+                
                 // Kenyan SACCO formula: Remaining Frozen = Original Pledge × (Outstanding Principal / Original Principal)
                 BigDecimal newFrozenPledge = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
                         pledgeBefore.multiply(outstandingPrincipal)
@@ -115,7 +121,16 @@ public class GuarantorTrackingService {
                 continue;
             }
 
+            // CRITICAL: If pledge was manually set (treasurer entered it explicitly), DO NOT apply reduction ratio
+            if (guarantor.getPledgeFrozenAtFullAmount() != null && guarantor.getPledgeFrozenAtFullAmount()) {
+                // Manually-set pledges stay frozen at full amount - do NOT reduce on repayment
+                // Notification is still sent but pledge amount stays the same
+                notifyGuarantorOfPledgeReduction(guarantor, loan, pledgeBefore, pledgeBefore);
+                continue;
+            }
+
             // Kenyan SACCO formula: Remaining Frozen = Original Pledge × (Outstanding Principal / Original Principal)
+            // This only applies to auto-calculated pledges, not manually-set ones
             BigDecimal newFrozenPledge = originalPrincipal.compareTo(BigDecimal.ZERO) > 0 ?
                     pledgeBefore.multiply(outstandingPrincipal)
                             .divide(originalPrincipal, 2, java.math.RoundingMode.HALF_UP) :

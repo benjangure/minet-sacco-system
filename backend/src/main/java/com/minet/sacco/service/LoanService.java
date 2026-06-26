@@ -15,9 +15,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class LoanService {
@@ -1353,5 +1356,354 @@ public class LoanService {
         auditService.logAction(requestedBy, "REASSIGN", "GUARANTORS", loan.getId(),
             "Loan #" + loan.getLoanNumber(), "Re-assigned " + guarantorsToUpdate.size() + 
             " guarantors with total guarantee amount: KES " + totalGuaranteeAmount, "SUCCESS");
+    }
+
+    /**
+     * Update loan fields (UI edit feature)
+     * Called from Loans page to update individual loans in DISBURSED, REPAID, or DEFAULTED status
+     */
+    @Transactional
+    public Loan updateLoan(Long loanId, com.minet.sacco.dto.LoanUpdateRequestDTO updateRequest, User updatedBy) {
+        Loan loan = loanRepository.findById(loanId)
+            .orElseThrow(() -> new RuntimeException("Loan not found: " + loanId));
+        
+        // Only allow updating loans in final states
+        if (!loan.getStatus().equals(Loan.Status.DISBURSED) && 
+            !loan.getStatus().equals(Loan.Status.REPAID) && 
+            !loan.getStatus().equals(Loan.Status.DEFAULTED)) {
+            throw new RuntimeException("Loan can only be edited in DISBURSED, REPAID, or DEFAULTED status. Current status: " + loan.getStatus());
+        }
+        
+        // Check if at least one field is being updated
+        if ((updateRequest.getDisbursementDate() == null || updateRequest.getDisbursementDate().toString().isEmpty()) &&
+            updateRequest.getOutstandingBalance() == null &&
+            updateRequest.getTermMonths() == null &&
+            (updateRequest.getGuarantorshipType() == null || updateRequest.getGuarantors() == null || updateRequest.getGuarantors().isEmpty())) {
+            throw new RuntimeException("At least one field must be updated");
+        }
+        
+        // Update disbursement date if provided
+        if (updateRequest.getDisbursementDate() != null) {
+            if (updateRequest.getDisbursementDate().isAfter(java.time.LocalDate.now())) {
+                throw new RuntimeException("Disbursement date cannot be in the future");
+            }
+            loan.setDisbursementDate(updateRequest.getDisbursementDate().atStartOfDay());
+        }
+        
+        // Update outstanding balance if provided
+        if (updateRequest.getOutstandingBalance() != null) {
+            BigDecimal outstanding = updateRequest.getOutstandingBalance();
+            if (outstanding.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Outstanding balance must be >= 0");
+            }
+            if (outstanding.compareTo(loan.getAmount()) > 0) {
+                throw new RuntimeException("Outstanding balance cannot exceed principal (" + loan.getAmount() + ")");
+            }
+            if (loan.getStatus().equals(Loan.Status.REPAID) && outstanding.compareTo(BigDecimal.ZERO) != 0) {
+                throw new RuntimeException("Outstanding balance must be 0 for REPAID loans");
+            }
+            loan.setOutstandingBalance(outstanding);
+        }
+        
+        // Update term months if provided
+        if (updateRequest.getTermMonths() != null) {
+            if (updateRequest.getTermMonths() <= 0) {
+                throw new RuntimeException("Term months must be > 0");
+            }
+            loan.setTermMonths(updateRequest.getTermMonths());
+        }
+        
+        // Update guarantors if provided (all-or-nothing atomic replacement)
+        if (updateRequest.getGuarantorshipType() != null && 
+            updateRequest.getGuarantors() != null && 
+            !updateRequest.getGuarantors().isEmpty()) {
+            
+            // DEBUG: Log what we're receiving
+            System.out.println("DEBUG: updateLoan() guarantor update received");
+            System.out.println("  Loan ID: " + loanId);
+            System.out.println("  Guarantors count: " + updateRequest.getGuarantors().size());
+            for (int i = 0; i < updateRequest.getGuarantors().size(); i++) {
+                System.out.println("  Guarantor " + i + ": " + updateRequest.getGuarantors().get(i).getEmployeeId() + 
+                    " -> " + updateRequest.getGuarantors().get(i).getPledgeAmount());
+            }
+            
+            // Validate guarantorship type
+            if (!updateRequest.getGuarantorshipType().equals("NORMAL") && 
+                !updateRequest.getGuarantorshipType().equals("SELF")) {
+                throw new RuntimeException("Invalid guarantorship type: " + updateRequest.getGuarantorshipType());
+            }
+            
+            // Calculate total guarantee amount being offered
+            BigDecimal totalNewGuarantee = BigDecimal.ZERO;
+            for (com.minet.sacco.dto.LoanUpdateRequestDTO.GuarantorPairDTO g : updateRequest.getGuarantors()) {
+                totalNewGuarantee = totalNewGuarantee.add(g.getPledgeAmount());
+            }
+            
+            // Use outstanding balance if available, otherwise use loan amount
+            BigDecimal guaranteeRequirement = loan.getOutstandingBalance() != null && 
+                loan.getOutstandingBalance().compareTo(BigDecimal.ZERO) > 0 ? 
+                loan.getOutstandingBalance() : loan.getAmount();
+            
+            // Validate total guarantees meet requirement
+            if (totalNewGuarantee.compareTo(guaranteeRequirement) < 0) {
+                throw new RuntimeException("Total guarantee amount (" + totalNewGuarantee + 
+                    ") must be at least equal to outstanding balance (" + guaranteeRequirement + ")");
+            }
+            
+            // Validate all new guarantors exist and are ACTIVE (or any status for migrated loans)
+            List<Member> newGuarantorMembers = new ArrayList<>();
+            for (com.minet.sacco.dto.LoanUpdateRequestDTO.GuarantorPairDTO guarantorPair : updateRequest.getGuarantors()) {
+                Member guarantorMember = memberRepository.findByMemberNumber(guarantorPair.getEmployeeId())
+                    .orElseThrow(() -> new RuntimeException("Guarantor not found: " + guarantorPair.getEmployeeId()));
+                
+                // For migrated loans, allow any valid member status
+                // For non-migrated loans, strictly require ACTIVE status
+                boolean isMigrated = loan.getMigrationStatus() != null && !loan.getMigrationStatus().isEmpty();
+                if (!isMigrated && !guarantorMember.getStatus().equals(Member.Status.ACTIVE)) {
+                    throw new RuntimeException("Guarantor " + guarantorPair.getEmployeeId() + " is not ACTIVE");
+                }
+                
+                // Check if guarantor has sufficient savings
+                Optional<Account> guarantorAccount = accountRepository.findByMemberIdAndAccountType(
+                    guarantorMember.getId(), Account.AccountType.SAVINGS);
+                if (guarantorAccount.isEmpty() || guarantorAccount.get().getBalance().compareTo(guarantorPair.getPledgeAmount()) < 0) {
+                    throw new RuntimeException("Guarantor " + guarantorPair.getEmployeeId() + 
+                        " has insufficient savings for guarantee amount " + guarantorPair.getPledgeAmount());
+                }
+                
+                newGuarantorMembers.add(guarantorMember);
+            }
+            
+            // TARGETED GUARANTOR UPDATE - Only modify guarantors that actually changed
+            // Do NOT delete and recreate all guarantors on every save
+            List<Guarantor> existingGuarantors = guarantorRepository.findByLoanId(loanId);
+            
+            // Build a map of existing guarantors by member ID for easy lookup
+            Map<Long, Guarantor> existingGuarantorsByMemberId = new HashMap<>();
+            for (Guarantor existing : existingGuarantors) {
+                existingGuarantorsByMemberId.put(existing.getMember().getId(), existing);
+            }
+            
+            // Build a set of new guarantor member IDs being submitted
+            Set<Long> newGuarantorMemberIds = new HashSet<>();
+            for (int i = 0; i < updateRequest.getGuarantors().size(); i++) {
+                newGuarantorMemberIds.add(newGuarantorMembers.get(i).getId());
+            }
+            
+            // Step 1: Delete only guarantors that are being removed (not in the new list)
+            for (Guarantor existingGuarantor : existingGuarantors) {
+                if (!newGuarantorMemberIds.contains(existingGuarantor.getMember().getId())) {
+                    // This guarantor is being removed - unfreeze their savings
+                    Optional<Account> oldGuarantorAccount = accountRepository.findByMemberIdAndAccountType(
+                        existingGuarantor.getMember().getId(), Account.AccountType.SAVINGS);
+                    if (oldGuarantorAccount.isPresent() && existingGuarantor.getPledgeAmount() != null) {
+                        Account account = oldGuarantorAccount.get();
+                        account.setFrozenSavings(account.getFrozenSavings().subtract(existingGuarantor.getPledgeAmount()));
+                        accountRepository.save(account);
+                    }
+                    guarantorRepository.delete(existingGuarantor);
+                }
+            }
+            
+            // Step 2: Update existing guarantors whose pledge amounts changed, or add new guarantors
+            for (int i = 0; i < updateRequest.getGuarantors().size(); i++) {
+                com.minet.sacco.dto.LoanUpdateRequestDTO.GuarantorPairDTO guarantorPair = updateRequest.getGuarantors().get(i);
+                Member guarantorMember = newGuarantorMembers.get(i);
+                BigDecimal newPledgeAmount = guarantorPair.getPledgeAmount();
+                
+                Guarantor guarantor = existingGuarantorsByMemberId.get(guarantorMember.getId());
+                
+                if (guarantor != null) {
+                    // EXISTING GUARANTOR - Update only if pledge amount changed
+                    BigDecimal oldPledgeAmount = guarantor.getPledgeAmount() != null ? 
+                        guarantor.getPledgeAmount() : BigDecimal.ZERO;
+                    
+                    if (!oldPledgeAmount.equals(newPledgeAmount)) {
+                        // Pledge amount changed - adjust frozen savings
+                        if (loan.getStatus().equals(Loan.Status.DISBURSED)) {
+                            Optional<Account> guarantorAccount = accountRepository.findByMemberIdAndAccountType(
+                                guarantorMember.getId(), Account.AccountType.SAVINGS);
+                            if (guarantorAccount.isPresent()) {
+                                Account account = guarantorAccount.get();
+                                // Unfreeze old amount
+                                account.setFrozenSavings(account.getFrozenSavings().subtract(oldPledgeAmount));
+                                // Freeze new amount
+                                account.setFrozenSavings(account.getFrozenSavings().add(newPledgeAmount));
+                                accountRepository.save(account);
+                            }
+                        }
+                        
+                        // Update the guarantor record with new pledge amount
+                        // Calculate frozen amount based on outstanding/principal ratio
+                        BigDecimal principal = loan.getAmount();
+                        BigDecimal outstanding = loan.getOutstandingBalance() != null ? 
+                            loan.getOutstandingBalance() : principal;
+                        BigDecimal frozenAmount = newPledgeAmount.multiply(outstanding)
+                            .divide(principal, 2, java.math.RoundingMode.HALF_UP);
+                        
+                        guarantor.setPledgeAmount(loan.getStatus().equals(Loan.Status.DISBURSED) ? 
+                            frozenAmount : BigDecimal.ZERO);
+                        guarantor.setGuaranteeAmount(newPledgeAmount);
+                        guarantor.setPledgeFrozenAtFullAmount(false);  // System-calculated, will reduce with repayments
+                        guarantorRepository.save(guarantor);
+                    }
+                    // If pledge amount didn't change, leave this guarantor completely untouched
+                    // (its id, created_at, and other fields remain unchanged)
+                } else {
+                    // NEW GUARANTOR - Create fresh record
+                    // Calculate frozen amount based on outstanding/principal ratio
+                    BigDecimal principal = loan.getAmount();
+                    BigDecimal outstanding = loan.getOutstandingBalance() != null ? 
+                        loan.getOutstandingBalance() : principal;
+                    BigDecimal frozenAmount = newPledgeAmount.multiply(outstanding)
+                        .divide(principal, 2, java.math.RoundingMode.HALF_UP);
+                    
+                    Guarantor newGuarantor = new Guarantor();
+                    newGuarantor.setLoan(loan);
+                    newGuarantor.setMember(guarantorMember);
+                    newGuarantor.setSelfGuarantee(false);
+                    newGuarantor.setGuaranteeAmount(newPledgeAmount);
+                    newGuarantor.setPledgeAmount(loan.getStatus().equals(Loan.Status.DISBURSED) ? 
+                        frozenAmount : BigDecimal.ZERO);
+                    newGuarantor.setPledgeFrozenAtFullAmount(false);  // System-calculated, will reduce with repayments
+                    newGuarantor.setStatus(loan.getStatus().equals(Loan.Status.DISBURSED) ? 
+                        Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
+                    newGuarantor.setApprovedAt(LocalDateTime.now());
+                    newGuarantor.setMigrationStatus("UI_UPDATED");
+                    guarantorRepository.save(newGuarantor);
+                    
+                    // Freeze savings for new guarantor
+                    if (loan.getStatus().equals(Loan.Status.DISBURSED)) {
+                        Optional<Account> guarantorAccount = accountRepository.findByMemberIdAndAccountType(
+                            guarantorMember.getId(), Account.AccountType.SAVINGS);
+                        if (guarantorAccount.isPresent()) {
+                            Account account = guarantorAccount.get();
+                            account.setFrozenSavings(account.getFrozenSavings().add(newPledgeAmount));
+                            accountRepository.save(account);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Save updated loan
+        Loan updatedLoan = loanRepository.save(loan);
+        
+        // Log audit trail for the update
+        StringBuilder auditDetails = new StringBuilder();
+        auditDetails.append("Loan #").append(updatedLoan.getLoanNumber()).append(" updated: ");
+        if (updateRequest.getDisbursementDate() != null) {
+            auditDetails.append("Disbursement Date changed to ").append(updateRequest.getDisbursementDate()).append("; ");
+        }
+        if (updateRequest.getOutstandingBalance() != null) {
+            auditDetails.append("Outstanding Balance changed to KES ").append(updateRequest.getOutstandingBalance()).append("; ");
+        }
+        if (updateRequest.getTermMonths() != null) {
+            auditDetails.append("Term Months changed to ").append(updateRequest.getTermMonths()).append("; ");
+        }
+        if (updateRequest.getGuarantorshipType() != null && updateRequest.getGuarantors() != null && !updateRequest.getGuarantors().isEmpty()) {
+            auditDetails.append("Guarantors updated - Total guarantee: KES ").append(
+                updateRequest.getGuarantors().stream()
+                    .map(com.minet.sacco.dto.LoanUpdateRequestDTO.GuarantorPairDTO::getPledgeAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+            ).append("; ");
+        }
+        
+        auditService.logAction(updatedBy, "UPDATE", "LOAN", updatedLoan.getId(),
+            "Loan #" + updatedLoan.getLoanNumber() + " - Member: " + updatedLoan.getMember().getFirstName() + " " + 
+            updatedLoan.getMember().getLastName(), auditDetails.toString(), "SUCCESS");
+        
+        return updatedLoan;
+    }
+
+    /**
+     * PHASE A: Update loan fields only (no guarantor data)
+     * Editable fields: loanStatus, disbursementDate, interestRate, outstandingBalance, purpose
+     * This endpoint is kept completely separate from Phase B (guarantor changes)
+     */
+    @Transactional
+    public Loan updateLoanFieldsOnly(Long loanId, com.minet.sacco.dto.LoanFieldUpdateDTO fieldUpdate, User updatedBy) {
+        Loan loan = loanRepository.findById(loanId)
+            .orElseThrow(() -> new RuntimeException("Loan not found: " + loanId));
+        
+        // Validation: at least one field must be provided
+        if (!fieldUpdate.hasAtLeastOneField()) {
+            throw new RuntimeException("At least one field must be updated");
+        }
+        
+        // Update loanStatus if provided
+        if (fieldUpdate.getLoanStatus() != null && !fieldUpdate.getLoanStatus().trim().isEmpty()) {
+            try {
+                Loan.Status newStatus = Loan.Status.valueOf(fieldUpdate.getLoanStatus());
+                loan.setStatus(newStatus);
+            } catch (IllegalArgumentException e) {
+                throw new RuntimeException("Invalid loan status: " + fieldUpdate.getLoanStatus() + ". Valid values: " + 
+                    String.join(", ", java.util.Arrays.stream(Loan.Status.values()).map(Enum::name).toArray(String[]::new)));
+            }
+        }
+        
+        // Update disbursementDate if provided
+        if (fieldUpdate.getDisbursementDate() != null) {
+            if (fieldUpdate.getDisbursementDate().isAfter(java.time.LocalDate.now())) {
+                throw new RuntimeException("Disbursement date cannot be in the future");
+            }
+            loan.setDisbursementDate(fieldUpdate.getDisbursementDate().atStartOfDay());
+        }
+        
+        // Update interestRate if provided
+        if (fieldUpdate.getInterestRate() != null) {
+            if (fieldUpdate.getInterestRate().compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Interest rate must be >= 0");
+            }
+            loan.setInterestRate(fieldUpdate.getInterestRate());
+        }
+        
+        // Update outstandingBalance if provided
+        if (fieldUpdate.getOutstandingBalance() != null) {
+            BigDecimal outstanding = fieldUpdate.getOutstandingBalance();
+            if (outstanding.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Outstanding balance must be >= 0");
+            }
+            if (outstanding.compareTo(loan.getAmount()) > 0) {
+                throw new RuntimeException("Outstanding balance cannot exceed principal (" + loan.getAmount() + ")");
+            }
+            if (loan.getStatus().equals(Loan.Status.REPAID) && outstanding.compareTo(BigDecimal.ZERO) != 0) {
+                throw new RuntimeException("Outstanding balance must be 0 for REPAID loans");
+            }
+            loan.setOutstandingBalance(outstanding);
+        }
+        
+        // Update purpose if provided
+        if (fieldUpdate.getPurpose() != null && !fieldUpdate.getPurpose().trim().isEmpty()) {
+            loan.setPurpose(fieldUpdate.getPurpose());
+        }
+        
+        // Save updated loan
+        Loan updatedLoan = loanRepository.save(loan);
+        
+        // Log audit trail
+        StringBuilder auditDetails = new StringBuilder();
+        auditDetails.append("Loan #").append(updatedLoan.getLoanNumber()).append(" - Field Update (Phase A): ");
+        if (fieldUpdate.getLoanStatus() != null) {
+            auditDetails.append("Status changed to ").append(fieldUpdate.getLoanStatus()).append("; ");
+        }
+        if (fieldUpdate.getDisbursementDate() != null) {
+            auditDetails.append("Disbursement Date changed to ").append(fieldUpdate.getDisbursementDate()).append("; ");
+        }
+        if (fieldUpdate.getInterestRate() != null) {
+            auditDetails.append("Interest Rate changed to ").append(fieldUpdate.getInterestRate()).append("%; ");
+        }
+        if (fieldUpdate.getOutstandingBalance() != null) {
+            auditDetails.append("Outstanding Balance changed to KES ").append(fieldUpdate.getOutstandingBalance()).append("; ");
+        }
+        if (fieldUpdate.getPurpose() != null) {
+            auditDetails.append("Purpose changed to ").append(fieldUpdate.getPurpose()).append("; ");
+        }
+        
+        auditService.logAction(updatedBy, "UPDATE", "LOAN_FIELDS", updatedLoan.getId(),
+            "Loan #" + updatedLoan.getLoanNumber() + " - Member: " + updatedLoan.getMember().getFirstName() + " " + 
+            updatedLoan.getMember().getLastName(), auditDetails.toString(), "SUCCESS");
+        
+        return updatedLoan;
     }
 }

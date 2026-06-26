@@ -28,36 +28,36 @@ public class LoanMigrationItem {
     private Integer rowNumber;
 
     // Borrower
-    @Column(name = "employee_id", nullable = false)
+    @Column(name = "employee_id", nullable = true)
     private String employeeId;
 
     // Loan details
     @Column(name = "loan_number", length = 50)
     private String loanNumber;
 
-    @Column(name = "loan_product_name", nullable = false)
+    @Column(name = "loan_product_name", nullable = true)
     private String loanProductName;
 
-    @Column(name = "principal_amount", nullable = false, precision = 15, scale = 2)
+    @Column(name = "principal_amount", nullable = true, precision = 15, scale = 2)
     private BigDecimal principalAmount;
 
-    @Column(name = "term_months", nullable = false)
+    @Column(name = "term_months", nullable = true)
     private Integer termMonths;
 
     @Column(name = "interest_rate", precision = 5, scale = 2)
     private BigDecimal interestRate; // Optional - uses product default if null
 
-    @Column(name = "disbursement_date", nullable = false)
+    @Column(name = "disbursement_date", nullable = true)
     private LocalDate disbursementDate;
 
-    @Column(name = "loan_status", nullable = false, length = 20)
+    @Column(name = "loan_status", nullable = true, length = 20)
     private String loanStatus; // DISBURSED, REPAID, DEFAULTED
 
-    @Column(name = "outstanding_balance", nullable = false, precision = 15, scale = 2)
+    @Column(name = "outstanding_balance", nullable = true, precision = 15, scale = 2)
     private BigDecimal outstandingBalance;
 
-    @Column(name = "guarantorship_type", nullable = false, length = 10)
-    private String guarantorshipType; // NORMAL or SELF
+    @Column(name = "guarantorship_type", nullable = true, length = 10)
+    private String guarantorshipType; // NORMAL or SELF (optional - can be set via UPDATE later)
 
     @Column(name = "purpose", length = 500)
     private String purpose;
