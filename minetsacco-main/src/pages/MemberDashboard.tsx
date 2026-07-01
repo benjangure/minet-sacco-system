@@ -60,6 +60,8 @@ interface LoanWithRepayments {
   totalRepayable: number;
   outstandingBalance: number;
   monthlyRepayment: number;
+  principalRepaid?: number;
+  repaymentPercentage?: number;
   status: string;
   repayments: LoanRepayment[];
   applicationDate?: string;
@@ -1213,8 +1215,8 @@ export default function MemberDashboard() {
                                 <div className="flex justify-between text-sm mb-1">
                                   <span className="text-muted-foreground">Progress</span>
                                   <span className="font-medium">
-                                    {loan.totalRepayable && loan.totalRepayable > 0
-                                      ? `${formatCurrency(Math.max(0, loan.totalRepayable - loan.outstandingBalance))} / ${formatCurrency(loan.totalRepayable)}`
+                                    {loan.principalRepaid !== undefined && loan.amount
+                                      ? `${formatCurrency(loan.principalRepaid)} / ${formatCurrency(loan.amount)}`
                                       : `${formatCurrency(loan.amount)} [No calc]`}
                                   </span>
                                 </div>
@@ -1223,15 +1225,15 @@ export default function MemberDashboard() {
                                     className={`h-2 rounded-full transition-all duration-300 ${
                                       loan.status === 'REPAID' ? 'bg-green-600' : 'bg-green-600'
                                     }`}
-                                    style={{ width: loan.totalRepayable && loan.totalRepayable > 0
-                                      ? `${Math.min(Math.max(0, ((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100), 100)}%`
-                                      : loan.outstandingBalance === 0 ? "100%" : "0%" }}
+                                    style={{ width: loan.repaymentPercentage !== undefined
+                                      ? `${Math.min(Math.max(0, Number(loan.repaymentPercentage)), 100)}%`
+                                      : "0%" }}
                                   />
                                 </div>
                                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                                  <span>{loan.totalRepayable && loan.totalRepayable > 0
-                                    ? `${Math.max(0, Math.round(((loan.totalRepayable - loan.outstandingBalance) / loan.totalRepayable) * 100))}% repaid`
-                                    : loan.outstandingBalance === 0 ? "100% repaid" : "0% repaid"}</span>
+                                  <span>{loan.repaymentPercentage !== undefined
+                                    ? `${Number(loan.repaymentPercentage).toFixed(2)}% repaid`
+                                    : "0% repaid"}</span>
                                   <span>
                                     {loan.status === 'REPAID' 
                                       ? '✓ Fully Repaid' 

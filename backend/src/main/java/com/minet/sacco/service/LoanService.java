@@ -572,6 +572,38 @@ public class LoanService {
         
         repayment = loanRepaymentRepository.save(repayment);
 
+        // Create transaction records for GL accounting
+        // Create final copies for use in lambda (lambda expressions require effectively final variables)
+        final BigDecimal finalRequestAmount = requestAmount;
+        final BigDecimal finalInterestAmount = interestAmount;
+        final LoanRepayment finalRepayment = repayment;
+        
+        accountRepository.findByMemberIdAndAccountType(loan.getMember().getId(), Account.AccountType.SAVINGS)
+                .ifPresent(account -> {
+                    // Create LOAN_REPAYMENT transaction for the full amount
+                    Transaction transaction = new Transaction();
+                    transaction.setAccount(account);
+                    transaction.setTransactionType(Transaction.TransactionType.LOAN_REPAYMENT);
+                    transaction.setAmount(finalRequestAmount);
+                    transaction.setDescription("Loan repayment - Loan #" + loan.getLoanNumber() +
+                            " - Method: " + finalRepayment.getPaymentMethod());
+                    transaction.setTransactionDate(LocalDateTime.now());
+                    transaction.setCreatedBy(createdBy);
+                    transactionRepository.save(transaction);
+
+                    // Create separate INTEREST transaction if interest was paid
+                    if (finalInterestAmount.compareTo(BigDecimal.ZERO) > 0) {
+                        Transaction interestTransaction = new Transaction();
+                        interestTransaction.setAccount(account);
+                        interestTransaction.setTransactionType(Transaction.TransactionType.INTEREST);
+                        interestTransaction.setAmount(finalInterestAmount);
+                        interestTransaction.setDescription("Interest income - Loan #" + loan.getLoanNumber());
+                        interestTransaction.setTransactionDate(LocalDateTime.now());
+                        interestTransaction.setCreatedBy(createdBy);
+                        transactionRepository.save(interestTransaction);
+                    }
+                });
+
         // Calculate new outstanding balance using principal amount repaid only
         BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(loan.getId());
         BigDecimal outstandingBalance = loan.getAmount().subtract(totalPrincipalRepaid != null ? totalPrincipalRepaid : BigDecimal.ZERO);
@@ -1631,6 +1663,11 @@ public class LoanService {
             throw new RuntimeException("At least one field must be updated");
         }
         
+        // Principal lock for migrated loans: prevent editing principal after migration
+        // Users should delete and re-migrate if principal is incorrect
+        // NOTE: No principal field in fieldUpdate DTO - this prevents accidental editing
+        // If user tries to change amount, they must do so through loan application, not migration
+        
         // Update loanStatus if provided
         if (fieldUpdate.getLoanStatus() != null && !fieldUpdate.getLoanStatus().trim().isEmpty()) {
             try {
@@ -1673,6 +1710,19 @@ public class LoanService {
             loan.setOutstandingBalance(outstanding);
         }
         
+        // Update interestCollected if provided (for migrated loans that collected interest historically)
+        if (fieldUpdate.getInterestCollected() != null) {
+            BigDecimal interestCollected = fieldUpdate.getInterestCollected();
+            if (interestCollected.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Interest collected must be >= 0");
+            }
+            // For reducing balance method, totalInterest is not pre-calculated
+            // interestCollected represents historical interest for migrated loans
+            // No validation against totalInterest needed since interest accrues dynamically
+            loan.setInterestCollected(interestCollected);
+            // interestRemaining is not applicable for reducing balance - calculated per repayment
+        }
+        
         // Update purpose if provided
         if (fieldUpdate.getPurpose() != null && !fieldUpdate.getPurpose().trim().isEmpty()) {
             loan.setPurpose(fieldUpdate.getPurpose());
@@ -1695,6 +1745,9 @@ public class LoanService {
         }
         if (fieldUpdate.getOutstandingBalance() != null) {
             auditDetails.append("Outstanding Balance changed to KES ").append(fieldUpdate.getOutstandingBalance()).append("; ");
+        }
+        if (fieldUpdate.getInterestCollected() != null) {
+            auditDetails.append("Interest Collected changed to KES ").append(fieldUpdate.getInterestCollected()).append("; ");
         }
         if (fieldUpdate.getPurpose() != null) {
             auditDetails.append("Purpose changed to ").append(fieldUpdate.getPurpose()).append("; ");

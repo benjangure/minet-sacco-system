@@ -376,24 +376,26 @@ public class ExcelParserService {
                 item.setLoanStatus(status != null ? status.trim().toUpperCase() : null);
                 // Col 8: Outstanding Balance
                 item.setOutstandingBalance(getCellValueAsBigDecimal(row.getCell(8)));
-                // Col 9: Guarantorship Type
-                String gType = getCellValueAsString(row.getCell(9));
+                // Col 9: Interest Collected (optional - for historical loans that already collected interest)
+                item.setInterestCollected(getCellValueAsBigDecimal(row.getCell(9)));
+                // Col 10: Guarantorship Type
+                String gType = getCellValueAsString(row.getCell(10));
                 item.setGuarantorshipType(gType != null ? gType.trim().toUpperCase() : null);
-                // Col 10-21: Guarantors (6 pairs of Employee ID + Pledge Amount)
-                item.setGuarantor1EmployeeId(getCellValueAsString(row.getCell(10)));
-                item.setGuarantor1PledgeAmount(getCellValueAsBigDecimal(row.getCell(11)));
-                item.setGuarantor2EmployeeId(getCellValueAsString(row.getCell(12)));
-                item.setGuarantor2PledgeAmount(getCellValueAsBigDecimal(row.getCell(13)));
-                item.setGuarantor3EmployeeId(getCellValueAsString(row.getCell(14)));
-                item.setGuarantor3PledgeAmount(getCellValueAsBigDecimal(row.getCell(15)));
-                item.setGuarantor4EmployeeId(getCellValueAsString(row.getCell(16)));
-                item.setGuarantor4PledgeAmount(getCellValueAsBigDecimal(row.getCell(17)));
-                item.setGuarantor5EmployeeId(getCellValueAsString(row.getCell(18)));
-                item.setGuarantor5PledgeAmount(getCellValueAsBigDecimal(row.getCell(19)));
-                item.setGuarantor6EmployeeId(getCellValueAsString(row.getCell(20)));
-                item.setGuarantor6PledgeAmount(getCellValueAsBigDecimal(row.getCell(21)));
-                // Col 22: Purpose (optional)
-                item.setPurpose(getCellValueAsString(row.getCell(22)));
+                // Col 11-22: Guarantors (6 pairs of Employee ID + Pledge Amount)
+                item.setGuarantor1EmployeeId(getCellValueAsString(row.getCell(11)));
+                item.setGuarantor1PledgeAmount(getCellValueAsBigDecimal(row.getCell(12)));
+                item.setGuarantor2EmployeeId(getCellValueAsString(row.getCell(13)));
+                item.setGuarantor2PledgeAmount(getCellValueAsBigDecimal(row.getCell(14)));
+                item.setGuarantor3EmployeeId(getCellValueAsString(row.getCell(15)));
+                item.setGuarantor3PledgeAmount(getCellValueAsBigDecimal(row.getCell(16)));
+                item.setGuarantor4EmployeeId(getCellValueAsString(row.getCell(17)));
+                item.setGuarantor4PledgeAmount(getCellValueAsBigDecimal(row.getCell(18)));
+                item.setGuarantor5EmployeeId(getCellValueAsString(row.getCell(19)));
+                item.setGuarantor5PledgeAmount(getCellValueAsBigDecimal(row.getCell(20)));
+                item.setGuarantor6EmployeeId(getCellValueAsString(row.getCell(21)));
+                item.setGuarantor6PledgeAmount(getCellValueAsBigDecimal(row.getCell(22)));
+                // Col 23: Purpose (optional)
+                item.setPurpose(getCellValueAsString(row.getCell(23)));
 
                 items.add(item);
             }

@@ -53,6 +53,10 @@ public class Loan {
     private BigDecimal interestRemaining;
 
     @DecimalMin(value = "0.00")
+    @Column(name = "interest_collected", nullable = true)
+    private BigDecimal interestCollected = BigDecimal.ZERO;
+
+    @DecimalMin(value = "0.00")
     private BigDecimal totalRepayable;
 
     @NotNull
@@ -151,6 +155,9 @@ public class Loan {
     public BigDecimal getInterestRemaining() { return interestRemaining; }
     public void setInterestRemaining(BigDecimal interestRemaining) { this.interestRemaining = interestRemaining; }
 
+    public BigDecimal getInterestCollected() { return interestCollected; }
+    public void setInterestCollected(BigDecimal interestCollected) { this.interestCollected = interestCollected; }
+
     public BigDecimal getTotalRepayable() { return totalRepayable; }
     public void setTotalRepayable(BigDecimal totalRepayable) { this.totalRepayable = totalRepayable; }
 
@@ -203,6 +210,8 @@ public class Loan {
     /**
      * Calculate loan repayment details based on amount, interest rate, and term
      * Uses simple interest formula: Interest = Principal × (Rate/100) × (Term/12)
+     * For new loans: interestCollected defaults to 0, interestRemaining = totalInterest
+     * For migrated loans: interestCollected is set via migration, interestRemaining = totalInterest - interestCollected
      */
     public void calculateRepaymentDetails() {
         if (this.amount == null || this.interestRate == null || this.termMonths == null) {
@@ -217,7 +226,14 @@ public class Loan {
         BigDecimal rate = this.interestRate.divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
         BigDecimal timeInYears = new BigDecimal(this.termMonths).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
         this.totalInterest = this.amount.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
-        this.interestRemaining = this.totalInterest;
+        
+        // For new loans, interestCollected defaults to 0
+        if (this.interestCollected == null) {
+            this.interestCollected = BigDecimal.ZERO;
+        }
+        
+        // Calculate interestRemaining: what's left to collect
+        this.interestRemaining = this.totalInterest.subtract(this.interestCollected).setScale(2, java.math.RoundingMode.HALF_UP);
 
         // Calculate total repayable: amount + totalInterest
         this.totalRepayable = this.amount.add(this.totalInterest);

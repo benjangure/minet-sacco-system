@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 /**
  * Phase A: Low-risk field editing (individual loans only)
  * CRITICAL: This DTO must NEVER contain guarantor data
- * Editable fields only: loanStatus, disbursementDate, interestRate, outstandingBalance, purpose
+ * Editable fields only: loanStatus, disbursementDate, interestRate, outstandingBalance, interestCollected, purpose
  */
 public class LoanFieldUpdateDTO {
     
@@ -22,6 +22,9 @@ public class LoanFieldUpdateDTO {
     
     @JsonProperty("outstandingBalance")
     private BigDecimal outstandingBalance;
+
+    @JsonProperty("interestCollected")
+    private BigDecimal interestCollected;
     
     @JsonProperty("purpose")
     private String purpose;
@@ -31,11 +34,12 @@ public class LoanFieldUpdateDTO {
     
     public LoanFieldUpdateDTO(String loanStatus, LocalDate disbursementDate,
                               BigDecimal interestRate, BigDecimal outstandingBalance,
-                              String purpose) {
+                              BigDecimal interestCollected, String purpose) {
         this.loanStatus = loanStatus;
         this.disbursementDate = disbursementDate;
         this.interestRate = interestRate;
         this.outstandingBalance = outstandingBalance;
+        this.interestCollected = interestCollected;
         this.purpose = purpose;
     }
     
@@ -51,6 +55,9 @@ public class LoanFieldUpdateDTO {
     
     public BigDecimal getOutstandingBalance() { return outstandingBalance; }
     public void setOutstandingBalance(BigDecimal outstandingBalance) { this.outstandingBalance = outstandingBalance; }
+
+    public BigDecimal getInterestCollected() { return interestCollected; }
+    public void setInterestCollected(BigDecimal interestCollected) { this.interestCollected = interestCollected; }
     
     public String getPurpose() { return purpose; }
     public void setPurpose(String purpose) { this.purpose = purpose; }
@@ -63,6 +70,7 @@ public class LoanFieldUpdateDTO {
                disbursementDate != null ||
                interestRate != null ||
                outstandingBalance != null ||
+               interestCollected != null ||
                (purpose != null && !purpose.trim().isEmpty());
     }
 }

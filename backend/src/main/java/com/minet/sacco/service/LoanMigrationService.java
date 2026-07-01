@@ -246,6 +246,17 @@ public class LoanMigrationService {
             }
         }
 
+        // Interest collected - OPTIONAL (only for historical/migrated loans)
+        if (item.getInterestCollected() != null) {
+            if (item.getInterestCollected().compareTo(BigDecimal.ZERO) < 0) {
+                errors.add("Row " + row + ": Interest collected must be 0 or greater (or leave blank)");
+            }
+            // Interest can be collected for any loan status (DISBURSED, REPAID, or DEFAULTED)
+            // DISBURSED loans can have interest collected during their active repayment period
+            // REPAID loans can have interest that was collected during repayment
+            // DEFAULTED loans can have interest that accrued before default
+        }
+
         // Guarantorship type - OPTIONAL in CREATE (can be set later via UPDATE)
         if (item.getGuarantorshipType() != null && !item.getGuarantorshipType().isBlank()) {
             if (!VALID_GUARANTORSHIP_TYPES.contains(item.getGuarantorshipType())) {
@@ -485,6 +496,12 @@ public class LoanMigrationService {
         
         // Calculate repayment details (sets totalInterest, totalRepayable, monthlyRepayment)
         if (termMonths != null && termMonths > 0 && principal != null) {
+            // Set interestCollected if provided from migration (for historical tracking)
+            if (item.getInterestCollected() != null && item.getInterestCollected().compareTo(BigDecimal.ZERO) > 0) {
+                loan.setInterestCollected(item.getInterestCollected());
+            } else {
+                loan.setInterestCollected(BigDecimal.ZERO);
+            }
             loan.calculateRepaymentDetails();
         }
         
@@ -744,20 +761,21 @@ public class LoanMigrationService {
                     "Disbursement Date DD/MM/YYYY (optional)",        // 6
                     "Loan Status (optional - can set via UPDATE)",              // 7
                     "Outstanding Balance (optional, set via UPDATE)",  // 8
-                    "Guarantorship Type (optional - can be set via UPDATE later)",       // 9
-                    "Guarantor 1 Employee ID",                        // 10-11
+                    "Interest Collected KES (optional - historical interest from migrated loans)",  // 9
+                    "Guarantorship Type (optional - can be set via UPDATE later)",       // 10
+                    "Guarantor 1 Employee ID",                        // 11-12
                     "Guarantor 1 Pledge Amount",
-                    "Guarantor 2 Employee ID",                        // 12-13
+                    "Guarantor 2 Employee ID",                        // 13-14
                     "Guarantor 2 Pledge Amount",
-                    "Guarantor 3 Employee ID",                        // 14-15
+                    "Guarantor 3 Employee ID",                        // 15-16
                     "Guarantor 3 Pledge Amount",
-                    "Guarantor 4 Employee ID",                        // 16-17
+                    "Guarantor 4 Employee ID",                        // 17-18
                     "Guarantor 4 Pledge Amount",
-                    "Guarantor 5 Employee ID",                        // 18-19
+                    "Guarantor 5 Employee ID",                        // 19-20
                     "Guarantor 5 Pledge Amount",
-                    "Guarantor 6 Employee ID",                        // 20-21
+                    "Guarantor 6 Employee ID",                        // 21-22
                     "Guarantor 6 Pledge Amount",
-                    "Purpose (optional)"                              // 22
+                    "Purpose (optional)"                              // 23
             };
 
             // Create header cells with formatting
@@ -785,14 +803,15 @@ public class LoanMigrationService {
             exampleRow1.createCell(6).setCellValue("15/01/2024");                // Disbursement Date
             exampleRow1.createCell(7).setCellValue("DISBURSED");                 // Loan Status
             exampleRow1.createCell(8).setCellValue("");                          // Outstanding Balance (optional for CREATE)
-            exampleRow1.createCell(9).setCellValue("NORMAL");                    // Guarantorship Type
-            exampleRow1.createCell(10).setCellValue("EMP066");                   // Guarantor 1 ID
-            exampleRow1.createCell(11).setCellValue(50000);                      // Guarantor 1 Pledge
-            exampleRow1.createCell(12).setCellValue("EMP063");                   // Guarantor 2 ID
-            exampleRow1.createCell(13).setCellValue(50000);                      // Guarantor 2 Pledge
+            exampleRow1.createCell(9).setCellValue(15000);                       // Interest Collected (optional - historical interest)
+            exampleRow1.createCell(10).setCellValue("NORMAL");                   // Guarantorship Type
+            exampleRow1.createCell(11).setCellValue("EMP066");                   // Guarantor 1 ID
+            exampleRow1.createCell(12).setCellValue(50000);                      // Guarantor 1 Pledge
+            exampleRow1.createCell(13).setCellValue("EMP063");                   // Guarantor 2 ID
+            exampleRow1.createCell(14).setCellValue(50000);                      // Guarantor 2 Pledge
             // Guarantors 3-6 left blank
 
-            // Example row 2: CREATE mode - Self-guaranteed loan
+            // Example row 2: CREATE mode - Self-guaranteed loan with no interest collected yet
             org.apache.poi.ss.usermodel.Row exampleRow2 = sheet.createRow(2);
             exampleRow2.createCell(0).setCellValue("");                          // Loan Number (BLANK = CREATE)
             exampleRow2.createCell(1).setCellValue("EMP040");                    // Employee ID
@@ -803,21 +822,23 @@ public class LoanMigrationService {
             exampleRow2.createCell(6).setCellValue("03/02/2025");                // Disbursement Date
             exampleRow2.createCell(7).setCellValue("DISBURSED");                 // Loan Status
             exampleRow2.createCell(8).setCellValue("");                          // Outstanding Balance (optional)
-            exampleRow2.createCell(9).setCellValue("SELF");                      // Guarantorship Type (SELF)
+            exampleRow2.createCell(9).setCellValue(0);                           // Interest Collected (0 for new loans)
+            exampleRow2.createCell(10).setCellValue("SELF");                     // Guarantorship Type (SELF)
 
             // Example row 3: UPDATE mode - Update guarantors only
             org.apache.poi.ss.usermodel.Row exampleRow3 = sheet.createRow(3);
             exampleRow3.createCell(0).setCellValue("L001");                      // Loan Number (POPULATED = UPDATE)
             // Remaining fields blank or with updates only
-            exampleRow3.createCell(10).setCellValue("EMP010");                   // Guarantor 1 ID (update)
-            exampleRow3.createCell(11).setCellValue(100000);                     // Guarantor 1 Pledge (update)
+            exampleRow3.createCell(11).setCellValue("EMP010");                   // Guarantor 1 ID (update)
+            exampleRow3.createCell(12).setCellValue(100000);                     // Guarantor 1 Pledge (update)
 
-            // Example row 4: UPDATE mode - Update multiple fields
+            // Example row 4: UPDATE mode - Update multiple fields including interest collected
             org.apache.poi.ss.usermodel.Row exampleRow4 = sheet.createRow(4);
             exampleRow4.createCell(0).setCellValue("L002");                      // Loan Number (POPULATED = UPDATE)
             exampleRow4.createCell(4).setCellValue(24);                          // Term (update from 12 to 24)
             exampleRow4.createCell(6).setCellValue("15/03/2025");                // Disbursement Date (update)
             exampleRow4.createCell(8).setCellValue(80000);                       // Outstanding Balance (update)
+            exampleRow4.createCell(9).setCellValue(25000);                       // Interest Collected (update - additional interest paid)
 
             // Auto-size columns for readability
             for (int i = 0; i < headers.length; i++) {

@@ -51,8 +51,11 @@ interface Loan {
   termMonths: number;
   monthlyRepayment: number;
   totalInterest: number;
+  interestCollected?: number;
+  principalRepaid?: number;
   totalRepayable: number;
   outstandingBalance: number;
+  repaymentPercentage?: number;
   status: string;
   purpose?: string;
   applicationDate: string;
@@ -62,6 +65,7 @@ interface Loan {
   memberEligibilityStatus?: string;
   memberEligibilityErrors?: string;
   memberEligibilityWarnings?: string;
+  migrationStatus?: string;
   guarantors?: Array<{
     id: number;
     member: {
@@ -166,6 +170,7 @@ const Loans = () => {
     disbursementDate: "",
     interestRate: "",
     outstandingBalance: "",
+    interestCollected: "",
     purpose: ""
   });
   const [phaseASubmitting, setPhaseASubmitting] = useState(false);
@@ -495,9 +500,11 @@ const Loans = () => {
       if (repaymentRes.ok) {
         const repaymentData = await repaymentRes.json();
         const repayments = repaymentData.data || [];
-        const interestCollected = repayments.reduce((sum: number, rep: any) => sum + (rep.interestAmount || 0), 0);
-        // Override totalInterest with actual collected interest
-        loanToDisplay.totalInterest = interestCollected;
+        const repaymentInterest = repayments.reduce((sum: number, rep: any) => sum + (rep.interestAmount || 0), 0);
+        loanToDisplay.interestCollected = Math.max(
+          repaymentInterest,
+          loan.interestCollected || 0
+        );
       }
     } catch (error) {
       console.error("Error fetching repayments for interest calculation:", error);
@@ -595,6 +602,14 @@ const Loans = () => {
       }
     }
 
+    if (phaseAForm.interestCollected) {
+      const collected = parseFloat(phaseAForm.interestCollected);
+      if (isNaN(collected) || collected < 0) {
+        errors.interestCollected = "Interest collected must be >= 0";
+      }
+      // Interest collected cannot exceed total interest (will be validated by backend)
+    }
+
     if (phaseAForm.loanStatus && !["PENDING", "APPROVED", "DISBURSED", "REPAID", "DEFAULTED"].includes(phaseAForm.loanStatus)) {
       errors.loanStatus = "Invalid loan status";
     }
@@ -602,7 +617,7 @@ const Loans = () => {
     // Check if at least one field is filled
     const hasAtLeastOne = phaseAForm.loanStatus || phaseAForm.disbursementDate || 
                          phaseAForm.interestRate || phaseAForm.outstandingBalance || 
-                         phaseAForm.purpose;
+                         phaseAForm.interestCollected || phaseAForm.purpose;
     if (!hasAtLeastOne) {
       setPhaseAErrors({ _form: "At least one field must be updated" });
       return;
@@ -619,6 +634,7 @@ const Loans = () => {
     if (phaseAForm.disbursementDate) requestBody.disbursementDate = phaseAForm.disbursementDate;
     if (phaseAForm.interestRate) requestBody.interestRate = parseFloat(phaseAForm.interestRate);
     if (phaseAForm.outstandingBalance) requestBody.outstandingBalance = parseFloat(phaseAForm.outstandingBalance);
+    if (phaseAForm.interestCollected) requestBody.interestCollected = parseFloat(phaseAForm.interestCollected);
     if (phaseAForm.purpose) requestBody.purpose = phaseAForm.purpose;
 
     setPhaseASubmitting(true);
@@ -633,13 +649,29 @@ const Loans = () => {
       });
 
       if (response.ok) {
+        const data = await response.json();
         toast({ 
           title: "Success", 
           description: "Loan fields updated successfully (Phase A - No guarantor data sent)",
           variant: "default"
         });
+        
+        // Update selectedLoanForDetails with the response data
+        if (selectedLoanForDetails && data.data) {
+          setSelectedLoanForDetails({
+            ...selectedLoanForDetails,
+            ...data.data,
+            status: data.data.status || selectedLoanForDetails.status,
+            disbursementDate: data.data.disbursementDate || selectedLoanForDetails.disbursementDate,
+            interestRate: data.data.interestRate !== undefined ? data.data.interestRate : selectedLoanForDetails.interestRate,
+            outstandingBalance: data.data.outstandingBalance !== undefined ? data.data.outstandingBalance : selectedLoanForDetails.outstandingBalance,
+            interestCollected: data.data.interestCollected !== undefined ? data.data.interestCollected : selectedLoanForDetails.interestCollected,
+            purpose: data.data.purpose || selectedLoanForDetails.purpose,
+          });
+        }
+        
         setPhaseAEditOpen(false);
-        setPhaseAForm({ loanStatus: "", disbursementDate: "", interestRate: "", outstandingBalance: "", purpose: "" });
+        setPhaseAForm({ loanStatus: "", disbursementDate: "", interestRate: "", outstandingBalance: "", interestCollected: "", purpose: "" });
         setPhaseAErrors({});
         fetchLoans();
       } else {
@@ -1561,7 +1593,7 @@ const Loans = () => {
                   </div>
                   <div>
                     <p className="text-xs text-gray-600">Interest Collected</p>
-                    <p className="font-medium text-blue-600">KES {selectedLoanForDetails.totalInterest?.toLocaleString() || "0"}</p>
+                    <p className="font-medium text-blue-600">KES {(selectedLoanForDetails.interestCollected !== undefined ? selectedLoanForDetails.interestCollected : selectedLoanForDetails.totalInterest)?.toLocaleString() || "0"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-600">Outstanding</p>
@@ -1584,38 +1616,44 @@ const Loans = () => {
                       <div className="flex justify-between mb-1">
                         <span className="text-xs text-gray-600">Repayment Status</span>
                         <span className="text-xs font-medium">
-                          {selectedLoanForDetails.totalRepayable && selectedLoanForDetails.totalRepayable > 0 && selectedLoanForDetails.outstandingBalance !== undefined
-                            ? `${Math.round(((selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.totalRepayable) * 100)}%`
-                            : selectedLoanForDetails.outstandingBalance === 0 ? "100%" : "0%"}
+                          {selectedLoanForDetails.repaymentPercentage !== undefined 
+                            ? `${Number(selectedLoanForDetails.repaymentPercentage).toFixed(2)}%`
+                            : "0%"}
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div
                           className="bg-green-500 h-2 rounded-full transition-all"
                           style={{
-                            width: selectedLoanForDetails.totalRepayable && selectedLoanForDetails.totalRepayable > 0 && selectedLoanForDetails.outstandingBalance !== undefined
-                              ? `${Math.min(Math.max(0, ((selectedLoanForDetails.totalRepayable - selectedLoanForDetails.outstandingBalance) / selectedLoanForDetails.totalRepayable) * 100), 100)}%`
-                              : selectedLoanForDetails.outstandingBalance === 0 ? "100%" : "0%"
+                            width: selectedLoanForDetails.repaymentPercentage !== undefined 
+                              ? `${Math.min(Math.max(0, Number(selectedLoanForDetails.repaymentPercentage)), 100)}%`
+                              : "0%"
                           }}
                         />
                       </div>
                     </div>
 
                     {/* Repayment Details Grid */}
-                    <div className="grid grid-cols-4 gap-1 text-xs">
+                    <div className="grid grid-cols-5 gap-1 text-xs">
                       <div className="bg-white rounded p-1.5 border border-blue-100">
                         <p className="text-gray-600 text-xs">Principal</p>
                         <p className="font-bold text-blue-600">KES {selectedLoanForDetails.amount?.toLocaleString()}</p>
                       </div>
                       <div className="bg-white rounded p-1.5 border border-orange-100">
                         <p className="text-gray-600 text-xs">Interest Collected</p>
-                        <p className="font-bold text-orange-600">KES {selectedLoanForDetails.totalInterest?.toLocaleString() || "0"}</p>
+                        <p className="font-bold text-orange-600">KES {selectedLoanForDetails.interestCollected?.toLocaleString() || "0"}</p>
                       </div>
                       <div className="bg-white rounded p-1.5 border border-green-100">
                         <p className="text-gray-600 text-xs">Principal Repaid</p>
                         <p className="font-bold text-green-600">
-                          KES {selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance
-                            ? Math.max(0, selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance).toLocaleString()
+                          KES {selectedLoanForDetails.principalRepaid?.toLocaleString() || "0"}
+                        </p>
+                      </div>
+                      <div className="bg-white rounded p-1.5 border border-purple-100">
+                        <p className="text-gray-600 text-xs">Total Repaid</p>
+                        <p className="font-bold text-purple-600">
+                          KES {selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance !== undefined
+                            ? Math.max(0, (selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance) + (selectedLoanForDetails.interestCollected || 0)).toLocaleString()
                             : "0"}
                         </p>
                       </div>
@@ -1812,6 +1850,26 @@ const Loans = () => {
                         {phaseAErrors.outstandingBalance && <p className="text-xs text-red-600">{phaseAErrors.outstandingBalance}</p>}
                       </div>
 
+                      {/* Interest Collected - For Migrated Loans */}
+                      {selectedLoanForDetails.migrationStatus === "MIGRATED" && (
+                        <div>
+                          <Label className="text-xs">Interest Collected (KES) <span className="text-blue-600">Migrated Loans Only</span></Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={phaseAForm.interestCollected}
+                            onChange={(e) => setPhaseAForm({...phaseAForm, interestCollected: e.target.value})}
+                            className="h-8 text-xs"
+                            placeholder="Leave unchanged"
+                          />
+                          {phaseAErrors.interestCollected && <p className="text-xs text-red-600">{phaseAErrors.interestCollected}</p>}
+                          <p className="text-xs text-gray-500 mt-1">
+                            Interest already collected during loan repayment period. Updates interest remaining calculation.
+                          </p>
+                        </div>
+                      )}
+
                       {/* Purpose */}
                       <div>
                         <Label className="text-xs">Purpose</Label>
@@ -1826,7 +1884,7 @@ const Loans = () => {
                       <Alert className="bg-blue-50 border-blue-200">
                         <AlertCircle className="h-4 w-4 text-blue-600" />
                         <AlertDescription className="text-xs text-blue-700">
-                          ✅ This form only sends the 5 Phase A fields. No guarantor data will be included in the request.
+                          ✅ This form only sends Phase A fields. No guarantor data will be included in the request.
                         </AlertDescription>
                       </Alert>
 
@@ -1846,7 +1904,7 @@ const Loans = () => {
                           className="h-8 text-xs flex-1"
                           onClick={() => {
                             setPhaseAEditOpen(false);
-                            setPhaseAForm({ loanStatus: "", disbursementDate: "", interestRate: "", outstandingBalance: "", purpose: "" });
+                            setPhaseAForm({ loanStatus: "", disbursementDate: "", interestRate: "", outstandingBalance: "", interestCollected: "", purpose: "" });
                             setPhaseAErrors({});
                           }}
                         >
@@ -1858,7 +1916,21 @@ const Loans = () => {
                     <Button
                       size="sm"
                       className="h-8 text-xs w-full bg-indigo-600 hover:bg-indigo-700"
-                      onClick={() => setPhaseAEditOpen(true)}
+                      onClick={() => {
+                        if (selectedLoanForDetails) {
+                          // Pre-fill form with current loan values
+                          setPhaseAForm({
+                            loanStatus: selectedLoanForDetails.status || "",
+                            disbursementDate: selectedLoanForDetails.disbursementDate ? new Date(selectedLoanForDetails.disbursementDate).toISOString().split('T')[0] : "",
+                            interestRate: selectedLoanForDetails.interestRate?.toString() || "",
+                            outstandingBalance: selectedLoanForDetails.outstandingBalance?.toString() || "",
+                            interestCollected: (selectedLoanForDetails.interestCollected !== undefined ? selectedLoanForDetails.interestCollected : "").toString(),
+                            purpose: selectedLoanForDetails.purpose || ""
+                          });
+                          setPhaseAErrors({});
+                        }
+                        setPhaseAEditOpen(true);
+                      }}
                     >
                       <Edit className="w-3 h-3 mr-1" />
                       Edit Loan Fields (Phase A)

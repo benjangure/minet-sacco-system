@@ -56,6 +56,9 @@ public class LoanMigrationItem {
     @Column(name = "outstanding_balance", nullable = true, precision = 15, scale = 2)
     private BigDecimal outstandingBalance;
 
+    @Column(name = "interest_collected", nullable = true, precision = 15, scale = 2)
+    private BigDecimal interestCollected;
+
     @Column(name = "guarantorship_type", nullable = true, length = 10)
     private String guarantorshipType; // NORMAL or SELF (optional - can be set via UPDATE later)
 
@@ -143,6 +146,8 @@ public class LoanMigrationItem {
     public void setLoanStatus(String loanStatus) { this.loanStatus = loanStatus; }
     public BigDecimal getOutstandingBalance() { return outstandingBalance; }
     public void setOutstandingBalance(BigDecimal outstandingBalance) { this.outstandingBalance = outstandingBalance; }
+    public BigDecimal getInterestCollected() { return interestCollected; }
+    public void setInterestCollected(BigDecimal interestCollected) { this.interestCollected = interestCollected; }
     public String getGuarantorshipType() { return guarantorshipType; }
     public void setGuarantorshipType(String guarantorshipType) { this.guarantorshipType = guarantorshipType; }
     public String getPurpose() { return purpose; }

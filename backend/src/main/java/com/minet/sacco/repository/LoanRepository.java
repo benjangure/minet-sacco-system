@@ -34,7 +34,10 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
     List<Loan> findDefaultedLoansInPeriod(@Param("startDate") LocalDateTime startDate, 
                                           @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COALESCE(SUM(l.totalInterest), 0) FROM Loan l " +
+    @Query("SELECT COALESCE(SUM(" +
+           "COALESCE(l.interestCollected, 0) + " +
+           "COALESCE((SELECT SUM(lr.interestAmount) FROM LoanRepayment lr WHERE lr.loan.id = l.id), 0)), 0) " +
+           "FROM Loan l " +
            "WHERE l.status IN ('DISBURSED', 'REPAID') " +
            "AND l.disbursementDate >= :startDate AND l.disbursementDate <= :endDate")
     BigDecimal sumInterestIncomeInPeriod(@Param("startDate") LocalDateTime startDate, 
@@ -46,19 +49,28 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
     BigDecimal sumLoanLossProvisionsInPeriod(@Param("startDate") LocalDateTime startDate, 
                                              @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COALESCE(SUM(l.totalInterest), 0) FROM Loan l " +
+    @Query("SELECT COALESCE(SUM(" +
+           "COALESCE(l.interestCollected, 0) + " +
+           "COALESCE((SELECT SUM(lr.interestAmount) FROM LoanRepayment lr WHERE lr.loan.id = l.id), 0)), 0) " +
+           "FROM Loan l " +
            "WHERE l.status = 'DISBURSED' " +
            "AND l.disbursementDate >= :startDate AND l.disbursementDate <= :endDate")
     BigDecimal sumInterestIncomeFromDisbursedLoans(@Param("startDate") LocalDateTime startDate, 
                                                     @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COALESCE(SUM(l.totalInterest), 0) FROM Loan l " +
+    @Query("SELECT COALESCE(SUM(" +
+           "COALESCE(l.interestCollected, 0) + " +
+           "COALESCE((SELECT SUM(lr.interestAmount) FROM LoanRepayment lr WHERE lr.loan.id = l.id), 0)), 0) " +
+           "FROM Loan l " +
            "WHERE l.status = 'REPAID' " +
            "AND l.disbursementDate >= :startDate AND l.disbursementDate <= :endDate")
     BigDecimal sumInterestIncomeFromRepaidLoans(@Param("startDate") LocalDateTime startDate, 
                                                 @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COALESCE(SUM(l.totalInterest), 0) FROM Loan l " +
+    @Query("SELECT COALESCE(SUM(" +
+           "COALESCE(l.interestCollected, 0) + " +
+           "COALESCE((SELECT SUM(lr.interestAmount) FROM LoanRepayment lr WHERE lr.loan.id = l.id), 0)), 0) " +
+           "FROM Loan l " +
            "WHERE l.status IN ('DISBURSED', 'REPAID') " +
            "AND l.disbursementDate >= :startDate AND l.disbursementDate <= :endDate")
     BigDecimal sumInterestIncomeFromDisbursedAndRepaidLoans(@Param("startDate") LocalDateTime startDate, 

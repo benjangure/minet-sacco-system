@@ -15,6 +15,7 @@ import com.minet.sacco.entity.LoanProduct;
 import com.minet.sacco.entity.Member;
 import com.minet.sacco.entity.Account;
 import com.minet.sacco.repository.LoanRepository;
+import com.minet.sacco.repository.LoanRepaymentRepository;
 import com.minet.sacco.repository.GuarantorRepository;
 import com.minet.sacco.repository.LoanProductRepository;
 import com.minet.sacco.repository.MemberRepository;
@@ -73,6 +74,9 @@ public class LoanController {
     private LoanRepository loanRepository;
 
     @Autowired
+    private LoanRepaymentRepository loanRepaymentRepository;
+
+    @Autowired
     private GuarantorRepository guarantorRepository;
 
     @Autowired
@@ -85,52 +89,10 @@ public class LoanController {
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAllLoans() {
         List<Loan> loans = loanService.getAllLoans();
-        List<Map<String, Object>> loansWithGuarantors = new java.util.ArrayList<>();
+        List<Map<String, Object>> loansWithGuarantors = new ArrayList<>();
         
         for (Loan loan : loans) {
-            Map<String, Object> loanMap = new java.util.HashMap<>();
-            loanMap.put("id", loan.getId());
-            loanMap.put("loanNumber", loan.getLoanNumber());
-            loanMap.put("member", loan.getMember());
-            loanMap.put("loanProduct", loan.getLoanProduct());
-            loanMap.put("amount", loan.getAmount());
-            loanMap.put("interestRate", loan.getInterestRate());
-            loanMap.put("termMonths", loan.getTermMonths());
-            loanMap.put("status", loan.getStatus());
-            loanMap.put("monthlyRepayment", loan.getMonthlyRepayment());
-            loanMap.put("totalInterest", loan.getTotalInterest());
-            loanMap.put("interestRemaining", loan.getInterestRemaining());
-            loanMap.put("totalRepayable", loan.getTotalRepayable());
-            loanMap.put("outstandingBalance", loan.getOutstandingBalance());
-            loanMap.put("purpose", loan.getPurpose());
-            loanMap.put("rejectionReason", loan.getRejectionReason());
-            loanMap.put("memberEligibilityStatus", loan.getMemberEligibilityStatus());
-            loanMap.put("memberEligibilityErrors", loan.getMemberEligibilityErrors());
-            loanMap.put("memberEligibilityWarnings", loan.getMemberEligibilityWarnings());
-            loanMap.put("applicationDate", loan.getApplicationDate());
-            loanMap.put("approvalDate", loan.getApprovalDate());
-            loanMap.put("disbursementDate", loan.getDisbursementDate());
-            loanMap.put("createdBy", loan.getCreatedBy());
-            loanMap.put("approvedBy", loan.getApprovedBy());
-            loanMap.put("disbursedBy", loan.getDisbursedBy());
-            
-            // Fetch and add guarantors with their guarantee amounts
-            List<Guarantor> guarantors = loanService.getGuarantorsForLoan(loan.getId());
-            List<Map<String, Object>> guarantorsList = new java.util.ArrayList<>();
-            for (Guarantor g : guarantors) {
-                Map<String, Object> gMap = new java.util.HashMap<>();
-                gMap.put("id", g.getId());
-                gMap.put("member", g.getMember());
-                gMap.put("status", g.getStatus());
-                gMap.put("guaranteeAmount", g.getGuaranteeAmount());
-                gMap.put("pledgeAmount", g.getPledgeAmount());
-                gMap.put("selfGuarantee", g.isSelfGuarantee());
-                gMap.put("createdAt", g.getCreatedAt());
-                gMap.put("approvedAt", g.getApprovedAt());
-                guarantorsList.add(gMap);
-            }
-            loanMap.put("guarantors", guarantorsList);
-            
+            Map<String, Object> loanMap = buildLoanMap(loan);
             loansWithGuarantors.add(loanMap);
         }
         
@@ -139,24 +101,44 @@ public class LoanController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<Loan>> getLoanById(@PathVariable Long id) {
-        return loanService.getLoanById(id)
-                .map(loan -> ResponseEntity.ok(ApiResponse.success("Loan found", loan)))
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getLoanById(@PathVariable Long id) {
+        Optional<Loan> loanOpt = loanService.getLoanById(id);
+        if (!loanOpt.isPresent()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        Loan loan = loanOpt.get();
+        Map<String, Object> loanMap = buildLoanMap(loan);
+        
+        return ResponseEntity.ok(ApiResponse.success("Loan found", loanMap));
     }
 
     @GetMapping("/member/{memberId}")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<List<Loan>>> getLoansByMemberId(@PathVariable Long memberId) {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getLoansByMemberId(@PathVariable Long memberId) {
         List<Loan> loans = loanService.getLoansByMemberId(memberId);
-        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loans));
+        List<Map<String, Object>> loansWithDynamicInterest = new ArrayList<>();
+        
+        for (Loan loan : loans) {
+            Map<String, Object> loanMap = buildLoanMap(loan);
+            loansWithDynamicInterest.add(loanMap);
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loansWithDynamicInterest));
     }
 
     @GetMapping("/status/{status}")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<List<Loan>>> getLoansByStatus(@PathVariable String status) {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getLoansByStatus(@PathVariable String status) {
         List<Loan> loans = loanService.getLoansByStatus(Loan.Status.valueOf(status));
-        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loans));
+        List<Map<String, Object>> loansWithDynamicInterest = new ArrayList<>();
+        
+        for (Loan loan : loans) {
+            Map<String, Object> loanMap = buildLoanMap(loan);
+            loansWithDynamicInterest.add(loanMap);
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loansWithDynamicInterest));
     }
 
     /**
@@ -725,41 +707,6 @@ public class LoanController {
         }
     }
 
-    @PutMapping("/{loanId}/update")
-    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER')")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateLoan(
-            @PathVariable Long loanId,
-            @RequestBody LoanUpdateRequestDTO updateRequest,
-            Authentication authentication) {
-        try {
-            System.out.println("DEBUG: [CONTROLLER] PUT /loans/" + loanId + "/update received");
-            System.out.println("DEBUG: [CONTROLLER] Request user: " + authentication.getName());
-            System.out.println("DEBUG: [CONTROLLER] updateRequest: " + updateRequest);
-            
-            Optional<User> userOptional = userService.getUserByUsername(authentication.getName());
-            if (!userOptional.isPresent()) {
-                throw new RuntimeException("User not found");
-            }
-            User user = userOptional.get();
-            System.out.println("DEBUG: [CONTROLLER] Calling loanService.updateLoan()");
-            Loan updatedLoan = loanService.updateLoan(loanId, updateRequest, user);
-            System.out.println("DEBUG: [CONTROLLER] updateLoan() returned successfully");
-            
-            // Build response with updated loan data
-            Map<String, Object> responseData = new HashMap<>();
-            responseData.put("id", updatedLoan.getId());
-            responseData.put("loanNumber", updatedLoan.getLoanNumber());
-            responseData.put("status", updatedLoan.getStatus());
-            responseData.put("disbursementDate", updatedLoan.getDisbursementDate());
-            responseData.put("outstandingBalance", updatedLoan.getOutstandingBalance());
-            responseData.put("termMonths", updatedLoan.getTermMonths());
-            
-            return ResponseEntity.ok(ApiResponse.success("Loan updated successfully", responseData));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
-        }
-    }
-
     /**
      * Load data needed for reassigning guarantors on a loan
      * Returns: current guarantors with details, member eligibility info, and available members for selection
@@ -902,5 +849,84 @@ public class LoanController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
+    }
+
+    /**
+     * Helper method to build a standardized loan map with all fields including dynamic calculations.
+     * Used across all loan endpoints to ensure consistent data.
+     */
+    private Map<String, Object> buildLoanMap(Loan loan) {
+        Map<String, Object> loanMap = new HashMap<>();
+        loanMap.put("id", loan.getId());
+        loanMap.put("loanNumber", loan.getLoanNumber());
+        loanMap.put("member", loan.getMember());
+        loanMap.put("loanProduct", loan.getLoanProduct());
+        loanMap.put("amount", loan.getAmount());
+        loanMap.put("interestRate", loan.getInterestRate());
+        loanMap.put("termMonths", loan.getTermMonths());
+        loanMap.put("status", loan.getStatus());
+        loanMap.put("monthlyRepayment", loan.getMonthlyRepayment());
+        loanMap.put("totalInterest", loan.getTotalInterest());
+        
+        // Calculate dynamic interest collected (migration snapshot + post-migration repayments)
+        BigDecimal migrationInterest = loan.getInterestCollected() != null ? loan.getInterestCollected() : BigDecimal.ZERO;
+        BigDecimal postMigrationInterest = loanRepaymentRepository.getTotalInterestCollected(loan.getId());
+        BigDecimal totalInterestCollected = migrationInterest.add(postMigrationInterest);
+        loanMap.put("interestCollected", totalInterestCollected);
+        
+        loanMap.put("interestRemaining", loan.getInterestRemaining());
+        loanMap.put("totalRepayable", loan.getTotalRepayable());
+        loanMap.put("outstandingBalance", loan.getOutstandingBalance());
+        loanMap.put("purpose", loan.getPurpose());
+        loanMap.put("rejectionReason", loan.getRejectionReason());
+        loanMap.put("memberEligibilityStatus", loan.getMemberEligibilityStatus());
+        loanMap.put("memberEligibilityErrors", loan.getMemberEligibilityErrors());
+        loanMap.put("memberEligibilityWarnings", loan.getMemberEligibilityWarnings());
+        loanMap.put("applicationDate", loan.getApplicationDate());
+        loanMap.put("approvalDate", loan.getApprovalDate());
+        loanMap.put("disbursementDate", loan.getDisbursementDate());
+        loanMap.put("migrationStatus", loan.getMigrationStatus());
+        loanMap.put("createdBy", loan.getCreatedBy());
+        loanMap.put("approvedBy", loan.getApprovedBy());
+        loanMap.put("disbursedBy", loan.getDisbursedBy());
+        
+        // Principal repaid — derived from outstanding balance, not summed from loan_repayments.
+        // This works uniformly for migrated loans (no repayment history) and live loans,
+        // because outstandingBalance is authoritatively decremented by principal on every
+        // correctly-processed repayment (see LoanService.makeRepayment()).
+        BigDecimal principal = loan.getAmount() != null ? loan.getAmount() : BigDecimal.ZERO;
+        BigDecimal outstanding = loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO;
+        BigDecimal principalRepaid = principal.subtract(outstanding);
+        
+        // Calculate repayment percentage: (Principal Repaid / Principal Amount) * 100
+        BigDecimal repaymentPercentage = BigDecimal.ZERO;
+        if (principal.compareTo(BigDecimal.ZERO) > 0) {
+            repaymentPercentage = principalRepaid
+                    .divide(principal, 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100"))
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+        
+        loanMap.put("principalRepaid", principalRepaid);
+        loanMap.put("repaymentPercentage", repaymentPercentage);
+        
+        // Fetch and add guarantors
+        List<Guarantor> guarantors = loanService.getGuarantorsForLoan(loan.getId());
+        List<Map<String, Object>> guarantorsList = new ArrayList<>();
+        for (Guarantor g : guarantors) {
+            Map<String, Object> gMap = new HashMap<>();
+            gMap.put("id", g.getId());
+            gMap.put("member", g.getMember());
+            gMap.put("status", g.getStatus());
+            gMap.put("guaranteeAmount", g.getGuaranteeAmount());
+            gMap.put("pledgeAmount", g.getPledgeAmount());
+            gMap.put("selfGuarantee", g.isSelfGuarantee());
+            gMap.put("createdAt", g.getCreatedAt());
+            gMap.put("approvedAt", g.getApprovedAt());
+            guarantorsList.add(gMap);
+        }
+        loanMap.put("guarantors", guarantorsList);
+        
+        return loanMap;
     }
 }

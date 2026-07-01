@@ -120,7 +120,14 @@ const Index = () => {
         const totalDisbursedOutstanding = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.outstandingBalance || 0), 0);
         
         // Calculate total interest collected from all repayments across all disbursed loans
+        // Plus historical interest collected from migrated loans
         let totalInterestCollected = 0;
+        
+        // First, add interest collected from migrated loans (stored in interestCollected field)
+        const migratedLoans = loansData.filter((l: any) => l.migrationStatus === "MIGRATED");
+        totalInterestCollected += migratedLoans.reduce((sum: number, l: any) => sum + Number(l.interestCollected || 0), 0);
+        
+        // Then, add interest from repayments on disbursed loans
         try {
           for (const loan of disbursedLoans) {
             const repaymentRes = await fetch(`${API_BASE_URL}/loans/${loan.id}/repayments`, {
@@ -134,7 +141,7 @@ const Index = () => {
           }
         } catch (error) {
           console.error("Error fetching repayments for interest calculation:", error);
-          // Continue with 0 if repayment data unavailable
+          // Continue with migrated loan interest if repayment data unavailable
         }
         
         // Calculate outstanding interest more accurately
