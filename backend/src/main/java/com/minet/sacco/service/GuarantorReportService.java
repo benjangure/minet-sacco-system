@@ -1,8 +1,11 @@
 package com.minet.sacco.service;
 
 import com.minet.sacco.dto.GuarantorReportDTO;
+import com.minet.sacco.dto.OverCommittedGuarantorDTO;
 import com.minet.sacco.entity.*;
 import com.minet.sacco.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -12,6 +15,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class GuarantorReportService {
+
+    private static final Logger log = LoggerFactory.getLogger(GuarantorReportService.class);
 
     @Autowired
     private MemberRepository memberRepository;
@@ -73,6 +78,88 @@ public class GuarantorReportService {
     }
 
     /**
+     * Generate Over-Committed Guarantor Report
+     * Identifies all guarantors where frozen pledges EXCEED available savings
+     * This is critical risk reporting: shows guarantors who may not have funds to cover their pledges
+     * 
+     * BUSINESS LOGIC:
+     * - Available Savings = Total Savings - Frozen Self-Guarantee Amount
+     * - Frozen Pledges = Sum of all active pledges as guarantor on OTHER loans
+     * - Over-Committed = When Frozen Pledges > Available Savings
+     * 
+     * Example: Member has KES 100,000 savings, KES 40,000 frozen for own self-guaranteed loans
+     *          Available = 100,000 - 40,000 = 60,000
+     *          But they pledged KES 75,000 as guarantor on others' loans
+     *          Over-Committed By = 75,000 - 60,000 = KES 15,000
+     */
+    public OverCommittedGuarantorDTO generateOverCommittedGuarantorReport() {
+        List<Member> allMembers = memberRepository.findAll();
+
+        List<OverCommittedGuarantorDTO.OverCommittedGuarantorDetail> overCommittedList = allMembers.stream()
+                .map(member -> {
+                    // Calculate savings
+                    BigDecimal totalSavings = calculateTotalSavings(member.getId());
+                    BigDecimal frozenSelfGuarantee = calculateFrozenSelfGuarantee(member.getId());
+                    BigDecimal availableSavings = totalSavings.subtract(frozenSelfGuarantee);
+                    if (availableSavings.compareTo(BigDecimal.ZERO) < 0) {
+                        availableSavings = BigDecimal.ZERO;
+                    }
+
+                    // Calculate frozen pledges (as guarantor on OTHER loans)
+                    BigDecimal frozenPledges = calculateTotalPledgeAmount(member.getId());
+                    BigDecimal totalFrozen = frozenSelfGuarantee.add(frozenPledges);
+
+                    // Check if over-committed
+                    BigDecimal amountOverCommitted = frozenPledges.subtract(availableSavings);
+                    
+                    if (amountOverCommitted.compareTo(BigDecimal.ZERO) <= 0) {
+                        return null; // Not over-committed, skip
+                    }
+
+                    OverCommittedGuarantorDTO.OverCommittedGuarantorDetail detail = new OverCommittedGuarantorDTO.OverCommittedGuarantorDetail();
+                    detail.setMemberId(member.getId());
+                    detail.setMemberNumber(member.getMemberNumber());
+                    detail.setMemberName(member.getFirstName() + " " + member.getLastName());
+                    detail.setMemberStatus(member.getStatus().toString());
+                    detail.setTotalSavings(totalSavings);
+                    detail.setFrozenSelfGuarantee(frozenSelfGuarantee);
+                    detail.setFrozenPledges(frozenPledges);
+                    detail.setTotalFrozen(totalFrozen);
+                    detail.setAvailableSavings(availableSavings);
+                    detail.setAmountOverCommitted(amountOverCommitted);
+
+                    // Get details of risky guarantees
+                    List<Guarantor> activePledges = guarantorRepository.findByMemberIdAndSelfGuaranteeIsFalseAndStatus(
+                            member.getId(),
+                            Guarantor.Status.ACTIVE
+                    );
+                    detail.setNumberOfLoansGuaranteeing(activePledges.size());
+                    detail.setRiskyGuarantees(activePledges.stream()
+                            .map(guarantor -> {
+                                Loan loan = guarantor.getLoan();
+                                OverCommittedGuarantorDTO.RiskyGuaranteeDetail riskyDetail = new OverCommittedGuarantorDTO.RiskyGuaranteeDetail();
+                                riskyDetail.setLoanId(loan.getId());
+                                riskyDetail.setLoanNumber(loan.getLoanNumber());
+                                riskyDetail.setBorrowerName(loan.getMember().getFirstName() + " " + loan.getMember().getLastName());
+                                riskyDetail.setLoanAmount(loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : loan.getAmount());
+                                riskyDetail.setOutstandingBalance(loan.getOutstandingBalance());
+                                riskyDetail.setGuarantorPledgeAmount(guarantor.getGuaranteeAmount());
+                                riskyDetail.setCurrentFrozenPledge(guarantor.getPledgeAmount());
+                                riskyDetail.setGuarantorStatus(guarantor.getStatus().toString());
+                                return riskyDetail;
+                            })
+                            .collect(Collectors.toList()));
+
+                    return detail;
+                })
+                .filter(Objects::nonNull)
+                .sorted((a, b) -> b.getAmountOverCommitted().compareTo(a.getAmountOverCommitted())) // Sort by risk (highest first)
+                .collect(Collectors.toList());
+
+        return new OverCommittedGuarantorDTO(overCommittedList);
+    }
+
+    /**
      * Generate Guarantor Report for all members (summary view for Treasurer)
      */
     public GuarantorReportDTO generateGuarantorReportAll() {
@@ -121,11 +208,20 @@ public class GuarantorReportService {
      * Calculate total savings for a member (sum of all account balances)
      */
     private BigDecimal calculateTotalSavings(Long memberId) {
-        List<Account> accounts = accountRepository.findByMemberId(memberId);
-        return accounts.stream()
-                .map(Account::getBalance)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // SAVINGS-only accounts (not SHARES) to align with loan eligibility rules
+        try {
+            List<Account> savingsAccounts = accountRepository.findSavingsAccountsByMemberId(memberId);
+            if (savingsAccounts == null || savingsAccounts.isEmpty()) {
+                return BigDecimal.ZERO;
+            }
+            return savingsAccounts.stream()
+                    .map(Account::getBalance)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        } catch (Exception e) {
+            log.warn("Error calculating total savings for member {}: {}", memberId, e.getMessage());
+            return BigDecimal.ZERO;
+        }
     }
 
     /**

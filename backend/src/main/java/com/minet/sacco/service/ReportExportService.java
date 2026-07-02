@@ -12,6 +12,7 @@ import com.minet.sacco.dto.ProfitLossReportDTO;
 import com.minet.sacco.dto.WithdrawalMonitoringReportDTO;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -1888,5 +1889,134 @@ public class ReportExportService {
         }
         
         return baos.toByteArray();
+    }
+
+    /**
+     * Export Over-Committed Guarantor Report to Excel
+     */
+    public byte[] exportOverCommittedGuarantorToExcel(com.minet.sacco.dto.OverCommittedGuarantorDTO report) throws Exception {
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Over-Committed Guarantors");
+        
+        // Set column widths
+        sheet.setColumnWidth(0, 4000);  // Member ID
+        sheet.setColumnWidth(1, 4000);  // Member Number
+        sheet.setColumnWidth(2, 5000);  // Member Name
+        sheet.setColumnWidth(3, 4000);  // Total Savings
+        sheet.setColumnWidth(4, 4000);  // Available Savings
+        sheet.setColumnWidth(5, 4000);  // Frozen Pledges
+        sheet.setColumnWidth(6, 4000);  // Over-Committed
+        sheet.setColumnWidth(7, 3000);  // # Loans
+        
+        // Title row
+        Row titleRow = sheet.createRow(0);
+        org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+        titleCell.setCellValue("OVER-COMMITTED GUARANTOR RISK REPORT");
+        titleCell.setCellStyle(createHeaderStyle(workbook));
+        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 7));
+        
+        // Summary row
+        Row summaryRow1 = sheet.createRow(1);
+        summaryRow1.createCell(0).setCellValue("Total At Risk:");
+        summaryRow1.createCell(1).setCellValue(formatCurrency(report.getTotalAtRisk()));
+        
+        Row summaryRow2 = sheet.createRow(2);
+        summaryRow2.createCell(0).setCellValue("Count Over-Committed:");
+        summaryRow2.createCell(1).setCellValue(report.getCountOverCommitted());
+        
+        // Header row
+        Row headerRow = sheet.createRow(4);
+        String[] headers = {"Member ID", "Member #", "Name", "Total Savings", "Available Savings", "Frozen Pledges", "Over-Committed By", "# Loans"};
+        for (int i = 0; i < headers.length; i++) {
+            org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(createHeaderStyle(workbook));
+        }
+        
+        // Data rows
+        int rowNum = 5;
+        for (com.minet.sacco.dto.OverCommittedGuarantorDTO.OverCommittedGuarantorDetail detail : report.getOverCommittedGuarantors()) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(detail.getMemberId());
+            row.createCell(1).setCellValue(detail.getMemberNumber());
+            row.createCell(2).setCellValue(detail.getMemberName());
+            row.createCell(3).setCellValue(toDouble(detail.getTotalSavings()));
+            row.createCell(4).setCellValue(toDouble(detail.getAvailableSavings()));
+            row.createCell(5).setCellValue(toDouble(detail.getFrozenPledges()));
+            row.createCell(6).setCellValue(toDouble(detail.getAmountOverCommitted()));
+            row.createCell(7).setCellValue(detail.getNumberOfLoansGuaranteeing());
+        }
+        
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        workbook.write(baos);
+        workbook.close();
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export Over-Committed Guarantor Report to PDF
+     */
+    public byte[] exportOverCommittedGuarantorToPdf(com.minet.sacco.dto.OverCommittedGuarantorDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "OVER-COMMITTED GUARANTOR RISK REPORT");
+            document.add(new Paragraph("Generated: " + java.time.LocalDate.now().format(DATE_FORMATTER))
+                .setFontSize(10));
+            document.add(new Paragraph(""));
+            
+            // Summary
+            Table summaryTable = new Table(2);
+            summaryTable.setWidth(300);
+            addSummaryRow(summaryTable, "Total At Risk", formatCurrency(report.getTotalAtRisk()));
+            addSummaryRow(summaryTable, "Guarantors Over-Committed", String.valueOf(report.getCountOverCommitted()));
+            document.add(summaryTable);
+            document.add(new Paragraph(""));
+            
+            // Details table
+            Table detailsTable = new Table(8);
+            addHeaderCell(detailsTable, "Member #");
+            addHeaderCell(detailsTable, "Name");
+            addHeaderCell(detailsTable, "Total Savings");
+            addHeaderCell(detailsTable, "Available Savings");
+            addHeaderCell(detailsTable, "Frozen Pledges");
+            addHeaderCell(detailsTable, "Over-Committed");
+            addHeaderCell(detailsTable, "# Loans");
+            addHeaderCell(detailsTable, "Status");
+            
+            for (com.minet.sacco.dto.OverCommittedGuarantorDTO.OverCommittedGuarantorDetail detail : report.getOverCommittedGuarantors()) {
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberNumber() != null ? detail.getMemberNumber() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberName() != null ? detail.getMemberName() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getTotalSavings())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getAvailableSavings())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getFrozenPledges())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getAmountOverCommitted())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(String.valueOf(detail.getNumberOfLoansGuaranteeing())).setFontSize(9).setTextAlignment(TextAlignment.CENTER)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberStatus() != null ? detail.getMemberStatus() : "").setFontSize(9)));
+            }
+            
+            document.add(detailsTable);
+            document.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
+        return baos.toByteArray();
+    }
+
+    private CellStyle createHeaderStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        font.setColor(IndexedColors.WHITE.getIndex());
+        style.setFont(font);
+        style.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        return style;
     }
 }

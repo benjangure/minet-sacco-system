@@ -51,6 +51,7 @@ import GLConfiguration from "./pages/GLConfiguration";
 // import DataMigrationMakerChecker from "./pages/DataMigrationMakerChecker"; // TODO: Not in use
 import MemberSuspension from "./pages/MemberSuspension";
 import MemberExit from "./pages/MemberExit";
+import OverCommittedGuarantors from "./pages/OverCommittedGuarantors";
 
 
 const queryClient = new QueryClient();
@@ -105,6 +106,7 @@ const AppRoutes = () => (
     <Route path="/customer-support-portal" element={<ProtectedRoute><AppLayout><CustomerSupportPortal /></AppLayout></ProtectedRoute>} />
     <Route path="/audit-reports" element={<ProtectedRoute><AppLayout><AuditReports /></AppLayout></ProtectedRoute>} />
     <Route path="/reports" element={<ProtectedRoute><AppLayout><Reports /></AppLayout></ProtectedRoute>} />
+    <Route path="/over-committed-guarantors" element={<ProtectedRoute><AppLayout><OverCommittedGuarantors /></AppLayout></ProtectedRoute>} />
     <Route path="/gl-manual-entries" element={<ProtectedRoute><AppLayout><GLManualEntries /></AppLayout></ProtectedRoute>} />
     <Route path="/gl-configuration" element={<ProtectedRoute><AppLayout><GLConfiguration /></AppLayout></ProtectedRoute>} />
     <Route path="/bulk-processing" element={<ProtectedRoute><AppLayout><BulkProcessing /></AppLayout></ProtectedRoute>} />

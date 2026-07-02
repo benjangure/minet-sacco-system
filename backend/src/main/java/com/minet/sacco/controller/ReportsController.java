@@ -4,6 +4,7 @@ import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.ProfitLossReportDTO;
 import com.minet.sacco.dto.WithdrawalMonitoringReportDTO;
 import com.minet.sacco.dto.GuarantorReportDTO;
+import com.minet.sacco.dto.OverCommittedGuarantorDTO;
 import com.minet.sacco.dto.LoanEligibilityReportDTO;
 import com.minet.sacco.dto.MonthlyContributionTrackingDTO;
 import com.minet.sacco.service.ReportsService;
@@ -602,8 +603,46 @@ public class ReportsController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfFile);
     }
+
+
+    /**
+     * Get Over-Committed Guarantor Report
+     * Identifies guarantors where frozen pledges EXCEED available savings
+     * CRITICAL RISK REPORT: Shows guarantors who may not have funds to cover their guarantees
+     * 
+     * Business Logic:
+     * - Over-Committed = Frozen Pledges > (Total Savings - Frozen Self-Guarantees)
+     * - Example: Member with KES 100k savings, KES 40k frozen for self-guarantees = KES 60k available
+     *            But pledged KES 75k as guarantor on others = Over-committed by KES 15k
+     */
+    @GetMapping("/over-committed-guarantors")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR', 'ROLE_LOAN_OFFICER')")
+    public ResponseEntity<ApiResponse<OverCommittedGuarantorDTO>> getOverCommittedGuarantorReport() {
+        OverCommittedGuarantorDTO report = guarantorReportService.generateOverCommittedGuarantorReport();
+        return ResponseEntity.ok(ApiResponse.success("Over-committed guarantor report generated successfully", report));
+    }
+
+    @GetMapping("/over-committed-guarantors/export/excel")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    public ResponseEntity<byte[]> exportOverCommittedGuarantorExcel() throws Exception {
+        OverCommittedGuarantorDTO report = guarantorReportService.generateOverCommittedGuarantorReport();
+        byte[] excelFile = reportExportService.exportOverCommittedGuarantorToExcel(report);
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=over_committed_guarantors_" + LocalDate.now() + ".xlsx")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(excelFile);
+    }
+
+    @GetMapping("/over-committed-guarantors/export/pdf")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    public ResponseEntity<byte[]> exportOverCommittedGuarantorPdf() throws Exception {
+        OverCommittedGuarantorDTO report = guarantorReportService.generateOverCommittedGuarantorReport();
+        byte[] pdfFile = reportExportService.exportOverCommittedGuarantorToPdf(report);
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=over_committed_guarantors_" + LocalDate.now() + ".pdf")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(pdfFile);
+    }
 }
-
-
-
-

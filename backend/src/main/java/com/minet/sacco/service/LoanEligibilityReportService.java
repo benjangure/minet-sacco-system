@@ -93,7 +93,11 @@ public class LoanEligibilityReportService {
      * Calculate savings balance for a member (SAVINGS account type)
      */
     private BigDecimal calculateSavingsBalance(Long memberId) {
-        List<Account> savingsAccounts = accountRepository.findByMemberIdAndAccountType(memberId, "SAVINGS");
+        // Use the custom query method that fetches SAVINGS accounts only
+        List<Account> savingsAccounts = accountRepository.findSavingsAccountsByMemberId(memberId);
+        if (savingsAccounts == null || savingsAccounts.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
         return savingsAccounts.stream()
                 .map(Account::getBalance)
                 .filter(Objects::nonNull)

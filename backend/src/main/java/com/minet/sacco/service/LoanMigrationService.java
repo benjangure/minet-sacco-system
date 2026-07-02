@@ -494,16 +494,16 @@ public class LoanMigrationService {
         loan.setOutstandingBalance(item.getOutstandingBalance());
         loan.setPurpose(item.getPurpose() != null ? item.getPurpose() : "Migrated loan");
         
-        // Calculate repayment details (sets totalInterest, totalRepayable, monthlyRepayment)
-        if (termMonths != null && termMonths > 0 && principal != null) {
-            // Set interestCollected if provided from migration (for historical tracking)
-            if (item.getInterestCollected() != null && item.getInterestCollected().compareTo(BigDecimal.ZERO) > 0) {
-                loan.setInterestCollected(item.getInterestCollected());
-            } else {
-                loan.setInterestCollected(BigDecimal.ZERO);
-            }
-            loan.calculateRepaymentDetails();
-        }
+        // interestCollected is a historical fact for migrated loans -- the total
+        // interest actually paid before migration. It is NOT derived from any
+        // formula and does NOT feed into totalInterest/interestRemaining, which
+        // have no meaning in this reducing-balance system (interest is only ever
+        // determined per-repayment by the treasurer, never precalculated).
+        // Do NOT call calculateRepaymentDetails() here -- see LoanService.java
+        // line ~278 for the same reasoning already applied to live loans.
+        loan.setInterestCollected(
+            item.getInterestCollected() != null ? item.getInterestCollected() : BigDecimal.ZERO
+        );
         
         // Disbursement date: use provided or null
         if (item.getDisbursementDate() != null) {
@@ -556,13 +556,26 @@ public class LoanMigrationService {
 
         // Create guarantors (only if guarantorship type is provided)
         if (item.getGuarantorshipType() != null && !item.getGuarantorshipType().isBlank()) {
+            // Calculate reduction ratio for partially-repaid loans
+            // For loans already partially repaid at migration, pledges must be scaled by:
+            // reduction_ratio = outstanding_balance / original_principal
+            // This ensures frozen pledge amounts reflect the actual remaining exposure
+            BigDecimal reductionRatio = BigDecimal.ONE;
+            if (principal.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal outstanding = item.getOutstandingBalance() != null ? item.getOutstandingBalance() : BigDecimal.ZERO;
+                if (outstanding.compareTo(BigDecimal.ZERO) < 0) outstanding = BigDecimal.ZERO;
+                reductionRatio = outstanding.divide(principal, 10, java.math.RoundingMode.HALF_UP);
+            }
+            
             if ("SELF".equals(item.getGuarantorshipType())) {
                 Guarantor selfGuarantor = new Guarantor();
                 selfGuarantor.setLoan(loan);
                 selfGuarantor.setMember(borrower);
                 selfGuarantor.setSelfGuarantee(true);
                 selfGuarantor.setGuaranteeAmount(principal);
-                selfGuarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? principal : BigDecimal.ZERO);
+                // Apply reduction ratio to pledge amount for partially-repaid loans
+                BigDecimal adjustedSelfPledge = principal.multiply(reductionRatio);
+                selfGuarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? adjustedSelfPledge : BigDecimal.ZERO);
                 selfGuarantor.setStatus(loanStatus == Loan.Status.DISBURSED ? Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
                 if (item.getDisbursementDate() != null) {
                     selfGuarantor.setApprovedAt(item.getDisbursementDate().atStartOfDay());
@@ -572,9 +585,9 @@ public class LoanMigrationService {
                 selfGuarantor.setMigrationStatus("MIGRATED");
                 guarantorRepository.save(selfGuarantor);
 
-                // Freeze savings for active self-guaranteed loans
+                // Freeze savings for active self-guaranteed loans (using adjusted pledge)
                 if (loanStatus == Loan.Status.DISBURSED) {
-                    freezeSavings(borrower, principal);
+                    freezeSavings(borrower, adjustedSelfPledge);
                 }
             } else if ("NORMAL".equals(item.getGuarantorshipType())) {
                 // Normal guarantorship: create external guarantors
@@ -591,7 +604,9 @@ public class LoanMigrationService {
                     guarantor.setMember(guarantorMember);
                     guarantor.setSelfGuarantee(false);
                     guarantor.setGuaranteeAmount(gPledge);
-                    guarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? gPledge : BigDecimal.ZERO);
+                    // Apply reduction ratio to pledge amount for partially-repaid loans
+                    BigDecimal adjustedPledge = gPledge.multiply(reductionRatio);
+                    guarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? adjustedPledge : BigDecimal.ZERO);
                     guarantor.setStatus(loanStatus == Loan.Status.DISBURSED ? Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
                     if (item.getDisbursementDate() != null) {
                         guarantor.setApprovedAt(item.getDisbursementDate().atStartOfDay());

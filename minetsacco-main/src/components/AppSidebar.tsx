@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Landmark, PiggyBank, FileText, Settings, Shield, LogOut, HelpCircle, Package, Upload, CheckCircle2, BarChart3, Database, Sliders, Ban, LogOut as LogOutIcon, Notebook,
+  LayoutDashboard, Users, Landmark, PiggyBank, FileText, Settings, Shield, LogOut, HelpCircle, Package, Upload, CheckCircle2, BarChart3, Database, Sliders, Ban, LogOut as LogOutIcon, Notebook, AlertCircle,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,6 +24,7 @@ const allMainItems = [
   { title: "Bulk Processing", url: "/bulk-processing", icon: Upload, roles: ["treasurer", "credit_committee"] },
   { title: "Loan Migration", url: "/loan-migration", icon: Database, roles: ["treasurer", "admin"] },
   { title: "Reports", url: "/reports", icon: FileText, roles: ["admin", "treasurer", "auditor"] },
+  { title: "Over-Committed Guarantors", url: "/over-committed-guarantors", icon: AlertCircle, roles: ["admin", "treasurer", "auditor", "loan_officer"] },
 ];
 
 const glAccountingItems = [
