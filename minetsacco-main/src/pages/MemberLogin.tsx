@@ -35,7 +35,7 @@ export default function MemberLogin() {
     if (sessionStr) {
       try {
         const session = JSON.parse(sessionStr);
-        if (session.token && typeof session.token === 'string') {
+        if (session?.token && typeof session.token === 'string') {
           // Validate token hasn't expired
           try {
             const tokenParts = session.token.split('.');
@@ -85,7 +85,7 @@ export default function MemberLogin() {
     const currentUrl = getBackendUrl();
     setBackendUrlLocal(currentUrl);
     setTempUrl(currentUrl);
-  }, [location.state, navigate]);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -295,7 +295,7 @@ export default function MemberExit() {
               </div>
             )}
 
-            {exitSummary && !exitSummary.isActiveGuarantor && (
+            {exitSummary && (
               <>
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Exit Reason</label>
@@ -476,6 +476,62 @@ export default function MemberExit() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {showConfirmDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertCircle className="w-6 h-6 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-lg font-semibold">Confirm Member Exit</h3>
+                <p className="text-sm text-gray-600 mt-1">This action cannot be easily undone.</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-4 mb-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Member:</span>
+                <span className="font-semibold">{exitSummary?.memberName || memberId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Exit Reason:</span>
+                <span className="font-semibold">{exitReason}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Total Payout:</span>
+                <span className="font-semibold text-green-600">
+                  KES {exitSummary?.totalPayout.toLocaleString()}
+                </span>
+              </div>
+              {exitSummary?.isActiveGuarantor && (
+                <div className="pt-2 mt-2 border-t border-gray-200 text-orange-700 text-xs">
+                  ⚠️ This member is still an active guarantor for {exitSummary.activeGuarantorCount} loan(s).
+                  Their pledge(s) will need to be reallocated separately after exit.
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleConfirmExit}
+                disabled={loading}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader className="w-4 h-4 animate-spin" /> : null}
+                Yes, Confirm Exit
+              </button>
+              <button
+                onClick={() => setShowConfirmDialog(false)}
+                disabled={loading}
+                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

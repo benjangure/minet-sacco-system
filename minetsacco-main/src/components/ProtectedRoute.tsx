@@ -69,13 +69,13 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
 
   // For admin routes (no requiredRole specified), use AuthContext
   if (!requiredRole) {
-    if (!session) return <Navigate to="/login" replace />;
+    if (!session && !loading) return <Navigate to="/login" replace />;
     return <>{children}</>;
   }
 
   // For member routes with requiredRole="MEMBER"
   if (requiredRole === 'MEMBER') {
-    if (memberTokenValid !== true) {
+    if (memberTokenValid !== true && !loading) {
       console.debug('DEBUG: ProtectedRoute - Member token invalid, redirecting to member login');
       return <Navigate to="/member/login" replace />;
     }

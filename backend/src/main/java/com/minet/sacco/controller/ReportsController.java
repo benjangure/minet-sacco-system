@@ -7,6 +7,7 @@ import com.minet.sacco.dto.GuarantorReportDTO;
 import com.minet.sacco.dto.OverCommittedGuarantorDTO;
 import com.minet.sacco.dto.LoanEligibilityReportDTO;
 import com.minet.sacco.dto.MonthlyContributionTrackingDTO;
+import com.minet.sacco.dto.ExitedMemberLoanDTO;
 import com.minet.sacco.service.ReportsService;
 import com.minet.sacco.service.ReportExportService;
 import com.minet.sacco.service.ProfitLossReportService;
@@ -16,6 +17,7 @@ import com.minet.sacco.service.LoanEligibilityReportService;
 import com.minet.sacco.service.MonthlyContributionTrackingService;
 import com.minet.sacco.service.GLCalculationService;
 import com.minet.sacco.service.BalanceSheetService;
+import com.minet.sacco.service.ExitedMemberLoanReportService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -58,6 +60,9 @@ public class ReportsController {
 
     @Autowired
     private BalanceSheetService balanceSheetService;
+
+    @Autowired
+    private ExitedMemberLoanReportService exitedMemberLoanReportService;
 
     // ===== CASHBOOK ENDPOINTS =====
     @GetMapping("/cashbook")
@@ -642,6 +647,38 @@ public class ReportsController {
         
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=over_committed_guarantors_" + LocalDate.now() + ".pdf")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(pdfFile);
+    }
+
+    // ===== EXITED MEMBERS WITH OUTSTANDING LOANS ENDPOINTS =====
+    @GetMapping("/exited-members-outstanding-loans")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR', 'ROLE_LOAN_OFFICER')")
+    public ResponseEntity<ApiResponse<ExitedMemberLoanDTO>> getExitedMembersOutstandingLoansReport() {
+        ExitedMemberLoanDTO report = exitedMemberLoanReportService.generateExitedMembersOutstandingLoansReport();
+        return ResponseEntity.ok(ApiResponse.success("Exited members with outstanding loans report generated successfully", report));
+    }
+
+    @GetMapping("/exited-members-outstanding-loans/export/excel")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    public ResponseEntity<byte[]> exportExitedMemberLoanExcel() throws Exception {
+        ExitedMemberLoanDTO report = exitedMemberLoanReportService.generateExitedMembersOutstandingLoansReport();
+        byte[] excelFile = reportExportService.exportExitedMemberLoanToExcel(report);
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=exited_members_outstanding_loans_" + LocalDate.now() + ".xlsx")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(excelFile);
+    }
+
+    @GetMapping("/exited-members-outstanding-loans/export/pdf")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    public ResponseEntity<byte[]> exportExitedMemberLoanPdf() throws Exception {
+        ExitedMemberLoanDTO report = exitedMemberLoanReportService.generateExitedMembersOutstandingLoansReport();
+        byte[] pdfFile = reportExportService.exportExitedMemberLoanToPdf(report);
+        
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=exited_members_outstanding_loans_" + LocalDate.now() + ".pdf")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(pdfFile);
     }

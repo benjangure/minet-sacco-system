@@ -51,11 +51,7 @@ public class MemberExitService {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new RuntimeException("Member not found"));
 
-        // Check if member is active guarantor
         long activeGuarantorCount = guarantorRepository.countByMemberIdAndStatus(memberId, Guarantor.Status.ACTIVE);
-        if (activeGuarantorCount > 0) {
-            throw new RuntimeException("Member is an active guarantor for " + activeGuarantorCount + " loan(s). Cannot exit until guarantor roles are replaced.");
-        }
 
         // Check if exit already initiated
         Optional<MemberExit> existing = memberExitRepository.findByMemberId(memberId);

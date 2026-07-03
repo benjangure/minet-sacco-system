@@ -53,8 +53,11 @@ public class LoanMigrationService {
     @Autowired
     private LoanGuarantorUpdateService loanGuarantorUpdateService;
 
+    @Autowired
+    private LoanNumberGenerationService loanNumberGenerationService;
+
     private static final List<String> VALID_STATUSES = List.of("DISBURSED", "REPAID", "DEFAULTED");
-    private static final List<String> VALID_GUARANTORSHIP_TYPES = List.of("NORMAL", "SELF");
+    private static final List<String> VALID_GUARANTORSHIP_TYPES = List.of("NORMAL", "SELF", "PARTIAL");
 
     /**
      * Parse, validate, and process a loan migration file.
@@ -260,7 +263,7 @@ public class LoanMigrationService {
         // Guarantorship type - OPTIONAL in CREATE (can be set later via UPDATE)
         if (item.getGuarantorshipType() != null && !item.getGuarantorshipType().isBlank()) {
             if (!VALID_GUARANTORSHIP_TYPES.contains(item.getGuarantorshipType())) {
-                errors.add("Row " + row + ": Invalid guarantorship type '" + item.getGuarantorshipType() + "'. Must be NORMAL or SELF");
+                errors.add("Row " + row + ": Invalid guarantorship type '" + item.getGuarantorshipType() + "'. Must be NORMAL, SELF, or PARTIAL");
                 return; // Can't validate guarantors if type is invalid
             }
 
@@ -275,11 +278,13 @@ public class LoanMigrationService {
                 if (hasAnyGuarantor(item)) {
                     errors.add("Row " + row + ": SELF guarantorship should not have external guarantors. Remove guarantor columns or use NORMAL type.");
                 }
+            } else if ("PARTIAL".equals(item.getGuarantorshipType())) {
+                errors.addAll(validatePartialGuarantors(item));
             }
         } else {
             // Guarantorship type not provided - validate that no guarantors are provided either
             if (hasAnyGuarantor(item)) {
-                errors.add("Row " + row + ": Guarantors provided but Guarantorship Type is blank. Specify NORMAL or SELF");
+                errors.add("Row " + row + ": Guarantors provided but Guarantorship Type is blank. Specify NORMAL, SELF, or PARTIAL");
             }
         }
     }
@@ -449,6 +454,100 @@ public class LoanMigrationService {
     }
 
     /**
+     * Validate PARTIAL guarantors: borrower self-guarantees part of loan (column 1),
+     * and other members cover the rest (columns 2–6).
+     * Column 1 MUST be the borrower's own employee ID.
+     * Columns 2–6 are external guarantors, validated like NORMAL.
+     * At least one external guarantor (columns 2–6) is required.
+     * All pledges must sum exactly to principal.
+     */
+    private List<String> validatePartialGuarantors(LoanMigrationItem item) {
+        List<String> errors = new ArrayList<>();
+        int row = item.getRowNumber();
+        String borrowerEmployeeId = item.getEmployeeId();
+
+        // Extract column 1 (self-guarantee) and columns 2-6 (external guarantors)
+        String col1EmpId = item.getGuarantor1EmployeeId();
+        BigDecimal col1Pledge = item.getGuarantor1PledgeAmount();
+
+        // Column 1 validation: must be borrower's own ID
+        if (col1EmpId == null || col1EmpId.isBlank()) {
+            errors.add("Row " + row + ": PARTIAL guarantorship requires column 1 (self-guarantee) to contain borrower's Employee ID and pledge amount");
+            return errors;
+        }
+
+        if (!col1EmpId.equalsIgnoreCase(borrowerEmployeeId)) {
+            errors.add("Row " + row + ": PARTIAL guarantorship column 1 must be the borrower's Employee ID ('" + borrowerEmployeeId + "'), got '" + col1EmpId + "'");
+            return errors;
+        }
+
+        if (col1Pledge == null || col1Pledge.compareTo(BigDecimal.ZERO) <= 0) {
+            errors.add("Row " + row + ": PARTIAL guarantorship column 1 pledge amount must be greater than 0");
+            return errors;
+        }
+
+        // Extract external guarantors (columns 2-6) and validate them like NORMAL
+        List<String[]> externalGuarantorPairs = new ArrayList<>();
+        addPairIfPresent(externalGuarantorPairs, item.getGuarantor2EmployeeId(), item.getGuarantor2PledgeAmount());
+        addPairIfPresent(externalGuarantorPairs, item.getGuarantor3EmployeeId(), item.getGuarantor3PledgeAmount());
+        addPairIfPresent(externalGuarantorPairs, item.getGuarantor4EmployeeId(), item.getGuarantor4PledgeAmount());
+        addPairIfPresent(externalGuarantorPairs, item.getGuarantor5EmployeeId(), item.getGuarantor5PledgeAmount());
+        addPairIfPresent(externalGuarantorPairs, item.getGuarantor6EmployeeId(), item.getGuarantor6PledgeAmount());
+
+        // At least one external guarantor is required
+        if (externalGuarantorPairs.isEmpty()) {
+            errors.add("Row " + row + ": PARTIAL guarantorship requires at least one external guarantor (columns 2–6). Use SELF type if only borrower guarantees.");
+            return errors;
+        }
+
+        // Validate external guarantors like NORMAL (no duplicates, valid members, etc.)
+        BigDecimal totalExternalPledge = BigDecimal.ZERO;
+        Set<String> seenGuarantors = new HashSet<>();
+        seenGuarantors.add(borrowerEmployeeId.toUpperCase()); // Borrower already in column 1
+
+        for (String[] pair : externalGuarantorPairs) {
+            String gEmpId = pair[0];
+            String gPledgeStr = pair[1];
+            BigDecimal gPledge;
+
+            try {
+                gPledge = new BigDecimal(gPledgeStr);
+            } catch (Exception e) {
+                errors.add("Row " + row + ": Invalid pledge amount for external guarantor '" + gEmpId + "'");
+                continue;
+            }
+
+            if (gEmpId.equalsIgnoreCase(borrowerEmployeeId)) {
+                errors.add("Row " + row + ": External guarantor '" + gEmpId + "' cannot be the same as the borrower (already in column 1)");
+                continue;
+            }
+
+            if (seenGuarantors.contains(gEmpId.toUpperCase())) {
+                errors.add("Row " + row + ": Duplicate guarantor '" + gEmpId + "'");
+                continue;
+            }
+            seenGuarantors.add(gEmpId.toUpperCase());
+
+            if (memberRepository.findByMemberNumber(gEmpId).isEmpty()) {
+                errors.add("Row " + row + ": External guarantor with Employee ID '" + gEmpId + "' not found in system");
+                continue;
+            }
+
+            totalExternalPledge = totalExternalPledge.add(gPledge);
+        }
+
+        // Validate that all pledges (column 1 + columns 2-6) sum exactly to principal
+        if (errors.isEmpty()) {
+            BigDecimal totalPledge = col1Pledge.add(totalExternalPledge);
+            if (totalPledge.compareTo(item.getPrincipalAmount()) != 0) {
+                errors.add("Row " + row + ": All pledges (self-guarantee " + col1Pledge + " + external guarantors " + totalExternalPledge + " = " + totalPledge + ") must sum exactly to principal (" + item.getPrincipalAmount() + ")");
+            }
+        }
+
+        return errors;
+    }
+
+    /**
      * Process a validated loan migration item - create new loan or update existing loan.
      * Mode is auto-detected: Loan Number blank = CREATE, Loan Number present = UPDATE
      */
@@ -530,8 +629,8 @@ public class LoanMigrationService {
 
         loan.setStatus(loanStatus);
 
-        // Auto-generate loan number
-        loan.setLoanNumber(generateLoanNumber());
+        // Auto-generate loan number using centralized service
+        loan.setLoanNumber(loanNumberGenerationService.generateLoanNumberForYear(java.time.LocalDate.now().getYear()));
 
         loan = loanRepository.save(loan);
 
@@ -593,6 +692,65 @@ public class LoanMigrationService {
                 // Normal guarantorship: create external guarantors
                 List<String[]> guarantorPairs = getGuarantorPairs(item);
                 for (String[] pair : guarantorPairs) {
+                    String gEmpId = pair[0];
+                    BigDecimal gPledge = new BigDecimal(pair[1]);
+
+                    Member guarantorMember = memberRepository.findByMemberNumber(gEmpId)
+                        .orElseThrow(() -> new RuntimeException("Guarantor not found: " + gEmpId));
+
+                    Guarantor guarantor = new Guarantor();
+                    guarantor.setLoan(loan);
+                    guarantor.setMember(guarantorMember);
+                    guarantor.setSelfGuarantee(false);
+                    guarantor.setGuaranteeAmount(gPledge);
+                    // Apply reduction ratio to pledge amount for partially-repaid loans
+                    BigDecimal adjustedPledge = gPledge.multiply(reductionRatio);
+                    guarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? adjustedPledge : BigDecimal.ZERO);
+                    guarantor.setStatus(loanStatus == Loan.Status.DISBURSED ? Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
+                    if (item.getDisbursementDate() != null) {
+                        guarantor.setApprovedAt(item.getDisbursementDate().atStartOfDay());
+                    } else {
+                        guarantor.setApprovedAt(LocalDateTime.now());
+                    }
+                    guarantor.setMigrationStatus("MIGRATED");
+                    guarantorRepository.save(guarantor);
+                }
+            } else if ("PARTIAL".equals(item.getGuarantorshipType())) {
+                // Partial guarantorship: borrower self-guarantees part, external guarantors cover rest
+                
+                // Create self-guarantee for borrower (column 1 pledge)
+                BigDecimal selfPledgeAmount = item.getGuarantor1PledgeAmount();
+                Guarantor selfGuarantor = new Guarantor();
+                selfGuarantor.setLoan(loan);
+                selfGuarantor.setMember(borrower);
+                selfGuarantor.setSelfGuarantee(true);
+                selfGuarantor.setGuaranteeAmount(selfPledgeAmount);
+                // Apply reduction ratio to pledge amount for partially-repaid loans
+                BigDecimal adjustedSelfPledge = selfPledgeAmount.multiply(reductionRatio);
+                selfGuarantor.setPledgeAmount(loanStatus == Loan.Status.DISBURSED ? adjustedSelfPledge : BigDecimal.ZERO);
+                selfGuarantor.setStatus(loanStatus == Loan.Status.DISBURSED ? Guarantor.Status.ACTIVE : Guarantor.Status.RELEASED);
+                if (item.getDisbursementDate() != null) {
+                    selfGuarantor.setApprovedAt(item.getDisbursementDate().atStartOfDay());
+                } else {
+                    selfGuarantor.setApprovedAt(LocalDateTime.now());
+                }
+                selfGuarantor.setMigrationStatus("MIGRATED");
+                guarantorRepository.save(selfGuarantor);
+
+                // Freeze savings for active partial-guaranteed loans (using adjusted self pledge)
+                if (loanStatus == Loan.Status.DISBURSED) {
+                    freezeSavings(borrower, adjustedSelfPledge);
+                }
+
+                // Create external guarantors (columns 2-6)
+                List<String[]> externalGuarantorPairs = new ArrayList<>();
+                addPairIfPresent(externalGuarantorPairs, item.getGuarantor2EmployeeId(), item.getGuarantor2PledgeAmount());
+                addPairIfPresent(externalGuarantorPairs, item.getGuarantor3EmployeeId(), item.getGuarantor3PledgeAmount());
+                addPairIfPresent(externalGuarantorPairs, item.getGuarantor4EmployeeId(), item.getGuarantor4PledgeAmount());
+                addPairIfPresent(externalGuarantorPairs, item.getGuarantor5EmployeeId(), item.getGuarantor5PledgeAmount());
+                addPairIfPresent(externalGuarantorPairs, item.getGuarantor6EmployeeId(), item.getGuarantor6PledgeAmount());
+
+                for (String[] pair : externalGuarantorPairs) {
                     String gEmpId = pair[0];
                     BigDecimal gPledge = new BigDecimal(pair[1]);
 
@@ -735,21 +893,6 @@ public class LoanMigrationService {
             || (item.getGuarantor6EmployeeId() != null && !item.getGuarantor6EmployeeId().isBlank());
     }
 
-    private String generateLoanNumber() {
-        String year = String.valueOf(java.time.LocalDate.now().getYear());
-        String prefix = "LN-" + year + "-";
-        List<Loan> yearLoans = loanRepository.findAll().stream()
-            .filter(l -> l.getLoanNumber() != null && l.getLoanNumber().startsWith(prefix))
-            .toList();
-        int maxSeq = yearLoans.stream()
-            .map(l -> {
-                try { return Integer.parseInt(l.getLoanNumber().split("-")[2]); }
-                catch (Exception e) { return 0; }
-            })
-            .max(Integer::compare).orElse(0);
-        return prefix + String.format("%05d", maxSeq + 1);
-    }
-
     public List<LoanMigrationItem> getMigrationItems(Long batchId) {
         return loanMigrationItemRepository.findByBatch_Id(batchId);
     }
@@ -757,6 +900,10 @@ public class LoanMigrationService {
     /**
      * Generate a properly formatted Excel template for loan migration.
      * Supports DUAL MODE: CREATE (blank Loan #) and UPDATE (populated Loan #)
+     * Supports three guarantorship types:
+     * - NORMAL: External guarantors only (column 1+ as external guarantors)
+     * - SELF: Borrower self-guarantees 100% of principal (no external guarantors)
+     * - PARTIAL: Borrower self-guarantees part (column 1), external guarantors cover rest (columns 2+)
      * Columns MUST match the order expected by parseLoanMigration().
      */
     public byte[] generateLoanMigrationTemplate() {
@@ -854,6 +1001,26 @@ public class LoanMigrationService {
             exampleRow4.createCell(6).setCellValue("15/03/2025");                // Disbursement Date (update)
             exampleRow4.createCell(8).setCellValue(80000);                       // Outstanding Balance (update)
             exampleRow4.createCell(9).setCellValue(25000);                       // Interest Collected (update - additional interest paid)
+
+            // Example row 5: CREATE mode - PARTIAL guarantorship (borrower self-guarantees part, others cover rest)
+            org.apache.poi.ss.usermodel.Row exampleRow5 = sheet.createRow(5);
+            exampleRow5.createCell(0).setCellValue("");                          // Loan Number (BLANK = CREATE)
+            exampleRow5.createCell(1).setCellValue("EMP050");                    // Employee ID
+            exampleRow5.createCell(2).setCellValue("Normal Loan");               // Loan Product Name
+            exampleRow5.createCell(3).setCellValue(500000);                      // Principal Amount
+            exampleRow5.createCell(4).setCellValue(36);                          // Term (Months)
+            exampleRow5.createCell(5).setCellValue("");                          // Interest Rate (optional)
+            exampleRow5.createCell(6).setCellValue("01/06/2024");                // Disbursement Date
+            exampleRow5.createCell(7).setCellValue("DISBURSED");                 // Loan Status
+            exampleRow5.createCell(8).setCellValue("");                          // Outstanding Balance (optional for CREATE)
+            exampleRow5.createCell(9).setCellValue(0);                           // Interest Collected
+            exampleRow5.createCell(10).setCellValue("PARTIAL");                  // Guarantorship Type (PARTIAL)
+            exampleRow5.createCell(11).setCellValue("EMP050");                   // Guarantor 1 (borrower self-guarantee) - MUST be Employee ID
+            exampleRow5.createCell(12).setCellValue(200000);                     // Guarantor 1 Pledge (self-guarantee amount)
+            exampleRow5.createCell(13).setCellValue("EMP045");                   // Guarantor 2 (external) ID
+            exampleRow5.createCell(14).setCellValue(200000);                     // Guarantor 2 Pledge
+            exampleRow5.createCell(15).setCellValue("EMP042");                   // Guarantor 3 (external) ID
+            exampleRow5.createCell(16).setCellValue(100000);                     // Guarantor 3 Pledge
 
             // Auto-size columns for readability
             for (int i = 0; i < headers.length; i++) {

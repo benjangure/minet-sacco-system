@@ -10,6 +10,7 @@ import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.minet.sacco.dto.ProfitLossReportDTO;
 import com.minet.sacco.dto.WithdrawalMonitoringReportDTO;
+import com.minet.sacco.dto.ExitedMemberLoanDTO;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -2018,5 +2019,114 @@ public class ReportExportService {
         style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         style.setAlignment(HorizontalAlignment.CENTER);
         return style;
+    }
+
+    /**
+     * Export Exited Members with Outstanding Loans to Excel
+     */
+    public byte[] exportExitedMemberLoanToExcel(ExitedMemberLoanDTO report) throws Exception {
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Exited Members Loans");
+        
+        // Set column widths
+        sheet.setColumnWidth(0, 3000);  // Member ID
+        sheet.setColumnWidth(1, 4000);  // Member Number
+        sheet.setColumnWidth(2, 5000);  // Member Name
+        sheet.setColumnWidth(3, 4000);  // Exit Date
+        sheet.setColumnWidth(4, 4000);  // Exit Reason
+        sheet.setColumnWidth(5, 4000);  // Loan ID
+        sheet.setColumnWidth(6, 4000);  // Loan Number
+        sheet.setColumnWidth(7, 4000);  // Outstanding Balance
+        sheet.setColumnWidth(8, 4000);  // Original Amount
+        sheet.setColumnWidth(9, 4000);  // Disbursement Date
+        
+        // Title row
+        Row titleRow = sheet.createRow(0);
+        org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+        titleCell.setCellValue("EXITED MEMBERS WITH OUTSTANDING LOANS");
+        titleCell.setCellStyle(createHeaderStyle(workbook));
+        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 9));
+        
+        // Header row
+        Row headerRow = sheet.createRow(2);
+        String[] headers = {"Member ID", "Member #", "Name", "Exit Date", "Exit Reason", "Loan ID", "Loan #", 
+                           "Outstanding Balance", "Original Amount", "Disbursement Date"};
+        for (int i = 0; i < headers.length; i++) {
+            org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(createHeaderStyle(workbook));
+        }
+        
+        // Data rows
+        int rowNum = 3;
+        for (ExitedMemberLoanDTO.ExitedMemberLoanDetail detail : report.getExitedMembersWithLoans()) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(detail.getMemberId());
+            row.createCell(1).setCellValue(detail.getMemberNumber());
+            row.createCell(2).setCellValue(detail.getMemberName());
+            row.createCell(3).setCellValue(detail.getExitDate() != null ? detail.getExitDate().toString() : "");
+            row.createCell(4).setCellValue(detail.getExitReason() != null ? detail.getExitReason() : "");
+            row.createCell(5).setCellValue(detail.getLoanId());
+            row.createCell(6).setCellValue(detail.getLoanNumber());
+            row.createCell(7).setCellValue(toDouble(detail.getOutstandingBalance()));
+            row.createCell(8).setCellValue(toDouble(detail.getOriginalAmount()));
+            row.createCell(9).setCellValue(detail.getDisbursementDate() != null ? detail.getDisbursementDate().toString() : "");
+        }
+        
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        workbook.write(baos);
+        workbook.close();
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export Exited Members with Outstanding Loans to PDF
+     */
+    public byte[] exportExitedMemberLoanToPdf(ExitedMemberLoanDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "EXITED MEMBERS WITH OUTSTANDING LOANS");
+            document.add(new Paragraph("Generated: " + LocalDate.now().format(DATE_FORMATTER))
+                .setFontSize(10));
+            document.add(new Paragraph(""));
+            
+            // Details table
+            Table detailsTable = new Table(10);
+            addHeaderCell(detailsTable, "Member #");
+            addHeaderCell(detailsTable, "Name");
+            addHeaderCell(detailsTable, "Exit Date");
+            addHeaderCell(detailsTable, "Exit Reason");
+            addHeaderCell(detailsTable, "Loan #");
+            addHeaderCell(detailsTable, "Outstanding Balance");
+            addHeaderCell(detailsTable, "Original Amount");
+            addHeaderCell(detailsTable, "Disbursement Date");
+            addHeaderCell(detailsTable, "Member ID");
+            addHeaderCell(detailsTable, "Loan ID");
+            
+            for (ExitedMemberLoanDTO.ExitedMemberLoanDetail detail : report.getExitedMembersWithLoans()) {
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberNumber() != null ? detail.getMemberNumber() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberName() != null ? detail.getMemberName() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getExitDate() != null ? detail.getExitDate().toString() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getExitReason() != null ? detail.getExitReason() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getLoanNumber() != null ? detail.getLoanNumber() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getOutstandingBalance())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getOriginalAmount())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getDisbursementDate() != null ? detail.getDisbursementDate().toString() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(String.valueOf(detail.getMemberId())).setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(String.valueOf(detail.getLoanId())).setFontSize(9)));
+            }
+            
+            document.add(detailsTable);
+            document.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
+        return baos.toByteArray();
     }
 }

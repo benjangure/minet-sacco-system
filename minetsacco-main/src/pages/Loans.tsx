@@ -852,7 +852,7 @@ const Loans = () => {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/loans/${loanToEdit.id}/update`, {
+      const response = await fetch(`${API_BASE_URL}/loans/${loanToEdit.id}/fields/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2709,10 +2709,10 @@ const Loans = () => {
                         {(() => {
                           // Calculate kept guarantors total (all current minus removed)
                           const keptTotal = currentEditGuarantors
-                            .filter((g: any) => !removedGuarantorIds.includes(g.id))
+                            .filter((g: any) => !removedGuarantorIds.includes(g.guarantorId))
                             .reduce((sum, g: any) => {
-                              const amount = editedGuarantorAmounts[g.id] !== undefined 
-                                ? editedGuarantorAmounts[g.id]
+                              const amount = editedGuarantorAmounts[g.guarantorId] !== undefined 
+                                ? editedGuarantorAmounts[g.guarantorId]
                                 : g.guaranteeAmount;
                               return sum + amount;
                             }, 0);
