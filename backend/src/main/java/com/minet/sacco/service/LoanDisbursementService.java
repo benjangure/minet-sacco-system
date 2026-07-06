@@ -160,12 +160,15 @@ public class LoanDisbursementService {
         for (Guarantor guarantor : guarantors) {
             guarantor.setStatus(Guarantor.Status.ACTIVE);
             // Freeze the guarantor's pledge amount based on PRINCIPAL ONLY (Kenyan SACCO standard)
-            // For self-guarantees: always use loan principal amount
+            // For self-guarantees: use their actual pledged amount (supports PARTIAL self-guarantees)
             // For external guarantors: use their specific guarantee amount (should be principal portion)
             BigDecimal pledgeAmount;
             if (guarantor.isSelfGuarantee()) {
-                // Self-guarantee should only freeze the loan principal amount
-                pledgeAmount = loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : loan.getAmount();
+                // Self-guarantee: freeze the actual pledged amount (supports PARTIAL guarantees)
+                // Falls back to full principal only if guaranteeAmount is missing/zero (protects old data)
+                pledgeAmount = guarantor.getGuaranteeAmount() != null && guarantor.getGuaranteeAmount().compareTo(BigDecimal.ZERO) > 0
+                        ? guarantor.getGuaranteeAmount()
+                        : (loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : loan.getAmount());
             } else {
                 // External guarantor uses their specific guarantee amount (should be principal portion)
                 pledgeAmount = guarantor.getGuaranteeAmount() != null && guarantor.getGuaranteeAmount().compareTo(BigDecimal.ZERO) > 0

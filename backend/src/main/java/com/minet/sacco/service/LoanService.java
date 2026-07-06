@@ -522,6 +522,36 @@ public class LoanService {
             throw new RuntimeException("Interest amount cannot be negative");
         }
 
+        // Auto-calculate missing split — only total is mandatory
+        // Scenario 1: Only total provided → all goes to principal
+        // Scenario 2: Total + interest provided → calculate principal
+        // Scenario 3: Total + principal provided → calculate interest
+        // Scenario 4: Principal + interest provided → total auto-summed (lines 507-510), then validate
+        // Scenario 5: All three provided → validate they add up correctly
+        if (principalAmount.compareTo(BigDecimal.ZERO) == 0 && interestAmount.compareTo(BigDecimal.ZERO) == 0) {
+            // Only total provided → all goes to principal
+            principalAmount = requestAmount;
+        } else if (principalAmount.compareTo(BigDecimal.ZERO) == 0 && interestAmount.compareTo(BigDecimal.ZERO) > 0) {
+            // Total + interest provided → calculate principal
+            principalAmount = requestAmount.subtract(interestAmount);
+        } else if (interestAmount.compareTo(BigDecimal.ZERO) == 0 && principalAmount.compareTo(BigDecimal.ZERO) > 0) {
+            // Total + principal provided → calculate interest
+            interestAmount = requestAmount.subtract(principalAmount);
+        }
+        // Note: Scenarios 4 & 5 (principal + interest provided) skip auto-calc here
+        // because requestAmount was already auto-calculated from principal + interest (lines 507-510)
+        // The final validation below ensures all amounts are consistent
+
+        // Validate no negatives after calculation
+        if (principalAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Principal amount cannot be negative — interest exceeds total repayment");
+        }
+
+        if (interestAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Interest amount cannot be negative — principal exceeds total repayment");
+        }
+
+        // Final check: principal + interest must equal total
         if (principalAmount.add(interestAmount).compareTo(requestAmount) != 0) {
             throw new RuntimeException("Repayment total must equal principal plus interest");
         }
