@@ -73,4 +73,10 @@ public interface GuarantorRepository extends JpaRepository<Guarantor, Long> {
     @Query("SELECT g FROM Guarantor g WHERE g.loan.member.id = :memberId " +
            "AND g.selfGuarantee = true AND g.loan.status = 'DISBURSED'")
     List<Guarantor> findAllSelfGuaranteesByMemberId(@Param("memberId") Long memberId);
+
+    /**
+     * Delete all guarantors for a specific loan.
+     * Used during batch rollback to remove all guarantees for a loan being deleted.
+     */
+    void deleteByLoanId(Long loanId);
 }

@@ -318,6 +318,26 @@ public class BulkProcessingController {
         }
     }
 
+    @DeleteMapping("/batches/{id}")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> deleteBatch(
+            @PathVariable Long id,
+            @RequestParam String reason,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        try {
+            User deletedBy = getUserFromDetails(userDetails);
+            Map<String, Object> result = bulkProcessingService.rollbackBatch(id, deletedBy, reason);
+            
+            return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                "Batch deleted successfully",
+                result
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, e.getMessage(), null));
+        }
+    }
+
     private BulkBatchDTO convertToDTO(BulkBatch batch) {
         BulkBatchDTO dto = new BulkBatchDTO();
         dto.setId(batch.getId());

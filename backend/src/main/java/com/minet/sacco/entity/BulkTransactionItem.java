@@ -94,6 +94,31 @@ public class BulkTransactionItem {
     @JsonIgnoreProperties({"loan", "createdBy"})
     private LoanRepayment loanRepayment;
 
+    @ManyToOne
+    @JoinColumn(name = "benevolent_fund_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction benevolentFundTransaction;
+
+    @ManyToOne
+    @JoinColumn(name = "development_fund_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction developmentFundTransaction;
+
+    @ManyToOne
+    @JoinColumn(name = "school_fees_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction schoolFeesTransaction;
+
+    @ManyToOne
+    @JoinColumn(name = "holiday_fund_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction holidayFundTransaction;
+
+    @ManyToOne
+    @JoinColumn(name = "emergency_fund_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction emergencyFundTransaction;
+
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
 
@@ -148,6 +173,21 @@ public class BulkTransactionItem {
 
     public LoanRepayment getLoanRepayment() { return loanRepayment; }
     public void setLoanRepayment(LoanRepayment loanRepayment) { this.loanRepayment = loanRepayment; }
+
+    public Transaction getBenevolentFundTransaction() { return benevolentFundTransaction; }
+    public void setBenevolentFundTransaction(Transaction benevolentFundTransaction) { this.benevolentFundTransaction = benevolentFundTransaction; }
+
+    public Transaction getDevelopmentFundTransaction() { return developmentFundTransaction; }
+    public void setDevelopmentFundTransaction(Transaction developmentFundTransaction) { this.developmentFundTransaction = developmentFundTransaction; }
+
+    public Transaction getSchoolFeesTransaction() { return schoolFeesTransaction; }
+    public void setSchoolFeesTransaction(Transaction schoolFeesTransaction) { this.schoolFeesTransaction = schoolFeesTransaction; }
+
+    public Transaction getHolidayFundTransaction() { return holidayFundTransaction; }
+    public void setHolidayFundTransaction(Transaction holidayFundTransaction) { this.holidayFundTransaction = holidayFundTransaction; }
+
+    public Transaction getEmergencyFundTransaction() { return emergencyFundTransaction; }
+    public void setEmergencyFundTransaction(Transaction emergencyFundTransaction) { this.emergencyFundTransaction = emergencyFundTransaction; }
 
     public LocalDateTime getProcessedAt() { return processedAt; }
     public void setProcessedAt(LocalDateTime processedAt) { this.processedAt = processedAt; }

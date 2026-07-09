@@ -91,6 +91,9 @@ public class BulkProcessingService {
     @Autowired
     private LoanService loanService;
 
+    @Autowired
+    private BatchRollbackService batchRollbackService;
+
     public BulkBatch parseAndValidate(MultipartFile file, String batchType, User uploader) throws IOException {
         validateFile(file);
         String batchNumber = generateBatchNumber(batchType);
@@ -600,7 +603,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getSavingsAmount());
             depositRequest.setAccountType("SAVINGS");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setSavingsTransaction(transaction);
         }
 
         if (item.getSharesAmount() != null && item.getSharesAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -609,7 +613,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getSharesAmount());
             depositRequest.setAccountType("SHARES");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setSharesTransaction(transaction);
         }
 
         if (item.getBenevolentFundAmount() != null && item.getBenevolentFundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -618,7 +623,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getBenevolentFundAmount());
             depositRequest.setAccountType("BENEVOLENT_FUND");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setBenevolentFundTransaction(transaction);
         }
 
         if (item.getDevelopmentFundAmount() != null && item.getDevelopmentFundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -627,7 +633,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getDevelopmentFundAmount());
             depositRequest.setAccountType("DEVELOPMENT_FUND");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setDevelopmentFundTransaction(transaction);
         }
 
         if (item.getSchoolFeesAmount() != null && item.getSchoolFeesAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -636,7 +643,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getSchoolFeesAmount());
             depositRequest.setAccountType("SCHOOL_FEES");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setSchoolFeesTransaction(transaction);
         }
 
         if (item.getHolidayFundAmount() != null && item.getHolidayFundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -645,7 +653,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getHolidayFundAmount());
             depositRequest.setAccountType("HOLIDAY_FUND");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setHolidayFundTransaction(transaction);
         }
 
         if (item.getEmergencyFundAmount() != null && item.getEmergencyFundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -654,7 +663,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getEmergencyFundAmount());
             depositRequest.setAccountType("EMERGENCY_FUND");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setEmergencyFundTransaction(transaction);
         }
 
         if (item.getLoanRepaymentAmount() != null && item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -716,20 +726,16 @@ public class BulkProcessingService {
             // Get outstanding balance BEFORE repayment for accurate notification
             BigDecimal outstandingBefore = loan.getOutstandingBalance();
             
-            loanService.makeRepayment(repaymentRequest, systemUser);
+            LoanRepayment repayment = loanService.makeRepayment(repaymentRequest, systemUser);
+            item.setLoanRepayment(repayment);
             
             // Refresh loan to get updated status and balance
             Loan updatedLoan = loanRepository.findById(loan.getId()).orElse(loan);
             
-            // Recalculate outstanding balance using principal repaid only
-            BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(updatedLoan.getId());
-            if (totalPrincipalRepaid == null) {
-                totalPrincipalRepaid = BigDecimal.ZERO;
-            }
-            BigDecimal outstandingAfter = updatedLoan.getAmount().subtract(totalPrincipalRepaid);
-            if (outstandingAfter.compareTo(BigDecimal.ZERO) < 0) {
-                outstandingAfter = BigDecimal.ZERO;
-            }
+            // Use the actual outstanding balance from the loan (already updated by makeRepayment)
+            // Do NOT recalculate from original amount - that would throw away pre-migration history
+            BigDecimal outstandingAfter = updatedLoan.getOutstandingBalance() != null ? 
+                updatedLoan.getOutstandingBalance() : BigDecimal.ZERO;
             
             boolean isFullyRepaid = updatedLoan.getStatus() == Loan.Status.REPAID && 
                                    outstandingAfter.compareTo(BigDecimal.ZERO) <= 0;
@@ -1938,6 +1944,12 @@ public class BulkProcessingService {
         
         return result;
     }
+
+    /**
+     * Rollback a completed batch using the BatchRollbackService.
+     * Delegates to the batch rollback service which handles all the complexity.
+     */
+    public Map<String, Object> rollbackBatch(Long batchId, User deletedBy, String reason) {
+        return batchRollbackService.rollbackBatch(batchId, deletedBy, reason);
+    }
 }
-
-

@@ -138,6 +138,8 @@ export default function BulkProcessing() {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [guarantorValidationDialogOpen, setGuarantorValidationDialogOpen] = useState(false);
+  const [deleteBatchDialogOpen, setDeleteBatchDialogOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [batchType, setBatchType] = useState("MONTHLY_CONTRIBUTIONS");
   const [rejectionReason, setRejectionReason] = useState("");
@@ -853,6 +855,65 @@ export default function BulkProcessing() {
       toast({
         title: "Error",
         description: "Failed to reject batch",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteBatch = async () => {
+    if (!selectedBatch || !deleteReason.trim()) {
+      toast({
+        title: "Deletion Reason Required",
+        description: "Please provide a reason for deletion",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/bulk/batches/${selectedBatch.id}?reason=${encodeURIComponent(deleteReason)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (data.success) {
+        const summary = [
+          data.data.loansDeleted > 0 && `${data.data.loansDeleted} loans removed`,
+          data.data.guarantorsReleased > 0 && `${data.data.guarantorsReleased} guarantors released`,
+          data.data.transactionsReversed > 0 && `${data.data.transactionsReversed} transactions reversed`,
+          data.data.accountsAdjusted > 0 && `${data.data.accountsAdjusted} accounts adjusted`,
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+        toast({
+          title: "Batch Deleted Successfully",
+          description: `Batch deleted. ${summary}`,
+        });
+        setDeleteBatchDialogOpen(false);
+        setDetailsDialogOpen(false);
+        setDeleteReason("");
+        fetchBatches();
+      } else {
+        toast({
+          title: "Deletion Failed",
+          description: data.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete batch",
         variant: "destructive",
       });
     } finally {
@@ -2194,8 +2255,92 @@ export default function BulkProcessing() {
                   </AlertDescription>
                 </Alert>
               )}
+
+              {/* Delete Batch Button - Only for TREASURER */}
+              {user?.role === "TREASURER" &&
+                (selectedBatch.status === "COMPLETED" || selectedBatch.status === "PARTIALLY_COMPLETED") &&
+                (selectedBatch.batchType === "LOAN_MIGRATION" ||
+                  selectedBatch.batchType === "MONTHLY_CONTRIBUTIONS") && (
+                  <div className="pt-4 border-t mt-4">
+                    <Button
+                      onClick={() => setDeleteBatchDialogOpen(true)}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      Delete Batch
+                    </Button>
+                  </div>
+                )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Batch Confirmation Dialog */}
+      <Dialog open={deleteBatchDialogOpen} onOpenChange={setDeleteBatchDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Delete Batch — This cannot be undone</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {selectedBatch && (
+              <>
+                <div className="bg-red-50 p-3 rounded border border-red-200">
+                  <p className="text-sm font-medium text-red-900">
+                    Batch: <span className="font-bold">{selectedBatch.batchNumber}</span>
+                  </p>
+                  <p className="text-sm text-red-800 mt-1">
+                    Type:{" "}
+                    {selectedBatch.batchType === "LOAN_MIGRATION"
+                      ? "Loan Migration"
+                      : "Monthly Contributions"}
+                  </p>
+                </div>
+
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800 text-sm">
+                    {selectedBatch.batchType === "LOAN_MIGRATION"
+                      ? "This will permanently delete all loans, release all guarantor pledges, and unfreeze savings created by this batch."
+                      : "This will permanently reverse all transactions and restore account balances to their state before this batch."}
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-2">
+                  <Label htmlFor="deleteReason" className="text-sm">
+                    Reason for Deletion (Required)
+                  </Label>
+                  <Textarea
+                    id="deleteReason"
+                    placeholder="Reason for deletion..."
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    className="text-sm"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDeleteBatchDialogOpen(false);
+                      setDeleteReason("");
+                    }}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleDeleteBatch}
+                    disabled={loading || !deleteReason.trim()}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    {loading ? "Deleting..." : "Confirm Delete"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -56,6 +56,9 @@ public class LoanMigrationService {
     @Autowired
     private LoanNumberGenerationService loanNumberGenerationService;
 
+    @Autowired
+    private LoanMigrationSnapshotRepository loanMigrationSnapshotRepository;
+
     private static final List<String> VALID_STATUSES = List.of("DISBURSED", "REPAID", "DEFAULTED");
     private static final List<String> VALID_GUARANTORSHIP_TYPES = List.of("NORMAL", "SELF", "PARTIAL");
 
@@ -550,14 +553,27 @@ public class LoanMigrationService {
     /**
      * Process a validated loan migration item - create new loan or update existing loan.
      * Mode is auto-detected: Loan Number blank = CREATE, Loan Number present = UPDATE
+     * For UPDATE mode: creates a snapshot BEFORE modifications so rollback can restore.
      */
     @Transactional
     private void processItem(LoanMigrationItem item, User processor) {
         boolean isUpdateMode = item.getLoanNumber() != null && !item.getLoanNumber().trim().isEmpty();
 
         if (isUpdateMode) {
+            item.setMigrationMode("UPDATE");
+            // Create snapshot BEFORE applying updates
+            Loan existingLoan = loanRepository.findByLoanNumber(item.getLoanNumber().trim())
+                .orElseThrow(() -> new RuntimeException("Loan not found: " + item.getLoanNumber()));
+            LoanMigrationSnapshot snapshot = new LoanMigrationSnapshot(
+                existingLoan,
+                "Snapshot before UPDATE mode migration item #" + item.getRowNumber()
+            );
+            snapshot = loanMigrationSnapshotRepository.save(snapshot);
+            item.setSnapshot(snapshot);
+            
             processUpdateItem(item, processor);
         } else {
+            item.setMigrationMode("CREATE");
             processCreateItem(item, processor);
         }
     }

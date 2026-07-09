@@ -634,19 +634,24 @@ public class LoanService {
                     }
                 });
 
-        // Calculate new outstanding balance using principal amount repaid only
-        BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(loan.getId());
-        BigDecimal outstandingBalance = loan.getAmount().subtract(totalPrincipalRepaid != null ? totalPrincipalRepaid : BigDecimal.ZERO);
+        // Calculate new outstanding balance using reducing-balance method
+        // Subtract current repayment's principal from existing balance
+        BigDecimal newOutstandingBalance = loan.getOutstandingBalance().subtract(principalAmount);
+        
+        // Cap at zero (no negative balances)
+        if (newOutstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
+            newOutstandingBalance = BigDecimal.ZERO;
+        }
         
         // Update loan's outstanding balance
-        loan.setOutstandingBalance(outstandingBalance);
+        loan.setOutstandingBalance(newOutstandingBalance);
 
         // Track pledge reduction for guarantors (proportional to repayment)
         // This also unfreezes proportional savings for self-guarantors
         guarantorTrackingService.trackPledgeReduction(loan, request.getAmount());
 
         // Check if loan is fully repaid
-        if (outstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
+        if (newOutstandingBalance.compareTo(BigDecimal.ZERO) <= 0) {
             loan.setStatus(Loan.Status.REPAID);
             loanRepository.save(loan);
             // Release all guarantor pledges — their savings are no longer frozen
@@ -671,10 +676,10 @@ public class LoanService {
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
-        // Use principal amount repaid, not total amount, for accurate outstanding balance
-        BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(loanId);
-
-        return loan.getAmount().subtract(totalPrincipalRepaid != null ? totalPrincipalRepaid : BigDecimal.ZERO);
+        // Return the current outstanding balance directly from the loan record
+        // Do NOT recalculate from scratch using original amount - this throws away
+        // pre-migration repayment history that's already reflected in the current balance
+        return loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO;
     }
 
     public List<Guarantor> getGuarantorsForLoan(Long loanId) {

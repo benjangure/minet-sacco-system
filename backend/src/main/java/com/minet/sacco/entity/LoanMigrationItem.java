@@ -121,6 +121,15 @@ public class LoanMigrationItem {
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
 
+    // Migration mode: CREATE (new loan) or UPDATE (existing loan)
+    @Column(name = "migration_mode", length = 10)
+    private String migrationMode; // CREATE or UPDATE
+
+    // Reference to snapshot of pre-update values (for UPDATE mode only)
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "snapshot_id")
+    private LoanMigrationSnapshot snapshot;
+
     // Getters and Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -190,4 +199,8 @@ public class LoanMigrationItem {
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public LocalDateTime getProcessedAt() { return processedAt; }
     public void setProcessedAt(LocalDateTime processedAt) { this.processedAt = processedAt; }
+    public String getMigrationMode() { return migrationMode; }
+    public void setMigrationMode(String migrationMode) { this.migrationMode = migrationMode; }
+    public LoanMigrationSnapshot getSnapshot() { return snapshot; }
+    public void setSnapshot(LoanMigrationSnapshot snapshot) { this.snapshot = snapshot; }
 }
