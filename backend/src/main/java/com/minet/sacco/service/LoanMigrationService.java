@@ -561,16 +561,24 @@ public class LoanMigrationService {
 
         if (isUpdateMode) {
             item.setMigrationMode("UPDATE");
-            // Create snapshot BEFORE applying updates
             Loan existingLoan = loanRepository.findByLoanNumber(item.getLoanNumber().trim())
                 .orElseThrow(() -> new RuntimeException("Loan not found: " + item.getLoanNumber()));
-            LoanMigrationSnapshot snapshot = new LoanMigrationSnapshot(
-                existingLoan,
-                "Snapshot before UPDATE mode migration item #" + item.getRowNumber()
-            );
-            snapshot = loanMigrationSnapshotRepository.save(snapshot);
+
+            // Only create a snapshot if one does not already exist for this loan.
+            // The snapshot must capture the loan's TRUE original state -- if we
+            // overwrote it on every UPDATE-mode migration, a rollback would restore
+            // to an already-modified state instead of the real original.
+            LoanMigrationSnapshot snapshot = loanMigrationSnapshotRepository
+                .findByLoanId(existingLoan.getId())
+                .orElseGet(() -> {
+                    LoanMigrationSnapshot newSnapshot = new LoanMigrationSnapshot(
+                        existingLoan,
+                        "Snapshot before UPDATE mode migration item #" + item.getRowNumber()
+                    );
+                    return loanMigrationSnapshotRepository.save(newSnapshot);
+                });
             item.setSnapshot(snapshot);
-            
+
             processUpdateItem(item, processor);
         } else {
             item.setMigrationMode("CREATE");
@@ -836,6 +844,18 @@ public class LoanMigrationService {
                 (loan.getOutstandingBalance() != null && loan.getOutstandingBalance().compareTo(item.getOutstandingBalance()) != 0)) {
                 changeLog.append("Outstanding Balance: ").append(loan.getOutstandingBalance()).append(" → ").append(item.getOutstandingBalance()).append("; ");
                 loan.setOutstandingBalance(item.getOutstandingBalance());
+            }
+        }
+
+        // Interest Collected (if provided) -- historical fact for migrated loans,
+        // set directly with no derived calculation (see processCreateItem for the
+        // same reasoning: totalInterest/interestRemaining have no meaning in this
+        // reducing-balance system).
+        if (item.getInterestCollected() != null) {
+            if ((loan.getInterestCollected() == null && item.getInterestCollected() != null) ||
+                (loan.getInterestCollected() != null && loan.getInterestCollected().compareTo(item.getInterestCollected()) != 0)) {
+                changeLog.append("Interest Collected: ").append(loan.getInterestCollected()).append(" → ").append(item.getInterestCollected()).append("; ");
+                loan.setInterestCollected(item.getInterestCollected());
             }
         }
 
