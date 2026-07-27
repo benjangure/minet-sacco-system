@@ -2,6 +2,8 @@ package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.DeletionApprovalDTO;
+import com.minet.sacco.dto.PasswordChangeRequestDTO;
+import com.minet.sacco.dto.ProfileUpdateRequest;
 import com.minet.sacco.dto.UserDTO;
 import com.minet.sacco.dto.UserDeletionRequestDTO;
 import com.minet.sacco.entity.User;
@@ -9,10 +11,13 @@ import com.minet.sacco.entity.UserDeletionRequest;
 import com.minet.sacco.repository.UserDeletionRequestRepository;
 import com.minet.sacco.service.UserService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -25,11 +30,16 @@ import java.util.stream.Collectors;
 @CrossOrigin
 public class UserController {
 
+    private static final Logger logger = LoggerFactory.getLogger(UserController.class);
+
     @Autowired
     private UserService userService;
 
     @Autowired
     private UserDeletionRequestRepository deletionRequestRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     // Role hierarchy: what roles each role can create
     private static final List<String> ADMIN_CAN_CREATE = Arrays.asList("ADMIN", "TREASURER", "LOAN_OFFICER", "CREDIT_COMMITTEE", "AUDITOR");
@@ -344,8 +354,94 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Activity log retrieved successfully", 
                 userService.getActivityLogByAction(action)));
     }
+
+    /**
+     * Staff user changes their own password (self-service)
+     * Requires verification of current password
+     */
+    @PutMapping("/change-password")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR', 'ROLE_TELLER', 'ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<String>> changeOwnPassword(
+            @Valid @RequestBody PasswordChangeRequestDTO request,
+            Authentication authentication) {
+        
+        try {
+            // Get current user
+            String username = authentication.getName();
+            User currentUser = userService.getUserByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            // Verify current password matches
+            if (!passwordEncoder.matches(request.getCurrentPassword(), currentUser.getPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Current password is incorrect"));
+            }
+            
+            // Validate new password differs from current
+            if (passwordEncoder.matches(request.getNewPassword(), currentUser.getPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("New password must be different from current password"));
+            }
+            
+            // Validate password confirmation matches
+            if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("New passwords do not match"));
+            }
+            
+            // Change password
+            userService.changePassword(currentUser.getId(), request.getNewPassword(), 
+                                      "Self-service password change by user");
+            
+            return ResponseEntity.ok(ApiResponse.success("Password changed successfully"));
+            
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Failed to change password: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/profile/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<User>> getMyProfile(Authentication authentication) {
+        String username = authentication.getName();
+        User user = userService.getUserByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return ResponseEntity.ok(ApiResponse.success("Profile retrieved successfully", user));
+    }
+
+    @PutMapping("/profile/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<User>> updateMyProfile(
+            @Valid @RequestBody ProfileUpdateRequest profileUpdate,
+            Authentication authentication) {
+        
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401)
+                    .body(ApiResponse.error("Authentication token not found or invalid"));
+        }
+        
+        String username = authentication.getName();
+        User currentUser = userService.getUserByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        // Update only profile fields (not password, role, or enabled status)
+        if (profileUpdate.getFirstName() != null && !profileUpdate.getFirstName().isBlank()) {
+            currentUser.setFirstName(profileUpdate.getFirstName());
+        }
+        if (profileUpdate.getLastName() != null && !profileUpdate.getLastName().isBlank()) {
+            currentUser.setLastName(profileUpdate.getLastName());
+        }
+        if (profileUpdate.getEmail() != null && !profileUpdate.getEmail().isBlank()) {
+            currentUser.setEmail(profileUpdate.getEmail());
+        }
+        if (profileUpdate.getPhone() != null && !profileUpdate.getPhone().isBlank()) {
+            currentUser.setPhone(profileUpdate.getPhone());
+        }
+        
+        currentUser.setUpdatedAt(LocalDateTime.now());
+        User updatedUser = userService.updateUser(currentUser);
+        
+        return ResponseEntity.ok(ApiResponse.success("Profile updated successfully", updatedUser));
+    }
 }
-
-
-
-

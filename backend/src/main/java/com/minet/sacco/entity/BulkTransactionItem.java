@@ -38,6 +38,12 @@ public class BulkTransactionItem {
     @Column(name = "loan_repayment_amount", precision = 15, scale = 2)
     private BigDecimal loanRepaymentAmount = BigDecimal.ZERO;
 
+    @Column(name = "loan_repayment_principal_amount", precision = 15, scale = 2)
+    private BigDecimal loanRepaymentPrincipalAmount = BigDecimal.ZERO;
+
+    @Column(name = "loan_repayment_interest_amount", precision = 15, scale = 2)
+    private BigDecimal loanRepaymentInterestAmount = BigDecimal.ZERO;
+
     @Column(name = "loan_number", length = 50)
     private String loanNumber;
 
@@ -45,6 +51,12 @@ public class BulkTransactionItem {
     @JoinColumn(name = "loan_id")
     @JsonIgnoreProperties({"member", "loanProduct", "repayments", "guarantors", "createdBy", "approvedBy", "disbursedBy"})
     private Loan loan;
+
+    @Column(name = "loan_repayment_payment_method", length = 20)
+    private String loanRepaymentPaymentMethod = "SALARY_DEDUCTION";
+
+    @Column(name = "loan_repayment_reference_number", length = 50)
+    private String loanRepaymentReferenceNumber;
 
     @Column(name = "benevolent_fund_amount", precision = 15, scale = 2)
     private BigDecimal benevolentFundAmount = BigDecimal.ZERO;
@@ -64,7 +76,7 @@ public class BulkTransactionItem {
     @Column(nullable = false, length = 20)
     private String status = "PENDING";
 
-    @Column(name = "error_message", length = 500)
+    @Column(name = "error_message", length = 2000)
     private String errorMessage;
 
     @ManyToOne
@@ -81,6 +93,31 @@ public class BulkTransactionItem {
     @JoinColumn(name = "loan_repayment_id")
     @JsonIgnoreProperties({"loan", "createdBy"})
     private LoanRepayment loanRepayment;
+
+    @ManyToOne
+    @JoinColumn(name = "benevolent_fund_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction benevolentFundTransaction;
+
+    @ManyToOne
+    @JoinColumn(name = "development_fund_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction developmentFundTransaction;
+
+    @ManyToOne
+    @JoinColumn(name = "school_fees_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction schoolFeesTransaction;
+
+    @ManyToOne
+    @JoinColumn(name = "holiday_fund_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction holidayFundTransaction;
+
+    @ManyToOne
+    @JoinColumn(name = "emergency_fund_transaction_id")
+    @JsonIgnoreProperties({"account", "createdBy"})
+    private Transaction emergencyFundTransaction;
 
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
@@ -110,6 +147,12 @@ public class BulkTransactionItem {
     public BigDecimal getLoanRepaymentAmount() { return loanRepaymentAmount; }
     public void setLoanRepaymentAmount(BigDecimal loanRepaymentAmount) { this.loanRepaymentAmount = loanRepaymentAmount; }
 
+    public BigDecimal getLoanRepaymentPrincipalAmount() { return loanRepaymentPrincipalAmount; }
+    public void setLoanRepaymentPrincipalAmount(BigDecimal loanRepaymentPrincipalAmount) { this.loanRepaymentPrincipalAmount = loanRepaymentPrincipalAmount; }
+
+    public BigDecimal getLoanRepaymentInterestAmount() { return loanRepaymentInterestAmount; }
+    public void setLoanRepaymentInterestAmount(BigDecimal loanRepaymentInterestAmount) { this.loanRepaymentInterestAmount = loanRepaymentInterestAmount; }
+
     public String getLoanNumber() { return loanNumber; }
     public void setLoanNumber(String loanNumber) { this.loanNumber = loanNumber; }
 
@@ -131,6 +174,21 @@ public class BulkTransactionItem {
     public LoanRepayment getLoanRepayment() { return loanRepayment; }
     public void setLoanRepayment(LoanRepayment loanRepayment) { this.loanRepayment = loanRepayment; }
 
+    public Transaction getBenevolentFundTransaction() { return benevolentFundTransaction; }
+    public void setBenevolentFundTransaction(Transaction benevolentFundTransaction) { this.benevolentFundTransaction = benevolentFundTransaction; }
+
+    public Transaction getDevelopmentFundTransaction() { return developmentFundTransaction; }
+    public void setDevelopmentFundTransaction(Transaction developmentFundTransaction) { this.developmentFundTransaction = developmentFundTransaction; }
+
+    public Transaction getSchoolFeesTransaction() { return schoolFeesTransaction; }
+    public void setSchoolFeesTransaction(Transaction schoolFeesTransaction) { this.schoolFeesTransaction = schoolFeesTransaction; }
+
+    public Transaction getHolidayFundTransaction() { return holidayFundTransaction; }
+    public void setHolidayFundTransaction(Transaction holidayFundTransaction) { this.holidayFundTransaction = holidayFundTransaction; }
+
+    public Transaction getEmergencyFundTransaction() { return emergencyFundTransaction; }
+    public void setEmergencyFundTransaction(Transaction emergencyFundTransaction) { this.emergencyFundTransaction = emergencyFundTransaction; }
+
     public LocalDateTime getProcessedAt() { return processedAt; }
     public void setProcessedAt(LocalDateTime processedAt) { this.processedAt = processedAt; }
 
@@ -149,4 +207,10 @@ public class BulkTransactionItem {
 
     public BigDecimal getEmergencyFundAmount() { return emergencyFundAmount; }
     public void setEmergencyFundAmount(BigDecimal emergencyFundAmount) { this.emergencyFundAmount = emergencyFundAmount; }
+
+    public String getLoanRepaymentPaymentMethod() { return loanRepaymentPaymentMethod; }
+    public void setLoanRepaymentPaymentMethod(String loanRepaymentPaymentMethod) { this.loanRepaymentPaymentMethod = loanRepaymentPaymentMethod; }
+
+    public String getLoanRepaymentReferenceNumber() { return loanRepaymentReferenceNumber; }
+    public void setLoanRepaymentReferenceNumber(String loanRepaymentReferenceNumber) { this.loanRepaymentReferenceNumber = loanRepaymentReferenceNumber; }
 }

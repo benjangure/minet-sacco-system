@@ -8,16 +8,21 @@ interface MemberSidebarProps {
   onLogout: () => void;
   memberName: string;
   unreadNotifications?: number;
+  hideMobileToggle?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export default function MemberSidebar({ onLogout, memberName, unreadNotifications = 0 }: MemberSidebarProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export default function MemberSidebar({ onLogout, memberName, unreadNotifications = 0, hideMobileToggle = false, isOpen: controlledIsOpen, onClose }: MemberSidebarProps) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const navigate = useNavigate();
 
+  const sidebarIsOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setSidebarIsOpen = controlledIsOpen !== undefined && onClose ? onClose : setInternalIsOpen;
+
   const handleMenuClick = (id: string) => {
-    setIsOpen(false);
+    setSidebarIsOpen(false);
     
-    // Navigate based on menu item
     switch(id) {
       case 'home':
         navigate('/member/dashboard');
@@ -56,39 +61,39 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
     { icon: Handshake, label: 'My Guarantees', id: 'guarantees' },
     { icon: FileText, label: 'Reports', id: 'reports' },
     { icon: Bell, label: 'Notifications', id: 'notifications', badge: unreadNotifications },
+    { icon: Settings, label: 'Settings', id: 'settings' },
   ];
 
   return (
     <>
-      {/* Mobile Toggle Button */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsOpen(!isOpen)}
-          className="bg-primary text-white hover:bg-primary/90"
-        >
-          {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </Button>
-      </div>
+      {!hideMobileToggle && (
+        <div className="lg:hidden fixed top-4 left-4 z-50">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarIsOpen(!sidebarIsOpen)}
+            className="bg-primary text-white hover:bg-primary/90"
+          >
+            {sidebarIsOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </Button>
+        </div>
+      )}
 
-      {/* Overlay for mobile */}
-      {isOpen && (
+      {sidebarIsOpen && (
         <div
           className="fixed inset-0 bg-black/50 lg:hidden z-40"
-          onClick={() => setIsOpen(false)}
+          onClick={() => setSidebarIsOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`fixed left-0 top-0 h-screen w-64 bg-gradient-to-b from-primary to-primary/90 text-white transform transition-transform duration-300 z-40 lg:relative lg:translate-x-0 lg:z-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
+          hideMobileToggle ? 'translate-x-0' : (sidebarIsOpen ? 'translate-x-0' : '-translate-x-full')
         }`}
       >
-        <div className="p-6 space-y-8">
+        <div className="p-6 flex flex-col h-full overflow-y-auto">
           {/* Logo/Header */}
-          <div className="space-y-2 flex items-center gap-3">
+          <div className="space-y-2 flex items-center gap-3 mb-6">
             <img src={logo} alt="Minet SACCO" className="h-10 w-auto" />
             <div>
               <h1 className="text-2xl font-bold">Minet SACCO</h1>
@@ -97,13 +102,13 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
           </div>
 
           {/* Member Info */}
-          <div className="bg-white/10 rounded-lg p-4 space-y-2">
+          <div className="bg-white/10 rounded-lg p-4 space-y-2 mb-6">
             <p className="text-white/80 text-xs uppercase tracking-wide">Welcome</p>
             <p className="font-semibold text-lg">{memberName}</p>
           </div>
 
           {/* Navigation Menu */}
-          <nav className="space-y-2">
+          <nav className="space-y-2 flex-1">
             {menuItems.map((item) => (
               <button
                 key={item.id}
@@ -122,17 +127,12 @@ export default function MemberSidebar({ onLogout, memberName, unreadNotification
           </nav>
 
           {/* Logout Button */}
-          <div className="pt-4 border-t border-white/20 space-y-2">
+          <div className="mt-auto pt-4 border-t border-white/20">
             <Button
-              onClick={() => handleMenuClick('settings')}
-              variant="ghost"
-              className="w-full justify-start gap-3 text-white hover:bg-white/10"
-            >
-              <Settings className="h-5 w-5" />
-              Settings
-            </Button>
-            <Button
-              onClick={onLogout}
+              onClick={() => {
+                onLogout();
+                setSidebarIsOpen(false);
+              }}
               variant="ghost"
               className="w-full justify-start gap-3 text-white hover:bg-white/10"
             >

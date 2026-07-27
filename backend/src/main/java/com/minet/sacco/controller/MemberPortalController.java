@@ -10,12 +10,17 @@ import com.minet.sacco.service.UserService;
 import com.minet.sacco.service.NotificationService;
 import com.minet.sacco.service.GuarantorTrackingService;
 import com.minet.sacco.service.DepositRequestService;
+import com.minet.sacco.service.EmailService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -48,7 +53,16 @@ public class MemberPortalController {
     private LoanRepository loanRepository;
 
     @Autowired
+    private LoanRepaymentRepository loanRepaymentRepository;
+
+    @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private EmailService emailService;
 
     /**
      * Get current authenticated member
@@ -120,14 +134,27 @@ public class MemberPortalController {
             );
             Integer pendingCount = pendingLoans.size();
             
-            // Get recent transactions (last 5)
+            // Get recent transactions (last 5 regular transactions, excluding LOAN_REPAYMENT to avoid duplicates)
+            // Loan repayments are added separately from LoanRepayment records
             List<Transaction> recentTransactions = transactionRepository
                 .findByAccountMemberIdOrderByTransactionDateDesc(member.getId())
+                .stream()
+                .filter(t -> t.getTransactionType() != Transaction.TransactionType.LOAN_REPAYMENT)
+                .limit(5)
+                .collect(Collectors.toList());
+            
+            // Get recent loan repayments (last 5)
+            List<LoanRepayment> recentLoanRepayments = loanRepaymentRepository
+                .findByMemberIdOrderByPaymentDateDesc(member.getId())
                 .stream()
                 .limit(5)
                 .collect(Collectors.toList());
             
-            List<RecentTransactionDTO> transactionDTOs = recentTransactions.stream()
+            // Combine both types of transactions
+            List<RecentTransactionDTO> allTransactions = new java.util.ArrayList<>();
+            
+            // Add regular transactions
+            allTransactions.addAll(recentTransactions.stream()
                 .map(t -> new RecentTransactionDTO(
                     t.getId(),
                     t.getTransactionType().toString(),
@@ -136,6 +163,26 @@ public class MemberPortalController {
                     t.getTransactionDate(),
                     t.getAccount().getAccountType().toString()
                 ))
+                .collect(Collectors.toList()));
+            
+            // Add loan repayments
+            allTransactions.addAll(recentLoanRepayments.stream()
+                .map(lr -> new RecentTransactionDTO(
+                    lr.getId(),
+                    "LOAN_REPAYMENT",
+                    lr.getAmount(),
+                    "Loan repayment - " + lr.getLoan().getLoanNumber() + 
+                    (lr.getPaymentMethod() != null ? " (" + lr.getPaymentMethod() + ")" : "") +
+                    (lr.getReferenceNumber() != null ? " Ref: " + lr.getReferenceNumber() : ""),
+                    lr.getPaymentDate(),
+                    "LOAN"
+                ))
+                .collect(Collectors.toList()));
+            
+            // Sort all transactions by date (most recent first) and take top 5
+            List<RecentTransactionDTO> transactionDTOs = allTransactions.stream()
+                .sorted((a, b) -> b.getTransactionDate().compareTo(a.getTransactionDate()))
+                .limit(5)
                 .collect(Collectors.toList());
             
             MemberDashboardDTO dashboard = new MemberDashboardDTO(
@@ -219,6 +266,29 @@ public class MemberPortalController {
         try {
             Member member = getCurrentMember();
             List<Loan> loans = loanRepository.findByMemberId(member.getId());
+            
+            // Recalculate outstanding balance for each loan to ensure accuracy
+            for (Loan loan : loans) {
+                // Skip outstanding balance calculation for loans still in approval stages
+                // These loans don't have totalRepayable set yet (it's calculated by treasurer)
+                if (loan.getTotalRepayable() != null) {
+                    // Use principal amount repaid, not total amount, for accurate outstanding balance
+                    BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(loan.getId());
+                    if (totalPrincipalRepaid == null) {
+                        totalPrincipalRepaid = BigDecimal.ZERO;
+                    }
+                    BigDecimal outstandingBalance = loan.getAmount().subtract(totalPrincipalRepaid);
+                    if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
+                        outstandingBalance = BigDecimal.ZERO;
+                    }
+                    loan.setOutstandingBalance(outstandingBalance);
+                } else {
+                    // For loans in approval stages, set outstanding balance to null
+                    // Frontend should display "Awaiting approval/treasurer" instead of a balance
+                    loan.setOutstandingBalance(null);
+                }
+            }
+            
             return ResponseEntity.ok(loans);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
@@ -243,7 +313,26 @@ public class MemberPortalController {
                 return ResponseEntity.status(403).body("Unauthorized");
             }
             
-            return ResponseEntity.ok(loan.get());
+            Loan loanData = loan.get();
+            
+            // Recalculate outstanding balance to ensure accuracy only for loans with totalRepayable set
+            if (loanData.getTotalRepayable() != null) {
+                // Use principal amount repaid, not total amount, for accurate outstanding balance
+                BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(id);
+                if (totalPrincipalRepaid == null) {
+                    totalPrincipalRepaid = BigDecimal.ZERO;
+                }
+                BigDecimal outstandingBalance = loanData.getAmount().subtract(totalPrincipalRepaid);
+                if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
+                    outstandingBalance = BigDecimal.ZERO;
+                }
+                loanData.setOutstandingBalance(outstandingBalance);
+            } else {
+                // For loans in approval stages, set outstanding balance to null
+                loanData.setOutstandingBalance(null);
+            }
+            
+            return ResponseEntity.ok(loanData);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
@@ -327,6 +416,63 @@ public class MemberPortalController {
             eligibilityData.put("warnings", eligibilityResult.getWarnings());
             
             return ResponseEntity.ok(eligibilityData);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/eligibility-breakdown")
+    public ResponseEntity<?> getEligibilityBreakdown() {
+        try {
+            Member member = getCurrentMember();
+            
+            // Get eligibility result with all calculations
+            com.minet.sacco.service.LoanEligibilityValidator.EligibilityResult result = 
+                loanService.checkMemberEligibility(member, BigDecimal.ZERO);
+            
+            // Get frozen savings from account
+            Optional<Account> savingsAccount = accountRepository.findByMemberIdAndAccountType(
+                    member.getId(), Account.AccountType.SAVINGS);
+            BigDecimal frozenSavings = savingsAccount.map(Account::getFrozenSavings).orElse(BigDecimal.ZERO);
+            if (frozenSavings == null) frozenSavings = BigDecimal.ZERO;
+            
+            // Get frozen pledges from guarantorships
+            BigDecimal frozenPledges = guarantorRepository.sumActivePledgesByMemberId(member.getId());
+            if (frozenPledges == null) frozenPledges = BigDecimal.ZERO;
+            
+            BigDecimal totalFrozen = frozenSavings.add(frozenPledges);
+            
+            // Build detailed breakdown
+            java.util.Map<String, Object> breakdown = new java.util.HashMap<>();
+            
+            // Step 1: Total Savings (actual balance in account)
+            breakdown.put("step1_totalSavings", result.getBaseSavings());
+            breakdown.put("step1_label", "Your Total Savings");
+            
+            // Step 2: Deduct Frozen Amounts
+            breakdown.put("step2_frozenSelfGuarantee", frozenSavings);
+            breakdown.put("step2_frozenPledges", frozenPledges);
+            breakdown.put("step2_totalFrozen", totalFrozen);
+            breakdown.put("step2_availableSavings", result.getTrueSavings());
+            breakdown.put("step2_label", "Deduct Frozen Amounts");
+            breakdown.put("step2_explanation", "Frozen from self-guaranteed loans and guarantor pledges");
+            
+            // Step 3: Apply 3x Multiplier
+            breakdown.put("step3_multiplier", new BigDecimal("3"));
+            breakdown.put("step3_grossEligibility", result.getGrossEligibility());
+            breakdown.put("step3_label", "Apply 3x Multiplier to Available Savings");
+            
+            // Step 4: Deduct Outstanding Balance
+            breakdown.put("step4_outstandingBalance", result.getTotalOutstanding());
+            breakdown.put("step4_remainingEligible", result.getNetEligibleAmount());
+            breakdown.put("step4_label", "Deduct Outstanding Loan Balance");
+            
+            // Summary
+            breakdown.put("isEligible", result.isEligible());
+            breakdown.put("errors", result.getErrors());
+            breakdown.put("warnings", result.getWarnings());
+            
+            return ResponseEntity.ok(breakdown);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
@@ -595,6 +741,8 @@ public class MemberPortalController {
             LoanRepayment repayment = new LoanRepayment();
             repayment.setLoan(loan);
             repayment.setAmount(repaymentDTO.getAmount());
+            repayment.setPrincipalAmount(repaymentDTO.getPrincipalAmount() != null ? repaymentDTO.getPrincipalAmount() : repaymentDTO.getAmount());
+            repayment.setInterestAmount(repaymentDTO.getInterestAmount() != null ? repaymentDTO.getInterestAmount() : BigDecimal.ZERO);
             repayment.setPaymentDate(java.time.LocalDateTime.now());
             repayment.setPaymentMethod(LoanRepayment.PaymentMethod.valueOf(repaymentDTO.getPaymentMethod()));
             repayment.setDescription(repaymentDTO.getDescription());
@@ -602,6 +750,13 @@ public class MemberPortalController {
             
             // Update loan outstanding balance
             loan.setOutstandingBalance(loan.getOutstandingBalance().subtract(repaymentDTO.getAmount()));
+            if (repayment.getInterestAmount().compareTo(BigDecimal.ZERO) > 0 && loan.getInterestRemaining() != null) {
+                BigDecimal newInterestRemaining = loan.getInterestRemaining().subtract(repayment.getInterestAmount());
+                if (newInterestRemaining.compareTo(BigDecimal.ZERO) < 0) {
+                    newInterestRemaining = BigDecimal.ZERO;
+                }
+                loan.setInterestRemaining(newInterestRemaining);
+            }
             
             // Check if fully repaid
             boolean isFullyRepaid = loan.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0;
@@ -777,6 +932,20 @@ public class MemberPortalController {
             Member member = getCurrentMember();
             List<com.minet.sacco.entity.LoanRepaymentRequest> requests = loanRepaymentRequestRepository.findByMemberId(member.getId());
             return ResponseEntity.ok(requests);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get all loan repayments for member
+     */
+    @GetMapping("/loan-repayments")
+    public ResponseEntity<?> getLoanRepayments() {
+        try {
+            Member member = getCurrentMember();
+            List<LoanRepayment> repayments = loanRepaymentRepository.findByMemberIdOrderByPaymentDateDesc(member.getId());
+            return ResponseEntity.ok(repayments);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
@@ -1473,9 +1642,6 @@ public class MemberPortalController {
     private com.minet.sacco.service.ReportsService reportsService;
 
     @Autowired
-    private LoanRepaymentRepository loanRepaymentRepository;
-
-    @Autowired
     private LoanRepaymentRequestRepository loanRepaymentRequestRepository;
 
     @Autowired
@@ -1642,11 +1808,11 @@ public class MemberPortalController {
             loanTable.addCell("Term (Months)");
             loanTable.addCell(loan.getTermMonths().toString());
             loanTable.addCell("Monthly Repayment");
-            loanTable.addCell("KES " + loan.getMonthlyRepayment());
+            loanTable.addCell(loan.getMonthlyRepayment() != null ? "KES " + loan.getMonthlyRepayment() : "N/A");
             loanTable.addCell("Status");
             loanTable.addCell(loan.getStatus().toString());
             loanTable.addCell("Outstanding Balance");
-            loanTable.addCell("KES " + loan.getOutstandingBalance());
+            loanTable.addCell(loan.getOutstandingBalance() != null ? "KES " + loan.getOutstandingBalance() : "N/A");
             document.add(loanTable);
             
             // Repayments
@@ -1670,7 +1836,7 @@ public class MemberPortalController {
                 document.add(repaymentTable);
             }
             
-            totalOutstanding = totalOutstanding.add(loan.getOutstandingBalance());
+            totalOutstanding = totalOutstanding.add(loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO);
             document.add(new com.itextpdf.layout.element.Paragraph(""));
         }
         
@@ -1800,9 +1966,93 @@ public class MemberPortalController {
     }
 
     /**
+     * Get loan repayment history for member
+     */
+    @GetMapping("/loans/{loanId}/repayments")
+    public ResponseEntity<?> getLoanRepayments(@PathVariable Long loanId) {
+        try {
+            // Get current member using the same pattern as other member endpoints
+            Member member = getCurrentMember();
+            
+            // Verify loan belongs to this member
+            Loan loan = loanRepository.findById(loanId)
+                    .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            if (!loan.getMember().getId().equals(member.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("You can only view repayments for your own loans");
+            }
+            
+            // Get repayments for this loan
+            List<LoanRepayment> repayments = loanRepaymentRepository
+                    .findByLoanIdOrderByPaymentDateDesc(loanId);
+            
+            return ResponseEntity.ok(repayments);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("Error fetching repayments: " + e.getMessage());
+        }
+    }
+
+    /**
      * Helper method to format currency for notifications
      */
     private String formatCurrency(BigDecimal amount) {
         return "KES " + String.format("%,.2f", amount);
+    }
+
+    /**
+     * Member changes their own password
+     * Requires verification of current password (National ID for first time)
+     */
+    @PutMapping("/change-password")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<String>> changeMemberPassword(
+            @Valid @RequestBody PasswordChangeRequestDTO request,
+            Authentication authentication) {
+        
+        try {
+            // Get current user from authentication
+            String username = authentication.getName();
+            User memberUser = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            // Verify current password matches
+            if (!passwordEncoder.matches(request.getCurrentPassword(), memberUser.getPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Current password is incorrect. For first login, use your National ID."));
+            }
+            
+            // Validate new password differs from current
+            if (passwordEncoder.matches(request.getNewPassword(), memberUser.getPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("New password must be different from current password"));
+            }
+            
+            // Validate password confirmation matches
+            if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("New passwords do not match"));
+            }
+            
+            // Update password in database
+            memberUser.setPassword(passwordEncoder.encode(request.getNewPassword()));
+            memberUser.setUpdatedAt(java.time.LocalDateTime.now());
+            userRepository.save(memberUser);
+            
+            // Send confirmation email
+            emailService.sendPasswordChangeConfirmation(memberUser);
+            
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Password changed successfully. You can now log in with your new password."));
+            
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to change member password: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to change password: " + e.getMessage()));
+        }
     }
 }

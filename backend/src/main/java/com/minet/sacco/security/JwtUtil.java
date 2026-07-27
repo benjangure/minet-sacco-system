@@ -39,7 +39,7 @@ public class JwtUtil {
         return createToken(claims, userDetails.getUsername());
     }
 
-    public String generateTokenWithMemberId(UserDetails userDetails, Long memberId) {
+    public String generateTokenWithMemberId(UserDetails userDetails, Long memberId, boolean firstLogin) {
         Map<String, Object> claims = new HashMap<>();
         // Add role to JWT claims
         claims.put("role", userDetails.getAuthorities().stream()
@@ -49,6 +49,9 @@ public class JwtUtil {
         // Add memberId for member users
         if (memberId != null) {
             claims.put("memberId", memberId);
+        }
+        if (firstLogin) {
+            claims.put("firstLogin", true);
         }
         return createToken(claims, userDetails.getUsername());
     }

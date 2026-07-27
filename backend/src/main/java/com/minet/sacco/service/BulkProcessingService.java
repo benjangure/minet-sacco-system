@@ -6,7 +6,10 @@ import com.minet.sacco.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -14,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.Optional;
 
 @Service
 public class BulkProcessingService {
@@ -72,7 +76,24 @@ public class BulkProcessingService {
     @Autowired
     private TransactionRepository transactionRepository;
 
-    @Transactional
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+    
+    @Autowired
+    private EmailService emailService;
+    
+    @Autowired
+    private MemberCredentialRepository memberCredentialRepository;
+
+    @Autowired
+    private BulkLoanDataUpdateItemRepository bulkLoanDataUpdateItemRepository;
+
+    @Autowired
+    private LoanService loanService;
+
+    @Autowired
+    private BatchRollbackService batchRollbackService;
+
     public BulkBatch parseAndValidate(MultipartFile file, String batchType, User uploader) throws IOException {
         validateFile(file);
         String batchNumber = generateBatchNumber(batchType);
@@ -92,12 +113,13 @@ public class BulkProcessingService {
                 return parseLoanApplications(file, batch);
             case "LOAN_DISBURSEMENTS":
                 return parseLoanDisbursements(file, batch);
+            case "LOAN_DATA_UPDATE":
+                return parseLoanDataUpdates(file, batch);
             default:
                 throw new RuntimeException("Unknown batch type: " + batchType);
         }
     }
 
-    @Transactional
     private BulkBatch parseMonthlyContributions(MultipartFile file, BulkBatch batch) throws IOException {
         List<BulkTransactionItem> items = excelParserService.parseMonthlyContributions(file);
         List<String> allErrors = bulkValidationService.validateBatch(items);
@@ -116,23 +138,32 @@ public class BulkProcessingService {
                                    .add(item.getEmergencyFundAmount() != null ? item.getEmergencyFundAmount() : BigDecimal.ZERO);
         }
 
-        batch.setTotalRecords(items.size());
-        batch.setTotalAmount(totalAmount);
-        batch.setStatus("COMPLETED");
-        batch = bulkBatchRepository.save(batch);
+        final BigDecimal finalTotalAmount = totalAmount;
+        final List<BulkTransactionItem> finalItems = items;
 
-        for (BulkTransactionItem item : items) {
-            item.setBatch(batch);
-            bulkTransactionItemRepository.save(item);
-        }
+        // Save batch and items in their own transaction
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        BulkBatch savedBatch = txTemplate.execute(status -> {
+            batch.setTotalRecords(finalItems.size());
+            batch.setTotalAmount(finalTotalAmount);
+            batch.setStatus("PROCESSING");
+            batch.setApprovedBy(batch.getUploadedBy());
+            batch.setApprovedAt(LocalDateTime.now());
+            BulkBatch b = bulkBatchRepository.save(batch);
+            for (BulkTransactionItem item : finalItems) {
+                item.setBatch(b);
+                bulkTransactionItemRepository.save(item);
+            }
+            return b;
+        });
 
-        // Auto-process the batch immediately
-        processMonthlyContributions(batch);
+        // Process each item in its own independent transaction
+        processMonthlyContributions(savedBatch);
 
-        auditService.logAction(batch.getUploadedBy(), "BULK_UPLOAD", "BulkBatch", batch.getId(),
-            "Uploaded bulk batch: " + batch.getBatchNumber() + " with " + items.size() + " records", null, null);
+        auditService.logAction(savedBatch.getUploadedBy(), "BULK_UPLOAD", "BulkBatch", savedBatch.getId(),
+            "Uploaded bulk batch: " + savedBatch.getBatchNumber() + " with " + items.size() + " records", null, null);
 
-        return batch;
+        return savedBatch;
     }
 
     @Transactional
@@ -144,9 +175,23 @@ public class BulkProcessingService {
         if (!allErrors.isEmpty()) {
             throw new RuntimeException(String.join("; ", allErrors));
         }
-        
+
+        // Calculate total amount = sum of all opening savings + opening shares balances
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        for (BulkMemberItem item : items) {
+            if (item.getOpeningSavingsBalance() != null) {
+                totalAmount = totalAmount.add(item.getOpeningSavingsBalance());
+            }
+            if (item.getOpeningSharesBalance() != null) {
+                totalAmount = totalAmount.add(item.getOpeningSharesBalance());
+            } else {
+                // Default shares is 3000 if not provided
+                totalAmount = totalAmount.add(new BigDecimal("3000.00"));
+            }
+        }
+
         batch.setTotalRecords(items.size());
-        batch.setTotalAmount(BigDecimal.ZERO);
+        batch.setTotalAmount(totalAmount);
         
         // For member registration, auto-approve and process immediately (no approval needed)
         batch.setStatus("APPROVED");
@@ -162,7 +207,7 @@ public class BulkProcessingService {
         }
 
         auditService.logAction(batch.getUploadedBy(), "BULK_UPLOAD", "BulkBatch", batch.getId(),
-            "Uploaded member registration batch: " + batch.getBatchNumber() + " with " + items.size() + " records", null, null);
+            "Uploaded member registration batch: " + batch.getBatchNumber() + " with " + items.size() + " records. Total opening balances: KES " + totalAmount, null, null);
 
         // Auto-process member registration immediately
         processApprovedBatch(batch);
@@ -246,6 +291,34 @@ public class BulkProcessingService {
         return batch;
     }
 
+    /**
+     * Phase A: Low-risk field editing - Bulk Loan Data Update
+     * Parse and validate loan data updates from file.
+     * Template: Employee ID, Loan Number, and optional Phase A fields.
+     */
+    @Transactional
+    private BulkBatch parseLoanDataUpdates(MultipartFile file, BulkBatch batch) throws IOException {
+        List<com.minet.sacco.entity.BulkLoanDataUpdateItem> items = excelParserService.parseLoanDataUpdates(file);
+        
+        batch.setTotalRecords(items.size());
+        batch.setTotalAmount(BigDecimal.ZERO); // No amount for field updates
+        batch.setStatus("PROCESSING");
+        batch = bulkBatchRepository.save(batch);
+
+        for (com.minet.sacco.entity.BulkLoanDataUpdateItem item : items) {
+            item.setBatch(batch);
+            bulkLoanDataUpdateItemRepository.save(item);
+        }
+
+        auditService.logAction(batch.getUploadedBy(), "BULK_UPLOAD", "BulkBatch", batch.getId(),
+            "Uploaded loan data update batch (Phase A): " + batch.getBatchNumber() + " with " + items.size() + " records", null, null);
+
+        // Process immediately
+        processLoanDataUpdates(batch);
+
+        return batch;
+    }
+
     private void validateFile(MultipartFile file) {
         if (file.isEmpty()) {
             throw new RuntimeException("File is empty");
@@ -310,19 +383,28 @@ public class BulkProcessingService {
     }
 
     public List<BulkTransactionItem> getBatchItems(Long batchId) {
-        return bulkTransactionItemRepository.findByBatchId(batchId);
+        return bulkTransactionItemRepository.findByBatch_Id(batchId);
     }
 
     public List<BulkMemberItem> getBatchMemberItems(Long batchId) {
-        return bulkMemberItemRepository.findByBatchId(batchId);
+        return bulkMemberItemRepository.findByBatch_Id(batchId);
     }
 
     public List<BulkLoanItem> getBatchLoanItems(Long batchId) {
-        return bulkLoanItemRepository.findByBatchId(batchId);
+        return bulkLoanItemRepository.findByBatch_Id(batchId);
     }
 
     public List<BulkDisbursementItem> getBatchDisbursementItems(Long batchId) {
-        return bulkDisbursementItemRepository.findByBatchId(batchId);
+        return bulkDisbursementItemRepository.findByBatch_Id(batchId);
+    }
+
+    /**
+     * Get bulk loan data update items for a specific batch
+     */
+    public List<com.minet.sacco.entity.BulkLoanDataUpdateItem> getBatchLoanDataUpdateItems(Long batchId) {
+        BulkBatch batch = bulkBatchRepository.findById(batchId).orElse(null);
+        if (batch == null) return new ArrayList<>();
+        return bulkLoanDataUpdateItemRepository.findByBatch(batch);
     }
 
     /**
@@ -336,7 +418,7 @@ public class BulkProcessingService {
      * Get approved loan items for a specific batch
      */
     public List<BulkLoanItem> getApprovedLoanItemsByBatch(Long batchId) {
-        List<BulkLoanItem> items = bulkLoanItemRepository.findByBatchId(batchId);
+        List<BulkLoanItem> items = bulkLoanItemRepository.findByBatch_Id(batchId);
         return items.stream()
             .filter(item -> "APPROVED".equals(item.getStatus()))
             .collect(java.util.stream.Collectors.toList());
@@ -372,7 +454,6 @@ public class BulkProcessingService {
     }
 
     @Async
-    @Transactional
     public void processApprovedBatch(BulkBatch batch) {
         batch.setStatus("PROCESSING");
         batch.setProcessedAt(LocalDateTime.now());
@@ -396,13 +477,19 @@ public class BulkProcessingService {
 
     @Transactional
     private void processMonthlyContributions(BulkBatch batch) {
-        List<BulkTransactionItem> items = bulkTransactionItemRepository.findByBatchId(batch.getId());
+        List<BulkTransactionItem> items = bulkTransactionItemRepository.findByBatch_Id(batch.getId());
         int successCount = 0;
         int failedCount = 0;
 
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
         for (BulkTransactionItem item : items) {
             try {
-                processTransactionItem(item);
+                txTemplate.execute(status -> {
+                    processTransactionItem(item);
+                    return null;
+                });
                 item.setStatus("SUCCESS");
                 item.setProcessedAt(LocalDateTime.now());
                 successCount++;
@@ -412,18 +499,31 @@ public class BulkProcessingService {
                 item.setProcessedAt(LocalDateTime.now());
                 failedCount++;
             }
-            bulkTransactionItemRepository.save(item);
+            try {
+                bulkTransactionItemRepository.save(item);
+            } catch (Exception saveException) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Failed to persist item status: " + saveException.getMessage());
+                item.setProcessedAt(LocalDateTime.now());
+                failedCount++;
+            }
         }
 
         batch.setSuccessfulRecords(successCount);
         batch.setFailedRecords(failedCount);
-        batch.setStatus("COMPLETED");
+        if (successCount > 0 && failedCount > 0) {
+            batch.setStatus("PARTIALLY_COMPLETED");
+        } else if (failedCount > 0) {
+            batch.setStatus("FAILED");
+        } else {
+            batch.setStatus("COMPLETED");
+        }
         bulkBatchRepository.save(batch);
     }
 
     @Transactional
     private void processMemberRegistration(BulkBatch batch) {
-        List<BulkMemberItem> items = bulkMemberItemRepository.findByBatchId(batch.getId());
+        List<BulkMemberItem> items = bulkMemberItemRepository.findByBatch_Id(batch.getId());
         int successCount = 0;
         int failedCount = 0;
 
@@ -450,7 +550,7 @@ public class BulkProcessingService {
 
     @Transactional
     private void processLoanApplications(BulkBatch batch) {
-        List<BulkLoanItem> items = bulkLoanItemRepository.findByBatchId(batch.getId());
+        List<BulkLoanItem> items = bulkLoanItemRepository.findByBatch_Id(batch.getId());
         int successCount = 0;
         int failedCount = 0;
 
@@ -475,12 +575,27 @@ public class BulkProcessingService {
         bulkBatchRepository.save(batch);
     }
 
-    @Transactional
     private void processTransactionItem(BulkTransactionItem item) {
+        // Look up member by Member Number (stored in memberNumber field from Excel parser)
         Member member = memberRepository.findByMemberNumber(item.getMemberNumber())
-            .orElseThrow(() -> new RuntimeException("Member not found: " + item.getMemberNumber()));
+            .orElseThrow(() -> new RuntimeException("Member not found with Member Number: " + item.getMemberNumber()));
 
-        User systemUser = item.getBatch().getApprovedBy();
+        System.out.println("[BULK_ITEM] Member=" + item.getMemberNumber() 
+            + " | Savings=" + item.getSavingsAmount()
+            + " | LoanRepayment=" + item.getLoanRepaymentAmount()
+            + " | LoanNumber=" + item.getLoanNumber());
+
+        User systemUser = item.getBatch().getApprovedBy() != null
+            ? item.getBatch().getApprovedBy()
+            : item.getBatch().getUploadedBy();
+        if (systemUser == null) {
+            throw new RuntimeException("No system user available to process bulk item");
+        }
+
+        // Increment consecutive months counter for this member
+        Integer currentMonths = member.getConsecutiveMonthsCounter() != null ? member.getConsecutiveMonthsCounter() : 0;
+        member.setConsecutiveMonthsCounter(currentMonths + 1);
+        memberRepository.save(member);
 
         if (item.getSavingsAmount() != null && item.getSavingsAmount().compareTo(BigDecimal.ZERO) > 0) {
             DepositRequest depositRequest = new DepositRequest();
@@ -488,7 +603,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getSavingsAmount());
             depositRequest.setAccountType("SAVINGS");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setSavingsTransaction(transaction);
         }
 
         if (item.getSharesAmount() != null && item.getSharesAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -497,7 +613,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getSharesAmount());
             depositRequest.setAccountType("SHARES");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setSharesTransaction(transaction);
         }
 
         if (item.getBenevolentFundAmount() != null && item.getBenevolentFundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -506,7 +623,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getBenevolentFundAmount());
             depositRequest.setAccountType("BENEVOLENT_FUND");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setBenevolentFundTransaction(transaction);
         }
 
         if (item.getDevelopmentFundAmount() != null && item.getDevelopmentFundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -515,7 +633,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getDevelopmentFundAmount());
             depositRequest.setAccountType("DEVELOPMENT_FUND");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setDevelopmentFundTransaction(transaction);
         }
 
         if (item.getSchoolFeesAmount() != null && item.getSchoolFeesAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -524,7 +643,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getSchoolFeesAmount());
             depositRequest.setAccountType("SCHOOL_FEES");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setSchoolFeesTransaction(transaction);
         }
 
         if (item.getHolidayFundAmount() != null && item.getHolidayFundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -533,7 +653,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getHolidayFundAmount());
             depositRequest.setAccountType("HOLIDAY_FUND");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setHolidayFundTransaction(transaction);
         }
 
         if (item.getEmergencyFundAmount() != null && item.getEmergencyFundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -542,7 +663,8 @@ public class BulkProcessingService {
             depositRequest.setAmount(item.getEmergencyFundAmount());
             depositRequest.setAccountType("EMERGENCY_FUND");
             depositRequest.setDescription("Bulk contribution - " + item.getBatch().getBatchNumber());
-            accountService.deposit(depositRequest, systemUser);
+            Transaction transaction = accountService.deposit(depositRequest, systemUser);
+            item.setEmergencyFundTransaction(transaction);
         }
 
         if (item.getLoanRepaymentAmount() != null && item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -553,64 +675,425 @@ public class BulkProcessingService {
             Loan loan = loanRepository.findByLoanNumber(item.getLoanNumber())
                 .orElseThrow(() -> new RuntimeException("Loan not found: " + item.getLoanNumber()));
             
-            LoanRepayment repayment = new LoanRepayment();
-            repayment.setLoan(loan);
-            repayment.setAmount(item.getLoanRepaymentAmount());
-            repayment.setPaymentDate(LocalDateTime.now());
-            repayment.setPaymentMethod(LoanRepayment.PaymentMethod.CASH);
-            repayment.setRecordedBy(systemUser);
-            loanRepaymentRepository.save(repayment);
-            
-            loan.setOutstandingBalance(loan.getOutstandingBalance().subtract(item.getLoanRepaymentAmount()));
-            if (loan.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0) {
-                loan.setStatus(Loan.Status.REPAID);
+            // Validate loan belongs to this member
+            if (!loan.getMember().getId().equals(member.getId())) {
+                throw new RuntimeException("Loan does not belong to this member");
             }
             
-            loanRepository.save(loan);
+            // Validate loan is in disbursed status
+            if (loan.getStatus() != Loan.Status.DISBURSED) {
+                throw new RuntimeException("Loan is not in disbursed status");
+            }
+            
+            // Validate repayment amount doesn't exceed outstanding
+            // Round both to 2 decimal places to avoid floating point precision issues from Excel
+            BigDecimal outstanding = loanRepository.findById(loan.getId())
+                .map(l -> l.getOutstandingBalance())
+                .orElse(BigDecimal.ZERO);
+            
+            BigDecimal repaymentRounded = item.getLoanRepaymentAmount().setScale(2, java.math.RoundingMode.HALF_UP);
+            BigDecimal outstandingRounded = outstanding.setScale(2, java.math.RoundingMode.HALF_UP);
+            
+            if (repaymentRounded.compareTo(outstandingRounded) > 0) {
+                throw new RuntimeException("Repayment amount (KES " + repaymentRounded + ") cannot exceed outstanding balance of KES " + outstandingRounded);
+            }
+            
+            // Use the rounded repayment amount to avoid precision issues downstream
+            item.setLoanRepaymentAmount(repaymentRounded);
+            
+            // Use LoanService.makeRepayment to ensure proper guarantee tracking and notifications
+            com.minet.sacco.dto.LoanRepaymentRequest repaymentRequest = new com.minet.sacco.dto.LoanRepaymentRequest();
+            repaymentRequest.setLoanId(loan.getId());
+            repaymentRequest.setAmount(item.getLoanRepaymentAmount());
+            repaymentRequest.setPrincipalAmount(item.getLoanRepaymentPrincipalAmount());
+            repaymentRequest.setInterestAmount(item.getLoanRepaymentInterestAmount());
+            
+            // Set payment method from bulk item (defaults to SALARY_DEDUCTION)
+            repaymentRequest.setPaymentMethod(item.getLoanRepaymentPaymentMethod());
+            
+            // Set reference number — prefer explicit reference column if provided,
+            // otherwise fall back to the loan number itself since it's the most
+            // meaningful identifier available for this repayment
+            if (item.getLoanRepaymentReferenceNumber() != null && !item.getLoanRepaymentReferenceNumber().trim().isEmpty()) {
+                repaymentRequest.setTransactionReference(item.getLoanRepaymentReferenceNumber());
+            } else if (item.getLoanNumber() != null && !item.getLoanNumber().trim().isEmpty()) {
+                repaymentRequest.setTransactionReference(item.getLoanNumber());
+            }
+            
+            System.out.println("[BULK_REPAYMENT_REQUEST] Payment Method: " + repaymentRequest.getPaymentMethod() 
+                + " | Reference: " + repaymentRequest.getTransactionReference());
+            
+            // Get outstanding balance BEFORE repayment for accurate notification
+            BigDecimal outstandingBefore = loan.getOutstandingBalance();
+            
+            LoanRepayment repayment = loanService.makeRepayment(repaymentRequest, systemUser);
+            item.setLoanRepayment(repayment);
+            
+            // Refresh loan to get updated status and balance
+            Loan updatedLoan = loanRepository.findById(loan.getId()).orElse(loan);
+            
+            // Use the actual outstanding balance from the loan (already updated by makeRepayment)
+            // Do NOT recalculate from original amount - that would throw away pre-migration history
+            BigDecimal outstandingAfter = updatedLoan.getOutstandingBalance() != null ? 
+                updatedLoan.getOutstandingBalance() : BigDecimal.ZERO;
+            
+            boolean isFullyRepaid = updatedLoan.getStatus() == Loan.Status.REPAID && 
+                                   outstandingAfter.compareTo(BigDecimal.ZERO) <= 0;
+            
+            System.out.println("[BULK_REPAYMENT] Loan " + loan.getLoanNumber() 
+                + " | Amount: " + item.getLoanRepaymentAmount()
+                + " | Outstanding before: " + outstandingBefore
+                + " | Outstanding after: " + outstandingAfter
+                + " | Fully repaid: " + isFullyRepaid);
+            
+            // Send notification to member about repayment
+            Optional<User> memberUserOpt = userService.getUserByMemberId(member.getId());
+            if (memberUserOpt.isPresent()) {
+                String message;
+                if (isFullyRepaid) {
+                    message = String.format(
+                        "Congratulations %s! You have successfully repaid your loan in full. Your guarantee has been released and your savings are now unfrozen.",
+                        member.getFirstName()
+                    );
+                } else {
+                    message = String.format(
+                        "Hi %s, your loan repayment of KES %,.2f has been processed. Outstanding balance: KES %,.2f",
+                        member.getFirstName(),
+                        item.getLoanRepaymentAmount(),
+                        outstandingAfter
+                    );
+                }
+                notificationService.notifyUser(
+                    memberUserOpt.get().getId(),
+                    message,
+                    isFullyRepaid ? "LOAN_FULLY_REPAID" : "LOAN_REPAYMENT_PROCESSED",
+                    loan.getId(),
+                    member.getId(),
+                    "LOAN_REPAYMENT"
+                );
+            }
+            
+            // Send notification to processor (treasurer) about successful processing
+            String processorMessage = String.format(
+                "Successfully processed loan repayment of KES %,.2f for member %s (Loan: %s)",
+                item.getLoanRepaymentAmount(),
+                member.getMemberNumber(),
+                loan.getLoanNumber()
+            );
+            notificationService.notifyUser(
+                systemUser.getId(),
+                processorMessage,
+                "BULK_REPAYMENT_PROCESSED",
+                loan.getId(),
+                member.getId(),
+                "BULK_PROCESSING"
+            );
         }
     }
 
     @Transactional
     private void processMemberItem(BulkMemberItem item) {
-        // Check if member already exists
-        if (memberRepository.findByNationalId(item.getNationalId()).isPresent()) {
-            throw new RuntimeException("Member with national ID already exists: " + item.getNationalId());
+        // Check if member already exists by employee ID (for update scenario)
+        Member member = null;
+        boolean isUpdate = false;
+        
+        if (item.getEmployeeId() != null && !item.getEmployeeId().isBlank()) {
+            Optional<Member> existingMember = memberRepository.findByEmployeeId(item.getEmployeeId());
+            if (existingMember.isPresent()) {
+                // Member exists - UPDATE scenario
+                member = existingMember.get();
+                isUpdate = true;
+            }
+        }
+        
+        // If not found by employee ID, check by national ID (only if national ID is provided)
+        if (member == null && item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
+            Optional<Member> existingByNationalId = memberRepository.findByNationalId(item.getNationalId());
+            if (existingByNationalId.isPresent()) {
+                throw new RuntimeException("Member with national ID already exists: " + item.getNationalId());
+            }
+        }
+        
+        if (isUpdate) {
+            // ===== UPDATE SCENARIO =====
+            // Only update fields that are provided in the upload
+            
+            // Update first name if provided
+            if (item.getFirstName() != null && !item.getFirstName().trim().isEmpty()) {
+                member.setFirstName(item.getFirstName());
+            }
+            
+            // Update last name if provided
+            if (item.getLastName() != null && !item.getLastName().trim().isEmpty()) {
+                member.setLastName(item.getLastName());
+            }
+            
+            // Update email if provided
+            if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
+                member.setEmail(item.getEmail());
+            }
+            
+            // Update phone if provided
+            if (item.getPhone() != null && !item.getPhone().trim().isEmpty()) {
+                member.setPhone(item.getPhone());
+            }
+            
+            // Update national ID if provided
+            if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
+                member.setNationalId(item.getNationalId());
+            }
+            
+            // Update date of birth if provided
+            if (item.getDateOfBirth() != null) {
+                member.setDateOfBirth(item.getDateOfBirth());
+            }
+            
+            // Update department if provided
+            if (item.getDepartment() != null && !item.getDepartment().trim().isEmpty()) {
+                member.setDepartment(item.getDepartment());
+            }
+            
+            // Update employer if provided
+            if (item.getEmployer() != null && !item.getEmployer().trim().isEmpty()) {
+                member.setEmployer(item.getEmployer());
+            }
+            
+            // Update bank details if provided
+            if (item.getBank() != null && !item.getBank().trim().isEmpty()) {
+                member.setBankName(item.getBank());
+            }
+            if (item.getBankAccount() != null && !item.getBankAccount().trim().isEmpty()) {
+                member.setBankAccountNumber(item.getBankAccount());
+            }
+            if (item.getBankBranch() != null && !item.getBankBranch().trim().isEmpty()) {
+                member.setBankBranch(item.getBankBranch());
+            }
+            
+            // Update next of kin details if provided
+            if (item.getNextOfKin() != null && !item.getNextOfKin().trim().isEmpty()) {
+                member.setNextOfKinName(item.getNextOfKin());
+            }
+            if (item.getNokPhone() != null && !item.getNokPhone().trim().isEmpty()) {
+                member.setNextOfKinPhone(item.getNokPhone());
+            }
+            if (item.getNokRelationship() != null && !item.getNokRelationship().trim().isEmpty()) {
+                member.setNextOfKinRelationship(item.getNokRelationship());
+            }
+            
+            // Save updated member (DO NOT recreate accounts for update)
+            member = memberRepository.save(member);
+            
+        } else {
+            // ===== CREATE SCENARIO =====
+            // Create new member with provided values
+            member = new Member();
+            member.setFirstName(item.getFirstName());
+            member.setLastName(item.getLastName());
+            
+            // Set email if provided, otherwise use generated email
+            if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
+                member.setEmail(item.getEmail());
+            } else {
+                // Generate a placeholder email if not provided
+                String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
+                    ? item.getEmployeeId()
+                    : generateMemberNumber();
+                member.setEmail(identifier + "@minet.sacco");
+            }
+            
+            member.setPhone(item.getPhone());
+            
+            // Set national ID if provided (now optional)
+            if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
+                member.setNationalId(item.getNationalId());
+            }
+            
+            member.setDateOfBirth(item.getDateOfBirth());
+            member.setDepartment(item.getDepartment());
+            member.setEmployeeId(item.getEmployeeId());
+            member.setEmploymentStatus("PERMANENT");
+            
+            // Set employer if provided (now optional)
+            if (item.getEmployer() != null && !item.getEmployer().trim().isEmpty()) {
+                member.setEmployer(item.getEmployer());
+            }
+            
+            // Set bank details if provided (now optional)
+            if (item.getBank() != null && !item.getBank().trim().isEmpty()) {
+                member.setBankName(item.getBank());
+            }
+            if (item.getBankAccount() != null && !item.getBankAccount().trim().isEmpty()) {
+                member.setBankAccountNumber(item.getBankAccount());
+            }
+            if (item.getBankBranch() != null && !item.getBankBranch().trim().isEmpty()) {
+                member.setBankBranch(item.getBankBranch());
+            }
+            
+            // Set next of kin details if provided (now optional)
+            if (item.getNextOfKin() != null && !item.getNextOfKin().trim().isEmpty()) {
+                member.setNextOfKinName(item.getNextOfKin());
+            }
+            if (item.getNokPhone() != null && !item.getNokPhone().trim().isEmpty()) {
+                member.setNextOfKinPhone(item.getNokPhone());
+            }
+            if (item.getNokRelationship() != null && !item.getNokRelationship().trim().isEmpty()) {
+                member.setNextOfKinRelationship(item.getNokRelationship());
+            }
+
+            // Use employeeId as memberNumber
+            String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
+                ? item.getEmployeeId()
+                : generateMemberNumber();
+            member.setMemberNumber(identifier);
+
+            // Members are ACTIVE immediately upon bulk upload
+            member.setStatus(Member.Status.ACTIVE);
+            member.setApprovedAt(LocalDateTime.now());
+
+            // Use date joined from template if provided, otherwise default to now
+            if (item.getDateJoined() != null) {
+                member.setCreatedAt(item.getDateJoined().atStartOfDay());
+            } else {
+                member.setCreatedAt(LocalDateTime.now());
+            }
+
+            member = memberRepository.save(member);
+
+            // Determine opening balances - defaults: savings=0, shares=3000
+            BigDecimal openingSavings = item.getOpeningSavingsBalance() != null
+                ? item.getOpeningSavingsBalance()
+                : BigDecimal.ZERO;
+            BigDecimal openingShares = item.getOpeningSharesBalance() != null
+                ? item.getOpeningSharesBalance()
+                : new BigDecimal("3000.00");
+
+            // Create accounts with opening balances and transaction records (ONLY for new members)
+            User systemUser = item.getBatch().getUploadedBy();
+            createDefaultAccountsWithOpeningBalances(member, openingSavings, openingShares, systemUser);
+
+            // Create mobile app login credentials (ONLY for new members)
+            createMemberLoginCredentials(member);
         }
 
-        Member member = new Member();
-        member.setFirstName(item.getFirstName());
-        member.setLastName(item.getLastName());
-        member.setEmail(item.getEmail());
-        member.setPhone(item.getPhone());
-        member.setNationalId(item.getNationalId());
-        member.setDateOfBirth(item.getDateOfBirth());
-        member.setDepartment(item.getDepartment());
-        member.setEmployeeId(item.getEmployeeId()); // Store employee ID properly
-        member.setEmploymentStatus("PERMANENT"); // Default employment status
-        member.setEmployer(item.getEmployer());
-        member.setBankName(item.getBank());
-        member.setBankAccountNumber(item.getBankAccount());
-        member.setNextOfKinName(item.getNextOfKin());
-        member.setNextOfKinPhone(item.getNokPhone());
-        // Use employeeId as memberNumber (the identifier)
-        String identifier = item.getEmployeeId() != null && !item.getEmployeeId().isBlank()
-            ? item.getEmployeeId()
-            : generateMemberNumber();
-        member.setMemberNumber(identifier);
-        // Members are ACTIVE immediately upon bulk upload (digitalization of existing members)
-        member.setStatus(Member.Status.ACTIVE);
-        member.setApprovedAt(LocalDateTime.now());
-        member.setCreatedAt(LocalDateTime.now());
-
-        member = memberRepository.save(member);
-        
-        // Create default accounts (Savings and Shares) automatically
-        createDefaultAccounts(member);
-
-        // Create mobile app login credentials: username = memberNumber, default password = nationalId
-        createMemberLoginCredentials(member);
-        
         item.setMember(member);
+    }
+
+    /**
+     * Phase A: Process loan data updates in bulk
+     * Each item is processed independently; failures don't stop other items.
+     * Per-row error messages are captured and stored.
+     */
+    @Async
+    public void processLoanDataUpdates(BulkBatch batch) {
+        List<com.minet.sacco.entity.BulkLoanDataUpdateItem> items = 
+            bulkLoanDataUpdateItemRepository.findByBatch(batch);
+        
+        for (com.minet.sacco.entity.BulkLoanDataUpdateItem item : items) {
+            TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+            txTemplate.execute(status -> {
+                processLoanDataUpdateItem(item, batch);
+                return null;
+            });
+        }
+        
+        // Update batch status
+        long processedCount = bulkLoanDataUpdateItemRepository.findByBatchAndStatus(batch, "PROCESSED").size();
+        long failedCount = bulkLoanDataUpdateItemRepository.findByBatchAndStatus(batch, "FAILED").size();
+        
+        batch.setStatus(failedCount == 0 ? "COMPLETED" : "COMPLETED_WITH_ERRORS");
+        bulkBatchRepository.save(batch);
+        
+        auditService.logAction(batch.getUploadedBy(), "BULK_PROCESS", "BulkBatch", batch.getId(),
+            "Processed loan data update batch: " + batch.getBatchNumber() + " | Success: " + processedCount + " | Failed: " + failedCount, 
+            null, null);
+    }
+
+    /**
+     * Process a single loan data update item
+     * Validates and updates the loan with Phase A fields
+     * Per-row error messages capture specific validation failures
+     */
+    @Transactional
+    private void processLoanDataUpdateItem(com.minet.sacco.entity.BulkLoanDataUpdateItem item, BulkBatch batch) {
+        try {
+            // Validate required fields
+            if (item.getEmployeeId() == null || item.getEmployeeId().trim().isEmpty()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Employee ID is required");
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            
+            if (item.getLoanNumber() == null || item.getLoanNumber().trim().isEmpty()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Loan Number is required");
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            
+            // Find member by employee ID
+            Optional<Member> memberOpt = memberRepository.findByEmployeeId(item.getEmployeeId());
+            if (!memberOpt.isPresent()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Member not found with Employee ID: " + item.getEmployeeId());
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            Member member = memberOpt.get();
+            item.setMember(member);
+            
+            // Find loan by loan number
+            Optional<Loan> loanOpt = loanRepository.findByLoanNumber(item.getLoanNumber());
+            if (!loanOpt.isPresent()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Loan not found with Loan Number: " + item.getLoanNumber());
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            Loan loan = loanOpt.get();
+            item.setLoan(loan);
+            
+            // Verify loan belongs to member
+            if (!loan.getMember().getId().equals(member.getId())) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("Loan does not belong to this member");
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            
+            // Check if there's any data to update
+            if (!item.hasDataToUpdate()) {
+                item.setStatus("FAILED");
+                item.setErrorMessage("No Phase A fields to update (at least one field is required)");
+                bulkLoanDataUpdateItemRepository.save(item);
+                return;
+            }
+            
+            // Prepare update DTO - only include non-null fields
+            com.minet.sacco.dto.LoanFieldUpdateDTO updateDTO = new com.minet.sacco.dto.LoanFieldUpdateDTO();
+            updateDTO.setLoanStatus(item.getLoanStatus());
+            updateDTO.setDisbursementDate(item.getDisbursementDate());
+            updateDTO.setInterestRate(item.getInterestRate());
+            updateDTO.setOutstandingBalance(item.getOutstandingBalance());
+            updateDTO.setPurpose(item.getPurpose());
+            
+            // Get treasurer user for audit logging
+            User treasurer = batch.getUploadedBy();
+            
+            // Call the service method to update loan fields
+            Loan updatedLoan = loanService.updateLoanFieldsOnly(loan.getId(), updateDTO, treasurer);
+            
+            item.setStatus("PROCESSED");
+            item.setProcessedAt(LocalDateTime.now());
+            item.setErrorMessage(null);
+            
+        } catch (Exception e) {
+            item.setStatus("FAILED");
+            item.setErrorMessage(e.getMessage() != null ? e.getMessage() : "Unknown error");
+            e.printStackTrace();
+        }
+        
+        bulkLoanDataUpdateItemRepository.save(item);
     }
 
     private void createMemberLoginCredentials(Member member) {
@@ -622,6 +1105,8 @@ public class BulkProcessingService {
         // Check if user already exists
         Optional<User> existingUser = userRepository.findByUsername(username);
         User user;
+        boolean hasNationalId = member.getNationalId() != null && !member.getNationalId().trim().isEmpty();
+        String password;
         
         if (existingUser.isPresent()) {
             // Update existing user with member_id if not already set
@@ -631,6 +1116,7 @@ public class BulkProcessingService {
                 user.setUpdatedAt(LocalDateTime.now());
                 userRepository.save(user);
             }
+            return; // Don't create credential record for existing users
         } else {
             // Create new user account
             user = new User();
@@ -638,31 +1124,116 @@ public class BulkProcessingService {
             user.setEmail(member.getEmail() != null && !member.getEmail().isBlank()
                 ? member.getEmail()
                 : username + "@minet.sacco");
-            user.setPassword(passwordEncoder.encode(member.getNationalId()));
+            
+            // Password logic: Use National ID if available, otherwise generate temporary password
+            if (hasNationalId) {
+                // Use National ID as password (existing behavior)
+                password = member.getNationalId().trim();
+            } else {
+                // Generate random temporary password when no National ID
+                password = com.minet.sacco.util.PasswordGenerator.generateTemporaryPassword();
+            }
+            
+            user.setPassword(passwordEncoder.encode(password));
             user.setRole(User.Role.MEMBER);
             user.setMemberId(member.getId());
             user.setEnabled(true);
+            user.setFirstLogin(true);
             user.setCreatedAt(LocalDateTime.now());
             userRepository.save(user);
+            
+            // Create credential tracking record for admin visibility
+            MemberCredential credential = new MemberCredential(
+                member.getId(),
+                username,
+                member.getFirstName() + " " + member.getLastName(),
+                member.getEmail(),
+                hasNationalId,
+                user.getId() // created by system user
+            );
+            
+            // Store password for retrieval by admins
+            credential.setPassword(password);
+            credential.setPasswordChanged(false);
+            credential.setCreatedAt(LocalDateTime.now());
+            
+            // If email service is configured and email is available, try to send
+            if (emailService != null && emailService.isEmailConfigured() && 
+                member.getEmail() != null && !member.getEmail().isBlank()) {
+                boolean emailSent = emailService.sendWelcomeEmail(
+                    member.getEmail(), 
+                    member.getFirstName() + " " + member.getLastName(),
+                    username, 
+                    password, 
+                    hasNationalId
+                );
+                
+                if (emailSent) {
+                    credential.setEmailSent(true);
+                    credential.setEmailSentAt(LocalDateTime.now());
+                }
+            }
+            
+            memberCredentialRepository.save(credential);
+            
+            // Console logging for admin reference (until email is set up)
+            if (!credential.isEmailSent()) {
+                if (hasNationalId) {
+                    System.out.println("MEMBER CREDENTIALS - " + member.getFirstName() + " " + member.getLastName() + 
+                        " (Username: " + username + ") - Use National ID as password");
+                } else {
+                    System.out.println("TEMP PASSWORD - " + member.getFirstName() + " " + member.getLastName() + 
+                        " (Username: " + username + "): " + password);
+                }
+            }
         }
     }
 
     private void createDefaultAccounts(Member member) {
+        createDefaultAccountsWithOpeningBalances(member, BigDecimal.ZERO, new BigDecimal("3000.00"), null);
+    }
+
+    private void createDefaultAccountsWithOpeningBalances(Member member, BigDecimal openingSavings, BigDecimal openingShares, User createdBy) {
         // Create Savings Account
         Account savingsAccount = new Account();
         savingsAccount.setMember(member);
         savingsAccount.setAccountType(Account.AccountType.SAVINGS);
-        savingsAccount.setBalance(BigDecimal.ZERO);
+        savingsAccount.setBalance(openingSavings != null ? openingSavings : BigDecimal.ZERO);
         savingsAccount.setCreatedAt(LocalDateTime.now());
-        accountRepository.save(savingsAccount);
+        savingsAccount = accountRepository.save(savingsAccount);
+
+        // Create opening balance transaction for savings if > 0
+        if (openingSavings != null && openingSavings.compareTo(BigDecimal.ZERO) > 0) {
+            Transaction savingsTx = new Transaction();
+            savingsTx.setAccount(savingsAccount);
+            savingsTx.setTransactionType(Transaction.TransactionType.DEPOSIT);
+            savingsTx.setAmount(openingSavings);
+            savingsTx.setDescription("Migration Opening Balance");
+            savingsTx.setTransactionDate(member.getCreatedAt() != null ? member.getCreatedAt() : LocalDateTime.now());
+            savingsTx.setCreatedBy(createdBy);
+            transactionRepository.save(savingsTx);
+        }
 
         // Create Shares Account
         Account sharesAccount = new Account();
         sharesAccount.setMember(member);
         sharesAccount.setAccountType(Account.AccountType.SHARES);
-        sharesAccount.setBalance(BigDecimal.ZERO);
+        sharesAccount.setBalance(openingShares != null ? openingShares : new BigDecimal("3000.00"));
         sharesAccount.setCreatedAt(LocalDateTime.now());
-        accountRepository.save(sharesAccount);
+        sharesAccount = accountRepository.save(sharesAccount);
+
+        // Create opening balance transaction for shares if > 0
+        BigDecimal sharesBalance = openingShares != null ? openingShares : new BigDecimal("3000.00");
+        if (sharesBalance.compareTo(BigDecimal.ZERO) > 0) {
+            Transaction sharesTx = new Transaction();
+            sharesTx.setAccount(sharesAccount);
+            sharesTx.setTransactionType(Transaction.TransactionType.DEPOSIT);
+            sharesTx.setAmount(sharesBalance);
+            sharesTx.setDescription("Migration Opening Balance - Shares");
+            sharesTx.setTransactionDate(member.getCreatedAt() != null ? member.getCreatedAt() : LocalDateTime.now());
+            sharesTx.setCreatedBy(createdBy);
+            transactionRepository.save(sharesTx);
+        }
     }
 
     @Transactional
@@ -774,7 +1345,7 @@ public class BulkProcessingService {
 
     @Transactional
     private void processLoanDisbursements(BulkBatch batch) {
-        List<BulkDisbursementItem> items = bulkDisbursementItemRepository.findByBatchId(batch.getId());
+        List<BulkDisbursementItem> items = bulkDisbursementItemRepository.findByBatch_Id(batch.getId());
         int successCount = 0;
         int failedCount = 0;
 
@@ -813,29 +1384,31 @@ public class BulkProcessingService {
         loan.setDisbursementDate(LocalDateTime.now());
         Loan updatedLoan = loanRepository.save(loan);
 
-        // Credit member's account
-        Account account = accountRepository.findByMemberIdAndAccountType(
-                updatedLoan.getMember().getId(), 
-                Account.AccountType.valueOf(item.getDisbursementAccount()))
+        // NOTE: Loan amount goes to member's bank account (not savings)
+        // This mocks real SACCO operations where loans are transferred to external bank accounts
+        // Savings account is NOT credited - it remains unchanged
+        // Bank details are stored in Member entity and used during disbursement
+        
+        // Get or create savings account for transaction record only
+        Account savingsAccount = accountRepository.findByMemberIdAndAccountType(
+                updatedLoan.getMember().getId(), Account.AccountType.SAVINGS)
             .orElseGet(() -> {
                 Account newAccount = new Account();
                 newAccount.setMember(updatedLoan.getMember());
-                newAccount.setAccountType(Account.AccountType.valueOf(item.getDisbursementAccount()));
+                newAccount.setAccountType(Account.AccountType.SAVINGS);
                 newAccount.setBalance(BigDecimal.ZERO);
                 newAccount.setCreatedAt(LocalDateTime.now());
                 return accountRepository.save(newAccount);
             });
 
-        account.setBalance(account.getBalance().add(item.getDisbursementAmount()));
-        account.setUpdatedAt(LocalDateTime.now());
-        accountRepository.save(account);
-
-        // Create transaction record
+        // Create transaction record for audit trail (but don't credit the account)
         Transaction transaction = new Transaction();
-        transaction.setAccount(account);
+        transaction.setAccount(savingsAccount);
         transaction.setTransactionType(Transaction.TransactionType.LOAN_DISBURSEMENT);
         transaction.setAmount(item.getDisbursementAmount());
-        transaction.setDescription("Loan disbursement - Loan: " + item.getLoanNumber());
+        transaction.setDescription("Loan disbursement to bank account - Loan: " + item.getLoanNumber() + 
+                                  " | Bank: " + updatedLoan.getMember().getBankName() + 
+                                  " | Account: " + updatedLoan.getMember().getBankAccountNumber());
         transaction.setCreatedBy(item.getBatch().getApprovedBy());
         transactionRepository.save(transaction);
     }
@@ -851,6 +1424,9 @@ public class BulkProcessingService {
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private UserService userService;
 
     public Map<String, Object> validateBulkLoanItemGuarantors(Long itemId) {
         BulkLoanItem item = bulkLoanItemRepository.findById(itemId)
@@ -1368,6 +1944,12 @@ public class BulkProcessingService {
         
         return result;
     }
+
+    /**
+     * Rollback a completed batch using the BatchRollbackService.
+     * Delegates to the batch rollback service which handles all the complexity.
+     */
+    public Map<String, Object> rollbackBatch(Long batchId, User deletedBy, String reason) {
+        return batchRollbackService.rollbackBatch(batchId, deletedBy, reason);
+    }
 }
-
-

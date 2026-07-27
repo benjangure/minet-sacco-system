@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Shield, UserPlus, AlertTriangle, Power, Eye, Settings } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getApiBaseUrl } from '@/config/api';
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface User {
   id: number;
@@ -83,13 +84,28 @@ const UserManagement = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
+      console.log("Fetching users from:", `${API_BASE_URL}/users`);
+      console.log("Auth token available:", !!session?.token);
+      console.log("Current user role:", currentUserRole);
+      
       const response = await fetch(`${API_BASE_URL}/users`, {
         headers: {
           "Authorization": `Bearer ${session?.token}`,
         },
       });
-      if (response.ok) {
+      
+      console.log("Response status:", response.status);
+      
+      if (response.status === 403) {
+        console.error("Access Denied: User does not have ADMIN or TREASURER role");
+        toast({ 
+          title: "Access Denied", 
+          description: "You need ADMIN or TREASURER role to view staff users", 
+          variant: "destructive" 
+        });
+      } else if (response.ok) {
         const data = await response.json();
+        console.log("Response data:", data);
         setUsers(data.data || []);
         
         // Get current user ID from the users list
@@ -113,9 +129,22 @@ const UserManagement = () => {
           createdBy: u.createdBy,
           role: u.role
         })));
+      } else {
+        const errorData = await response.json();
+        console.error("Error response:", response.status, errorData);
+        toast({ 
+          title: "Error", 
+          description: `Failed to load users: ${errorData.message || response.statusText}`, 
+          variant: "destructive" 
+        });
       }
     } catch (error) {
       console.error("Error fetching users:", error);
+      toast({ 
+        title: "Error", 
+        description: "Failed to load users. Check console for details.", 
+        variant: "destructive" 
+      });
     }
     setLoading(false);
   };
@@ -368,9 +397,21 @@ const UserManagement = () => {
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-8">Loading staff users...</TableCell></TableRow>
                   ) : users.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No users found</TableCell></TableRow>
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">
+                        <div className="text-muted-foreground">
+                          <p>No staff users found</p>
+                          <p className="text-xs mt-2">
+                            {currentUserRole ? `Your role: ${roleLabels[currentUserRole]}` : "Unable to determine your role"}
+                          </p>
+                          {allowedRoles.length === 0 && (
+                            <p className="text-xs text-red-600 mt-2">You don't have permission to view users. Required: ADMIN or TREASURER</p>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   ) : users.map(user => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">{user.username}</TableCell>

@@ -10,10 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Plus, AlertCircle } from "lucide-react";
+import { Search, Plus, AlertCircle, Key } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface Member {
   id: number;
@@ -41,6 +43,10 @@ const CustomerSupportPortal = () => {
   const [searchInput, setSearchInput] = useState("");
   const [memberSearchOpen, setMemberSearchOpen] = useState(false);
   const [ticketDialogOpen, setTicketDialogOpen] = useState(false);
+  const [passwordResetDialogOpen, setPasswordResetDialogOpen] = useState(false);
+  const [selectedMemberForReset, setSelectedMemberForReset] = useState<Member | null>(null);
+  const [resetSearchInput, setResetSearchInput] = useState("");
+  const [memberSearchResetOpen, setMemberSearchResetOpen] = useState(false);
   const [ticketForm, setTicketForm] = useState({
     subject: "",
     description: "",
@@ -48,6 +54,7 @@ const CustomerSupportPortal = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const { toast } = useToast();
   const { session, role } = useAuth();
 
@@ -145,6 +152,49 @@ const CustomerSupportPortal = () => {
     `${m.firstName} ${m.lastName}`.toLowerCase().includes(searchInput.toLowerCase())
   );
 
+  const filteredMembersForReset = members.filter(m =>
+    m.memberNumber.toLowerCase().includes(resetSearchInput.toLowerCase()) ||
+    `${m.firstName} ${m.lastName}`.toLowerCase().includes(resetSearchInput.toLowerCase())
+  );
+
+  const handleSelectMemberForReset = (member: Member) => {
+    setSelectedMemberForReset(member);
+    setMemberSearchResetOpen(false);
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMemberForReset) {
+      toast({ title: "Error", description: "Please select a member", variant: "destructive" });
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/support/members/${selectedMemberForReset.id}/reset-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Password reset email sent to member" });
+        setPasswordResetDialogOpen(false);
+        setSelectedMemberForReset(null);
+        setResetSearchInput("");
+      } else {
+        const error = await response.json();
+        toast({ title: "Error", description: error.message || "Failed to reset password", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to reset password", variant: "destructive" });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "URGENT": return "bg-red-100 text-red-800";
@@ -185,6 +235,14 @@ const CustomerSupportPortal = () => {
         <h1 className="text-3xl font-bold text-foreground">Customer Support Portal</h1>
         <p className="text-muted-foreground">Create and manage support tickets for members</p>
       </div>
+
+      <Tabs defaultValue="tickets" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="tickets">Support Tickets</TabsTrigger>
+          <TabsTrigger value="password-reset">Password Reset</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="tickets" className="space-y-6">
 
       {/* Member Selection Dialog */}
       <Dialog open={memberSearchOpen} onOpenChange={setMemberSearchOpen}>
@@ -353,6 +411,112 @@ const CustomerSupportPortal = () => {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="password-reset" className="space-y-6">
+          {/* Member Selection Dialog for Password Reset */}
+          <Dialog open={memberSearchResetOpen} onOpenChange={setMemberSearchResetOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Select Member for Password Reset</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by member number or name..."
+                    value={resetSearchInput}
+                    onChange={(e) => setResetSearchInput(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <div className="max-h-96 overflow-y-auto border rounded-lg">
+                  {filteredMembersForReset.length === 0 ? (
+                    <div className="p-4 text-center text-muted-foreground">No members found</div>
+                  ) : (
+                    filteredMembersForReset.map(member => (
+                      <div
+                        key={member.id}
+                        onClick={() => handleSelectMemberForReset(member)}
+                        className="p-3 border-b hover:bg-accent cursor-pointer transition-colors"
+                      >
+                        <div className="font-medium">{member.firstName} {member.lastName}</div>
+                        <div className="text-sm text-muted-foreground">
+                          Member #{member.memberNumber}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Password Reset Dialog */}
+          <Dialog open={passwordResetDialogOpen} onOpenChange={setPasswordResetDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Reset Member Password</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div>
+                  <Label className="text-xs">Member *</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setMemberSearchResetOpen(true)}
+                    className="w-full justify-start text-left"
+                  >
+                    {selectedMemberForReset ? `${selectedMemberForReset.firstName} ${selectedMemberForReset.lastName}` : "Select member..."}
+                  </Button>
+                </div>
+
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    A password reset email will be sent to the member's registered email address.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="flex gap-2 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setPasswordResetDialogOpen(false)} className="flex-1">
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={resetLoading} className="flex-1">
+                    {resetLoading ? "Sending..." : "Send Reset Email"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Password Reset Button */}
+          <div className="mb-6">
+            <Button onClick={() => setPasswordResetDialogOpen(true)}>
+              <Key className="mr-2 h-4 w-4" />
+              Reset Member Password
+            </Button>
+          </div>
+
+          {/* Info Card */}
+          <Card className="bg-blue-50 border-blue-200">
+            <CardHeader>
+              <CardTitle className="text-base text-blue-900">Password Reset Process</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-blue-800 space-y-2">
+              <p>
+                When you initiate a password reset, the member will receive an email with instructions to set a new password.
+              </p>
+              <p>
+                The member must click the link in the email within 24 hours to complete the password reset process.
+              </p>
+              <p>
+                If the member doesn't receive the email, check their spam folder or resend the reset email.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

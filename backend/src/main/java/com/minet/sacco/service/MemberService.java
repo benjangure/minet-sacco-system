@@ -4,10 +4,14 @@ import com.minet.sacco.entity.Member;
 import com.minet.sacco.entity.Account;
 import com.minet.sacco.entity.Loan;
 import com.minet.sacco.entity.User;
+import com.minet.sacco.entity.MemberCredential;
+import com.minet.sacco.dto.MemberCreationResponseDTO;
 import com.minet.sacco.repository.MemberRepository;
 import com.minet.sacco.repository.AccountRepository;
 import com.minet.sacco.repository.LoanRepository;
 import com.minet.sacco.repository.UserRepository;
+import com.minet.sacco.repository.MemberCredentialRepository;
+import com.minet.sacco.util.PasswordGenerator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +21,9 @@ import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class MemberService {
@@ -38,6 +45,15 @@ public class MemberService {
 
     @Autowired
     private AuditService auditService;
+
+    @Autowired
+    private MemberCredentialRepository memberCredentialRepository;
+
+    @Autowired
+    private EmailService emailService;
+
+    // Temporary storage for generated passwords (cleaned up after use)
+    private static final Map<Long, String> generatedPasswords = new ConcurrentHashMap<>();
 
     public List<Member> getAllMembers() {
         return memberRepository.findAll();
@@ -79,6 +95,41 @@ public class MemberService {
         createMemberUserAccount(savedMember);
 
         return savedMember;
+    }
+
+    /**
+     * Creates a member and returns both member data and credential info for UI display
+     */
+    @Transactional
+    public MemberCreationResponseDTO createMemberWithCredentials(Member member, Long createdByUserId) {
+        Member savedMember = createMember(member, createdByUserId);
+        
+        // Get username
+        String username = member.getEmployeeId() != null ? member.getEmployeeId() : savedMember.getMemberNumber();
+        
+        // Determine password type and temporary password
+        boolean hasNationalId = member.getNationalId() != null && !member.getNationalId().trim().isEmpty();
+        String temporaryPassword = null;
+        String passwordType;
+        
+        if (hasNationalId) {
+            passwordType = "NATIONAL_ID";
+        } else {
+            temporaryPassword = getLastGeneratedPassword(savedMember.getId());
+            passwordType = "GENERATED";
+        }
+        
+        return new MemberCreationResponseDTO(
+            savedMember.getId(),
+            savedMember.getMemberNumber(),
+            savedMember.getFirstName(),
+            savedMember.getLastName(),
+            username,
+            temporaryPassword,
+            hasNationalId,
+            passwordType,
+            "Member created successfully. Credentials are ready for delivery."
+        );
     }
 
     @Transactional
@@ -135,6 +186,9 @@ public class MemberService {
         // Check if user already exists
         Optional<User> existingUser = userRepository.findByUsername(username);
         User user;
+        boolean isNewUser = false;
+        String temporaryPassword = null;
+        boolean hasNationalId = member.getNationalId() != null && !member.getNationalId().trim().isEmpty();
         
         if (existingUser.isPresent()) {
             // Update existing user with member_id if not already set
@@ -146,15 +200,86 @@ public class MemberService {
             }
         } else {
             // Create new user account
+            isNewUser = true;
             user = new User();
             user.setUsername(username);
             user.setEmail(member.getEmail() != null ? member.getEmail() : username + "@minet.sacco");
-            user.setPassword(passwordEncoder.encode(member.getNationalId())); // default password = national ID
+            
+            // Set password based on whether National ID is available
+            if (hasNationalId) {
+                user.setPassword(passwordEncoder.encode(member.getNationalId())); // default password = national ID
+            } else {
+                // Generate secure temporary password
+                temporaryPassword = PasswordGenerator.generateTemporaryPassword();
+                user.setPassword(passwordEncoder.encode(temporaryPassword));
+                // Store temporarily for retrieval in controller
+                generatedPasswords.put(member.getId(), temporaryPassword);
+            }
+            
             user.setRole(User.Role.MEMBER);
             user.setMemberId(member.getId());
             user.setEnabled(true);
+            user.setFirstLogin(true);
             user.setCreatedAt(LocalDateTime.now());
             userRepository.save(user);
+            
+            // Create credential tracking record for individual registration
+            if (isNewUser) {
+                createCredentialTrackingRecord(member, username, temporaryPassword, hasNationalId);
+            }
+        }
+    }
+    
+    /**
+     * Creates a credential tracking record for individual member registration
+     */
+    private void createCredentialTrackingRecord(Member member, String username, String temporaryPassword, boolean hasNationalId) {
+        try {
+            // Check if credential record already exists
+            Optional<MemberCredential> existingCredential = memberCredentialRepository.findByMemberId(member.getId());
+            if (existingCredential.isPresent()) {
+                return; // Already tracked
+            }
+            
+            MemberCredential credential = new MemberCredential();
+            credential.setMemberId(member.getId());
+            credential.setUsername(username);
+            credential.setMemberName(member.getFirstName() + " " + member.getLastName());
+            credential.setEmail(member.getEmail());
+            credential.setHasNationalId(hasNationalId);
+            credential.setEmailSent(false); // Admin needs to manually deliver credentials
+            credential.setPasswordChanged(false);
+            credential.setCreatedAt(LocalDateTime.now());
+            
+            // Store the temporary password if generated, or indicate National ID usage
+            if (hasNationalId) {
+                credential.setPassword(member.getNationalId());
+            } else {
+                credential.setPassword(temporaryPassword);
+            }
+            
+            memberCredentialRepository.save(credential);
+            
+            // Console logging for admin reference (until email is set up)
+            if (hasNationalId) {
+                System.out.println("=== INDIVIDUAL MEMBER REGISTRATION ===");
+                System.out.println("Member: " + member.getFirstName() + " " + member.getLastName());
+                System.out.println("Username: " + username);
+                System.out.println("Initial Password: Use National ID (" + member.getNationalId() + ")");
+                System.out.println("Instructions: Tell member to use their National ID as password");
+                System.out.println("=====================================");
+            } else {
+                System.out.println("=== INDIVIDUAL MEMBER REGISTRATION ===");
+                System.out.println("Member: " + member.getFirstName() + " " + member.getLastName());
+                System.out.println("Username: " + username);
+                System.out.println("Temporary Password: " + temporaryPassword);
+                System.out.println("Instructions: Share these credentials with member");
+                System.out.println("=====================================");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to create credential tracking record for member " + member.getId() + ": " + e.getMessage());
+            // Don't throw exception - credential tracking shouldn't block member creation
         }
     }
 
@@ -232,11 +357,11 @@ public class MemberService {
         savingsAccount.setCreatedAt(LocalDateTime.now());
         accountRepository.save(savingsAccount);
         
-        // Create Shares Account
+        // Create Shares Account with mandatory 3000 KES share capital
         Account sharesAccount = new Account();
         sharesAccount.setMember(member);
         sharesAccount.setAccountType(Account.AccountType.SHARES);
-        sharesAccount.setBalance(BigDecimal.ZERO);
+        sharesAccount.setBalance(new BigDecimal("3000.00")); // Mandatory share capital for all members
         sharesAccount.setCreatedAt(LocalDateTime.now());
         accountRepository.save(sharesAccount);
     }
@@ -248,6 +373,20 @@ public class MemberService {
 
     public void deleteMember(Long id) {
         memberRepository.deleteById(id);
+    }
+
+    /**
+     * Retrieves and removes the temporarily stored generated password for a member
+     */
+    protected String getLastGeneratedPassword(Long memberId) {
+        return generatedPasswords.remove(memberId);
+    }
+
+    /**
+     * Stores a generated password temporarily for retrieval (for UI display)
+     */
+    protected void storeGeneratedPassword(Long memberId, String password) {
+        generatedPasswords.put(memberId, password);
     }
 
     public List<Member> getMembersByStatus(Member.Status status) {

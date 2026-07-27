@@ -9,8 +9,11 @@ import com.itextpdf.layout.element.Paragraph;
 import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.minet.sacco.dto.ProfitLossReportDTO;
+import com.minet.sacco.dto.WithdrawalMonitoringReportDTO;
+import com.minet.sacco.dto.ExitedMemberLoanDTO;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -18,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Service
 public class ReportExportService {
@@ -36,27 +40,50 @@ public class ReportExportService {
             // Header
             Row headerRow = sheet.createRow(0);
             headerRow.createCell(0).setCellValue("Cashbook Report");
-            headerRow.createCell(1).setCellValue("Period: " + report.getStartDate() + " to " + report.getEndDate());
+            String period = "N/A";
+            if (report.getStartDate() != null && report.getEndDate() != null) {
+                period = "Period: " + report.getStartDate() + " to " + report.getEndDate();
+            }
+            headerRow.createCell(1).setCellValue(period);
             
             // Summary
-            Row summaryRow = sheet.createRow(2);
-            summaryRow.createCell(0).setCellValue("Total Deposits:");
-            summaryRow.createCell(1).setCellValue(report.getTotalDeposits().doubleValue());
+            Row r2 = sheet.createRow(2);
+            r2.createCell(0).setCellValue("Opening Balance:");
+            r2.createCell(1).setCellValue(toDouble(report.getOpeningBalance()));
             
-            Row summaryRow2 = sheet.createRow(3);
-            summaryRow2.createCell(0).setCellValue("Total Withdrawals:");
-            summaryRow2.createCell(1).setCellValue(report.getTotalWithdrawals().doubleValue());
+            Row r3 = sheet.createRow(3);
+            r3.createCell(0).setCellValue("Total Receipts (Deposits + Repayments):");
+            r3.createCell(1).setCellValue(toDouble(report.getTotalReceipts()));
             
-            Row summaryRow3 = sheet.createRow(4);
-            summaryRow3.createCell(0).setCellValue("Total Repayments:");
-            summaryRow3.createCell(1).setCellValue(report.getTotalRepayments().doubleValue());
+            Row r4 = sheet.createRow(4);
+            r4.createCell(0).setCellValue("Total Payments (Withdrawals + Disbursements):");
+            r4.createCell(1).setCellValue(toDouble(report.getTotalPayments()));
             
-            Row summaryRow4 = sheet.createRow(5);
-            summaryRow4.createCell(0).setCellValue("Net Cash:");
-            summaryRow4.createCell(1).setCellValue(report.getNetCash().doubleValue());
+            Row r5 = sheet.createRow(5);
+            r5.createCell(0).setCellValue("Closing Balance:");
+            r5.createCell(1).setCellValue(toDouble(report.getClosingBalance()));
+            
+            Row r6 = sheet.createRow(6);
+            r6.createCell(0).setCellValue("--- Breakdown ---");
+            
+            Row r7 = sheet.createRow(7);
+            r7.createCell(0).setCellValue("  Deposits:");
+            r7.createCell(1).setCellValue(toDouble(report.getTotalDeposits()));
+            
+            Row r8 = sheet.createRow(8);
+            r8.createCell(0).setCellValue("  Loan Repayments:");
+            r8.createCell(1).setCellValue(toDouble(report.getTotalRepayments()));
+            
+            Row r9 = sheet.createRow(9);
+            r9.createCell(0).setCellValue("  Withdrawals:");
+            r9.createCell(1).setCellValue(toDouble(report.getTotalWithdrawals()));
+            
+            Row r10 = sheet.createRow(10);
+            r10.createCell(0).setCellValue("  Loan Disbursements:");
+            r10.createCell(1).setCellValue(toDouble(report.getTotalDisbursements()));
             
             // Column headers
-            Row colHeaderRow = sheet.createRow(7);
+            Row colHeaderRow = sheet.createRow(12);
             colHeaderRow.createCell(0).setCellValue("Date");
             colHeaderRow.createCell(1).setCellValue("Type");
             colHeaderRow.createCell(2).setCellValue("Member");
@@ -65,15 +92,19 @@ public class ReportExportService {
             colHeaderRow.createCell(5).setCellValue("Description");
             
             // Data rows
-            int rowNum = 8;
-            for (ReportsService.CashbookEntry entry : report.getEntries()) {
-                Row row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(entry.getDate().toString());
-                row.createCell(1).setCellValue(entry.getTransactionType());
-                row.createCell(2).setCellValue(entry.getMemberNumber());
-                row.createCell(3).setCellValue(entry.getAccountType());
-                row.createCell(4).setCellValue(entry.getAmount().doubleValue());
-                row.createCell(5).setCellValue(entry.getDescription());
+            int rowNum = 13;
+            if (report.getEntries() != null) {
+                for (ReportsService.CashbookEntry entry : report.getEntries()) {
+                    if (entry != null) {
+                        Row row = sheet.createRow(rowNum++);
+                        row.createCell(0).setCellValue(entry.getDate() != null ? entry.getDate().toString() : "");
+                        row.createCell(1).setCellValue(entry.getTransactionType() != null ? entry.getTransactionType() : "");
+                        row.createCell(2).setCellValue(entry.getMemberNumber() != null ? entry.getMemberNumber() : "");
+                        row.createCell(3).setCellValue(entry.getAccountType() != null ? entry.getAccountType() : "");
+                        row.createCell(4).setCellValue(toDouble(entry.getAmount()));
+                        row.createCell(5).setCellValue(entry.getDescription() != null ? entry.getDescription() : "");
+                    }
+                }
             }
             
             // Auto-size columns
@@ -103,13 +134,15 @@ public class ReportExportService {
             // Period info
             LocalDate startDate = report.getStartDate();
             LocalDate endDate = report.getEndDate();
-            if (startDate.isAfter(endDate)) {
+            if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
                 LocalDate temp = startDate;
                 startDate = endDate;
                 endDate = temp;
             }
-            document.add(new Paragraph("Period: " + startDate.format(DATE_FORMATTER) + " to " + endDate.format(DATE_FORMATTER))
-                .setFontSize(11));
+            if (startDate != null && endDate != null) {
+                document.add(new Paragraph("Period: " + startDate.format(DATE_FORMATTER) + " to " + endDate.format(DATE_FORMATTER))
+                    .setFontSize(11));
+            }
             document.add(new Paragraph("Generated: " + LocalDateTime.now().format(DATETIME_FORMATTER))
                 .setFontSize(10).setFontColor(ColorConstants.GRAY));
             document.add(new Paragraph(""));
@@ -118,11 +151,21 @@ public class ReportExportService {
             document.add(new Paragraph("SUMMARY").setBold().setFontSize(12));
             Table summaryTable = new Table(2);
             summaryTable.setWidth(300);
-            addSummaryRow(summaryTable, "Total Deposits:", "KES " + formatCurrency(report.getTotalDeposits()));
-            addSummaryRow(summaryTable, "Total Withdrawals:", "KES " + formatCurrency(report.getTotalWithdrawals()));
-            addSummaryRow(summaryTable, "Total Repayments:", "KES " + formatCurrency(report.getTotalRepayments()));
-            addSummaryRow(summaryTable, "Net Cash:", "KES " + formatCurrency(report.getNetCash()));
+            addSummaryRow(summaryTable, "Opening Balance:", "KES " + formatCurrency(report.getOpeningBalance()));
+            addSummaryRow(summaryTable, "Total Receipts (Deposits + Repayments):", "KES " + formatCurrency(report.getTotalReceipts()));
+            addSummaryRow(summaryTable, "Total Payments (Withdrawals + Disbursements):", "KES " + formatCurrency(report.getTotalPayments()));
+            addSummaryRow(summaryTable, "Closing Balance:", "KES " + formatCurrency(report.getClosingBalance()));
             document.add(summaryTable);
+            document.add(new Paragraph(""));
+            
+            document.add(new Paragraph("BREAKDOWN").setBold().setFontSize(11));
+            Table breakdownTable = new Table(2);
+            breakdownTable.setWidth(300);
+            addSummaryRow(breakdownTable, "  Deposits:", "KES " + formatCurrency(report.getTotalDeposits()));
+            addSummaryRow(breakdownTable, "  Loan Repayments:", "KES " + formatCurrency(report.getTotalRepayments()));
+            addSummaryRow(breakdownTable, "  Withdrawals:", "KES " + formatCurrency(report.getTotalWithdrawals()));
+            addSummaryRow(breakdownTable, "  Loan Disbursements:", "KES " + formatCurrency(report.getTotalDisbursements()));
+            document.add(breakdownTable);
             document.add(new Paragraph(""));
             
             // Transactions table
@@ -136,13 +179,18 @@ public class ReportExportService {
             addHeaderCell(table, "Amount");
             addHeaderCell(table, "Description");
             
-            for (ReportsService.CashbookEntry entry : report.getEntries()) {
-                table.addCell(new Cell().add(new Paragraph(entry.getDate().toString()).setFontSize(9)));
-                table.addCell(new Cell().add(new Paragraph(entry.getTransactionType()).setFontSize(9)));
-                table.addCell(new Cell().add(new Paragraph(entry.getMemberNumber()).setFontSize(9)));
-                table.addCell(new Cell().add(new Paragraph(entry.getAccountType()).setFontSize(9)));
-                table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getAmount())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
-                table.addCell(new Cell().add(new Paragraph(entry.getDescription()).setFontSize(9)));
+            List<ReportsService.CashbookEntry> entries = report.getEntries();
+            if (entries != null) {
+                for (ReportsService.CashbookEntry entry : entries) {
+                    if (entry != null) {
+                        table.addCell(new Cell().add(new Paragraph(entry.getDate() != null ? entry.getDate().toString() : "").setFontSize(9)));
+                        table.addCell(new Cell().add(new Paragraph(entry.getTransactionType() != null ? entry.getTransactionType() : "").setFontSize(9)));
+                        table.addCell(new Cell().add(new Paragraph(entry.getMemberNumber() != null ? entry.getMemberNumber() : "").setFontSize(9)));
+                        table.addCell(new Cell().add(new Paragraph(entry.getAccountType() != null ? entry.getAccountType() : "").setFontSize(9)));
+                        table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getAmount())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                        table.addCell(new Cell().add(new Paragraph(entry.getDescription() != null ? entry.getDescription() : "").setFontSize(9)));
+                    }
+                }
             }
             
             document.add(table);
@@ -392,7 +440,8 @@ public class ReportExportService {
                 row.createCell(3).setCellValue(entry.getAmount().doubleValue());
                 row.createCell(4).setCellValue(entry.getInterestRate().doubleValue());
                 row.createCell(5).setCellValue(entry.getTermMonths());
-                row.createCell(6).setCellValue(entry.getMonthlyRepayment().doubleValue());
+                // Defensive: handle null monthlyRepayment from reducing balance loans
+                row.createCell(6).setCellValue(entry.getMonthlyRepayment() != null ? entry.getMonthlyRepayment().doubleValue() : 0.0);
                 row.createCell(7).setCellValue(entry.getStatus());
                 row.createCell(8).setCellValue(entry.getOutstandingBalance().doubleValue());
             }
@@ -449,7 +498,8 @@ public class ReportExportService {
                 table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getAmount())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
                 table.addCell(new Cell().add(new Paragraph(entry.getInterestRate().toString()).setFontSize(8).setTextAlignment(TextAlignment.CENTER)));
                 table.addCell(new Cell().add(new Paragraph(String.valueOf(entry.getTermMonths())).setFontSize(8).setTextAlignment(TextAlignment.CENTER)));
-                table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getMonthlyRepayment())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+                // Defensive: handle null monthlyRepayment from reducing balance loans
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getMonthlyRepayment() != null ? entry.getMonthlyRepayment() : BigDecimal.ZERO)).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
                 table.addCell(new Cell().add(new Paragraph(entry.getStatus()).setFontSize(8)));
                 table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getOutstandingBalance())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
             }
@@ -642,7 +692,17 @@ public class ReportExportService {
     }
 
     private String formatCurrency(BigDecimal amount) {
+        if (amount == null) {
+            return "0.00";
+        }
         return String.format("%,.2f", amount);
+    }
+
+    private double toDouble(BigDecimal amount) {
+        if (amount == null) {
+            return 0.0;
+        }
+        return amount.doubleValue();
     }
 
     /**
@@ -900,5 +960,1173 @@ public class ReportExportService {
         } catch (Exception e) {
             throw new Exception("Error generating Profit & Loss PDF: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Export Withdrawal Monitoring Report to Excel
+     */
+    public byte[] exportWithdrawalMonitoringToExcel(WithdrawalMonitoringReportDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Withdrawal Monitoring");
+            
+            // Header
+            Row headerRow = sheet.createRow(0);
+            headerRow.createCell(0).setCellValue("Withdrawal Monitoring Report");
+            
+            // Summary Section
+            int rowNum = 2;
+            Row summaryHeaderRow = sheet.createRow(rowNum++);
+            summaryHeaderRow.createCell(0).setCellValue("SUMMARY");
+            
+            Row totalWithdrawalsRow = sheet.createRow(rowNum++);
+            totalWithdrawalsRow.createCell(0).setCellValue("Total Withdrawals:");
+            totalWithdrawalsRow.createCell(1).setCellValue(report.getSummaryTotals().getTotalWithdrawals());
+            
+            Row totalAmountRow = sheet.createRow(rowNum++);
+            totalAmountRow.createCell(0).setCellValue("Total Amount Withdrawn:");
+            totalAmountRow.createCell(1).setCellValue(report.getSummaryTotals().getTotalAmountWithdrawn().doubleValue());
+            
+            rowNum++; // Blank row
+            
+            Row methodHeaderRow = sheet.createRow(rowNum++);
+            methodHeaderRow.createCell(0).setCellValue("By Withdrawal Method");
+            methodHeaderRow.createCell(1).setCellValue("Count");
+            methodHeaderRow.createCell(2).setCellValue("Amount");
+            
+            Row mpesaRow = sheet.createRow(rowNum++);
+            mpesaRow.createCell(0).setCellValue("M-Pesa");
+            mpesaRow.createCell(1).setCellValue(report.getSummaryTotals().getMpesaSummary().getCount());
+            mpesaRow.createCell(2).setCellValue(report.getSummaryTotals().getMpesaSummary().getAmount().doubleValue());
+            
+            Row manualRow = sheet.createRow(rowNum++);
+            manualRow.createCell(0).setCellValue("Manual Cash");
+            manualRow.createCell(1).setCellValue(report.getSummaryTotals().getManualCashSummary().getCount());
+            manualRow.createCell(2).setCellValue(report.getSummaryTotals().getManualCashSummary().getAmount().doubleValue());
+            
+            Row bankRow = sheet.createRow(rowNum++);
+            bankRow.createCell(0).setCellValue("Bank Transfer");
+            bankRow.createCell(1).setCellValue(report.getSummaryTotals().getBankTransferSummary().getCount());
+            bankRow.createCell(2).setCellValue(report.getSummaryTotals().getBankTransferSummary().getAmount().doubleValue());
+            
+            rowNum += 2; // Blank rows
+            
+            // Column headers for transactions
+            Row colHeaderRow = sheet.createRow(rowNum++);
+            colHeaderRow.createCell(0).setCellValue("Transaction ID");
+            colHeaderRow.createCell(1).setCellValue("Member Number");
+            colHeaderRow.createCell(2).setCellValue("Member Name");
+            colHeaderRow.createCell(3).setCellValue("Account Type");
+            colHeaderRow.createCell(4).setCellValue("Withdrawal Amount");
+            colHeaderRow.createCell(5).setCellValue("Date");
+            colHeaderRow.createCell(6).setCellValue("Method");
+            colHeaderRow.createCell(7).setCellValue("Processed By");
+            colHeaderRow.createCell(8).setCellValue("Status");
+            colHeaderRow.createCell(9).setCellValue("Balance Before");
+            colHeaderRow.createCell(10).setCellValue("Balance After");
+            
+            // Data rows
+            for (WithdrawalMonitoringReportDTO.WithdrawalTransaction transaction : report.getWithdrawalTransactions()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(transaction.getTransactionId());
+                row.createCell(1).setCellValue(transaction.getMemberNumber());
+                row.createCell(2).setCellValue(transaction.getMemberName());
+                row.createCell(3).setCellValue(transaction.getAccountType());
+                row.createCell(4).setCellValue(transaction.getWithdrawalAmount().doubleValue());
+                row.createCell(5).setCellValue(transaction.getTransactionDate().toString());
+                row.createCell(6).setCellValue(transaction.getWithdrawalMethod());
+                row.createCell(7).setCellValue(transaction.getProcessedBy());
+                row.createCell(8).setCellValue(transaction.getTransactionStatus());
+                row.createCell(9).setCellValue(transaction.getAccountBalanceBefore().doubleValue());
+                row.createCell(10).setCellValue(transaction.getAccountBalanceAfter().doubleValue());
+            }
+            
+            // Auto-size columns
+            for (int i = 0; i < 11; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Export Withdrawal Monitoring Report to PDF
+     */
+    public byte[] exportWithdrawalMonitoringToPdf(WithdrawalMonitoringReportDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "WITHDRAWAL MONITORING REPORT");
+            document.add(new Paragraph("Generated: " + LocalDateTime.now().format(DATETIME_FORMATTER))
+                .setFontSize(10).setFontColor(ColorConstants.GRAY));
+            document.add(new Paragraph(""));
+            
+            // Summary section
+            document.add(new Paragraph("SUMMARY").setBold().setFontSize(12));
+            Table summaryTable = new Table(2);
+            summaryTable.setWidth(300);
+            addSummaryRow(summaryTable, "Total Withdrawals:", String.valueOf(report.getSummaryTotals().getTotalWithdrawals()));
+            addSummaryRow(summaryTable, "Total Amount:", "KES " + formatCurrency(report.getSummaryTotals().getTotalAmountWithdrawn()));
+            document.add(summaryTable);
+            document.add(new Paragraph(""));
+            
+            // By Method section
+            document.add(new Paragraph("BY WITHDRAWAL METHOD").setBold().setFontSize(12));
+            Table methodTable = new Table(3);
+            methodTable.setWidth(400);
+            addHeaderCell(methodTable, "Method");
+            addHeaderCell(methodTable, "Count");
+            addHeaderCell(methodTable, "Amount");
+            
+            addMethodRow(methodTable, "M-Pesa", report.getSummaryTotals().getMpesaSummary());
+            addMethodRow(methodTable, "Manual Cash", report.getSummaryTotals().getManualCashSummary());
+            addMethodRow(methodTable, "Bank Transfer", report.getSummaryTotals().getBankTransferSummary());
+            
+            document.add(methodTable);
+            document.add(new Paragraph(""));
+            
+            // Transactions table
+            document.add(new Paragraph("WITHDRAWAL TRANSACTIONS").setBold().setFontSize(12));
+            Table table = new Table(11);
+            table.setWidth(100);
+            addHeaderCell(table, "ID");
+            addHeaderCell(table, "Member #");
+            addHeaderCell(table, "Name");
+            addHeaderCell(table, "Account");
+            addHeaderCell(table, "Amount");
+            addHeaderCell(table, "Date");
+            addHeaderCell(table, "Method");
+            addHeaderCell(table, "By");
+            addHeaderCell(table, "Status");
+            addHeaderCell(table, "Before");
+            addHeaderCell(table, "After");
+            
+            for (WithdrawalMonitoringReportDTO.WithdrawalTransaction transaction : report.getWithdrawalTransactions()) {
+                table.addCell(new Cell().add(new Paragraph(String.valueOf(transaction.getTransactionId())).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getMemberNumber()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getMemberName()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getAccountType()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(transaction.getWithdrawalAmount())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getTransactionDate().toLocalDate().toString()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getWithdrawalMethod()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getProcessedBy()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(transaction.getTransactionStatus()).setFontSize(8)));
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(transaction.getAccountBalanceBefore())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(transaction.getAccountBalanceAfter())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+            }
+            
+            document.add(table);
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate PDF: " + e.getMessage(), e);
+        }
+        
+        return baos.toByteArray();
+    }
+
+    private void addMethodRow(Table table, String method, WithdrawalMonitoringReportDTO.MethodSummary summary) {
+        table.addCell(new Cell().add(new Paragraph(method).setFontSize(9)));
+        table.addCell(new Cell().add(new Paragraph(String.valueOf(summary.getCount())).setFontSize(9).setTextAlignment(TextAlignment.CENTER)));
+        table.addCell(new Cell().add(new Paragraph(formatCurrency(summary.getAmount())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+    }
+
+    /**
+     * Export Guarantor Report to Excel
+     */
+    public byte[] exportGuarantorReportToExcel(com.minet.sacco.dto.GuarantorReportDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Guarantor Report");
+            
+            int rowNum = 0;
+            
+            // Header
+            Row headerRow = sheet.createRow(rowNum++);
+            headerRow.createCell(0).setCellValue("GUARANTOR REPORT");
+            headerRow.createCell(1).setCellValue("Generated: " + LocalDateTime.now().format(DATETIME_FORMATTER));
+            
+            rowNum++; // Blank row
+            
+            if (report.getMemberDetail() != null) {
+                com.minet.sacco.dto.GuarantorReportDTO.MemberGuarantorDetail detail = report.getMemberDetail();
+                
+                // Member info
+                Row memberRow = sheet.createRow(rowNum++);
+                memberRow.createCell(0).setCellValue("Member: " + detail.getMemberName() + " (" + detail.getMemberNumber() + ")");
+                
+                Row statusRow = sheet.createRow(rowNum++);
+                statusRow.createCell(0).setCellValue("Status: " + detail.getMemberStatus());
+                
+                rowNum++; // Blank row
+                
+                // Guarantor Capacity
+                Row capacityHeader = sheet.createRow(rowNum++);
+                capacityHeader.createCell(0).setCellValue("GUARANTOR CAPACITY");
+                
+                Row savingsRow = sheet.createRow(rowNum++);
+                savingsRow.createCell(0).setCellValue("Total Savings:");
+                savingsRow.createCell(1).setCellValue(detail.getTotalSavings().doubleValue());
+                
+                Row frozenRow = sheet.createRow(rowNum++);
+                frozenRow.createCell(0).setCellValue("Frozen Self-Guarantee:");
+                frozenRow.createCell(1).setCellValue(detail.getFrozenSelfGuaranteeAmount().doubleValue());
+                
+                Row availableRow = sheet.createRow(rowNum++);
+                availableRow.createCell(0).setCellValue("Available Savings:");
+                availableRow.createCell(1).setCellValue(detail.getAvailableSavings().doubleValue());
+                
+                rowNum++; // Blank row
+                
+                // Active Guarantor Pledges
+                Row pledgesHeader = sheet.createRow(rowNum++);
+                pledgesHeader.createCell(0).setCellValue("ACTIVE GUARANTOR PLEDGES");
+                
+                Row loansCountRow = sheet.createRow(rowNum++);
+                loansCountRow.createCell(0).setCellValue("Loans Being Guaranteed:");
+                loansCountRow.createCell(1).setCellValue(detail.getNumberOfLoansGuaranteeing());
+                
+                Row totalPledgeRow = sheet.createRow(rowNum++);
+                totalPledgeRow.createCell(0).setCellValue("Total Pledge Amount:");
+                totalPledgeRow.createCell(1).setCellValue(detail.getTotalPledgeAmount().doubleValue());
+                
+                Row capacityRow = sheet.createRow(rowNum++);
+                capacityRow.createCell(0).setCellValue("Available Guarantorship Capacity:");
+                capacityRow.createCell(1).setCellValue(detail.getAvailableGuarantorshipCapacity().doubleValue());
+                
+                rowNum += 2; // Blank rows
+                
+                // Loans being guaranteed table
+                if (detail.getLoansGuaranteeing() != null && !detail.getLoansGuaranteeing().isEmpty()) {
+                    Row loansTableHeader = sheet.createRow(rowNum++);
+                    loansTableHeader.createCell(0).setCellValue("LOANS BEING GUARANTEED");
+                    
+                    Row colHeaders = sheet.createRow(rowNum++);
+                    colHeaders.createCell(0).setCellValue("Loan #");
+                    colHeaders.createCell(1).setCellValue("Borrower");
+                    colHeaders.createCell(2).setCellValue("Loan Amount");
+                    colHeaders.createCell(3).setCellValue("Outstanding");
+                    colHeaders.createCell(4).setCellValue("Pledge Amount");
+                    colHeaders.createCell(5).setCellValue("Status");
+                    
+                    for (com.minet.sacco.dto.GuarantorReportDTO.GuarantorLoansDetail loan : detail.getLoansGuaranteeing()) {
+                        Row loanRow = sheet.createRow(rowNum++);
+                        loanRow.createCell(0).setCellValue(loan.getLoanNumber());
+                        loanRow.createCell(1).setCellValue(loan.getBorrowerName());
+                        loanRow.createCell(2).setCellValue(loan.getLoanAmount().doubleValue());
+                        loanRow.createCell(3).setCellValue(loan.getOutstandingBalance().doubleValue());
+                        loanRow.createCell(4).setCellValue(loan.getGuarantorPledgeAmount().doubleValue());
+                        loanRow.createCell(5).setCellValue(loan.getStatus());
+                    }
+                }
+            } else if (report.getMemberSummaries() != null) {
+                // All Members View
+                Row summaryHeader = sheet.createRow(rowNum++);
+                summaryHeader.createCell(0).setCellValue("ALL MEMBERS - GUARANTOR CAPACITY SUMMARY");
+                
+                rowNum++; // Blank row
+                
+                Row colHeaders = sheet.createRow(rowNum++);
+                colHeaders.createCell(0).setCellValue("Member #");
+                colHeaders.createCell(1).setCellValue("Member Name");
+                colHeaders.createCell(2).setCellValue("Status");
+                colHeaders.createCell(3).setCellValue("Available Savings");
+                colHeaders.createCell(4).setCellValue("Guarantorship Capacity");
+                colHeaders.createCell(5).setCellValue("Loans Guaranteeing");
+                
+                for (com.minet.sacco.dto.GuarantorReportDTO.MemberGuarantorSummary summary : report.getMemberSummaries()) {
+                    Row row = sheet.createRow(rowNum++);
+                    row.createCell(0).setCellValue(summary.getMemberNumber());
+                    row.createCell(1).setCellValue(summary.getMemberName());
+                    row.createCell(2).setCellValue(summary.getMemberStatus());
+                    row.createCell(3).setCellValue(summary.getAvailableSavings().doubleValue());
+                    row.createCell(4).setCellValue(summary.getAvailableGuarantorshipCapacity().doubleValue());
+                    row.createCell(5).setCellValue(summary.getNumberOfLoansGuaranteeing());
+                }
+            }
+            
+            for (int i = 0; i < 6; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Export Guarantor Report to PDF
+     */
+    public byte[] exportGuarantorReportToPdf(com.minet.sacco.dto.GuarantorReportDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            addReportHeader(document, "GUARANTOR REPORT");
+            document.add(new Paragraph("Generated: " + LocalDateTime.now().format(DATETIME_FORMATTER))
+                .setFontSize(10).setFontColor(ColorConstants.GRAY));
+            document.add(new Paragraph(""));
+            
+            if (report.getMemberDetail() != null) {
+                com.minet.sacco.dto.GuarantorReportDTO.MemberGuarantorDetail detail = report.getMemberDetail();
+                document.add(new Paragraph("Member: " + detail.getMemberName() + " (" + detail.getMemberNumber() + ")")
+                    .setFontSize(11).setBold());
+                document.add(new Paragraph("Status: " + detail.getMemberStatus()).setFontSize(10));
+                document.add(new Paragraph(""));
+                
+                Table capacityTable = new Table(2);
+                capacityTable.setWidth(400);
+                addSummaryRow(capacityTable, "Total Savings:", "KES " + formatCurrency(detail.getTotalSavings()));
+                addSummaryRow(capacityTable, "Frozen Self-Guarantee:", "KES " + formatCurrency(detail.getFrozenSelfGuaranteeAmount()));
+                addSummaryRow(capacityTable, "Available Savings:", "KES " + formatCurrency(detail.getAvailableSavings()));
+                document.add(capacityTable);
+                document.add(new Paragraph(""));
+            }
+            
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate PDF: " + e.getMessage(), e);
+        }
+        
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export Loan Eligibility Report to Excel
+     */
+    public byte[] exportLoanEligibilityToExcel(com.minet.sacco.dto.LoanEligibilityReportDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Loan Eligibility");
+            
+            int rowNum = 0;
+            
+            Row headerRow = sheet.createRow(rowNum++);
+            headerRow.createCell(0).setCellValue("LOAN ELIGIBILITY REPORT");
+            
+            Row memberRow = sheet.createRow(rowNum++);
+            memberRow.createCell(0).setCellValue("Member: " + report.getMemberName() + " (" + report.getMemberNumber() + ")");
+            
+            rowNum++; // Blank row
+            
+            Row savingsHeader = sheet.createRow(rowNum++);
+            savingsHeader.createCell(0).setCellValue("SAVINGS STATUS");
+            
+            Row savingsRow = sheet.createRow(rowNum++);
+            savingsRow.createCell(0).setCellValue("Savings Balance:");
+            savingsRow.createCell(1).setCellValue(report.getSavingsBalance().doubleValue());
+            
+            Row frozenRow = sheet.createRow(rowNum++);
+            frozenRow.createCell(0).setCellValue("Frozen Amount:");
+            frozenRow.createCell(1).setCellValue(report.getFrozenAmount().doubleValue());
+            
+            Row availableRow = sheet.createRow(rowNum++);
+            availableRow.createCell(0).setCellValue("Available Savings:");
+            availableRow.createCell(1).setCellValue(report.getAvailableSavings().doubleValue());
+            
+            rowNum++; // Blank row
+            
+            Row eligibilityHeader = sheet.createRow(rowNum++);
+            eligibilityHeader.createCell(0).setCellValue("ELIGIBILITY CALCULATION");
+            
+            Row grossEligibilityRow = sheet.createRow(rowNum++);
+            grossEligibilityRow.createCell(0).setCellValue("Gross Eligibility (Savings Ã— 3):");
+            grossEligibilityRow.createCell(1).setCellValue(report.getGrossEligibility().doubleValue());
+            
+            Row outstandingRow = sheet.createRow(rowNum++);
+            outstandingRow.createCell(0).setCellValue("Outstanding Loan Balance:");
+            outstandingRow.createCell(1).setCellValue(report.getOutstandingLoanBalance().doubleValue());
+            
+            Row remainingRow = sheet.createRow(rowNum++);
+            remainingRow.createCell(0).setCellValue("Remaining Eligibility:");
+            remainingRow.createCell(1).setCellValue(report.getRemainingEligibility().doubleValue());
+            
+            Row monthsRow = sheet.createRow(rowNum++);
+            monthsRow.createCell(0).setCellValue("Months Contributed:");
+            monthsRow.createCell(1).setCellValue(report.getMonthsContributed());
+            
+            rowNum++; // Blank row
+            
+            Row statusRow = sheet.createRow(rowNum++);
+            statusRow.createCell(0).setCellValue("ELIGIBILITY STATUS");
+            
+            Row statusValueRow = sheet.createRow(rowNum++);
+            statusValueRow.createCell(0).setCellValue("Status:");
+            statusValueRow.createCell(1).setCellValue(report.getEligibilityStatus());
+            
+            Row reasonRow = sheet.createRow(rowNum++);
+            reasonRow.createCell(0).setCellValue("Reason:");
+            reasonRow.createCell(1).setCellValue(report.getEligibilityReason());
+            
+            for (int i = 0; i < 2; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Export Loan Eligibility Report to PDF
+     */
+    public byte[] exportLoanEligibilityToPdf(com.minet.sacco.dto.LoanEligibilityReportDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            addReportHeader(document, "LOAN ELIGIBILITY REPORT");
+            document.add(new Paragraph("Member: " + report.getMemberName() + " (" + report.getMemberNumber() + ")")
+                .setFontSize(11).setBold());
+            document.add(new Paragraph("Status: " + report.getEligibilityStatus() + " - " + report.getEligibilityReason())
+                .setFontSize(11).setFontColor(report.getEligibilityStatus().equals("ELIGIBLE") ? ColorConstants.GREEN : ColorConstants.RED));
+            document.add(new Paragraph(""));
+            
+            Table eligibilityTable = new Table(2);
+            eligibilityTable.setWidth(400);
+            addSummaryRow(eligibilityTable, "Savings Balance:", "KES " + formatCurrency(report.getSavingsBalance()));
+            addSummaryRow(eligibilityTable, "Gross Eligibility:", "KES " + formatCurrency(report.getGrossEligibility()));
+            addSummaryRow(eligibilityTable, "Remaining Eligibility:", "KES " + formatCurrency(report.getRemainingEligibility()));
+            addSummaryRow(eligibilityTable, "Months Contributed:", String.valueOf(report.getMonthsContributed()));
+            document.add(eligibilityTable);
+            
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate PDF: " + e.getMessage(), e);
+        }
+        
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export Monthly Contribution Tracking to Excel
+     */
+    public byte[] exportMonthlyContributionTrackingToExcel(com.minet.sacco.dto.MonthlyContributionTrackingDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Monthly Tracking");
+            
+            int rowNum = 0;
+            
+            Row headerRow = sheet.createRow(rowNum++);
+            headerRow.createCell(0).setCellValue("MONTHLY CONTRIBUTION TRACKING REPORT");
+            
+            rowNum++; // Blank row
+            
+            if (report.getBatches() != null && !report.getBatches().isEmpty()) {
+                for (com.minet.sacco.dto.MonthlyContributionTrackingDTO.BatchSummary batch : report.getBatches()) {
+                    Row batchHeader = sheet.createRow(rowNum++);
+                    batchHeader.createCell(0).setCellValue("Batch ID: " + batch.getBatchId() + " - " + batch.getBatchDate());
+                    
+                    Row statusRow = sheet.createRow(rowNum++);
+                    statusRow.createCell(0).setCellValue("Status: " + batch.getBatchStatus());
+                    
+                    Row membersRow = sheet.createRow(rowNum++);
+                    membersRow.createCell(0).setCellValue("Members Processed: " + batch.getSuccessfullyProcessed());
+                    
+                    Row savingsRow = sheet.createRow(rowNum++);
+                    savingsRow.createCell(0).setCellValue("Total Savings: " + formatCurrency(batch.getTotalSavingsPosted()));
+                    
+                    Row repaymentsRow = sheet.createRow(rowNum++);
+                    repaymentsRow.createCell(0).setCellValue("Total Repayments: " + formatCurrency(batch.getTotalLoanRepaymentsPosted()));
+                    
+                    rowNum++; // Blank row
+                }
+            }
+            
+            if (report.getAggregatedSummary() != null) {
+                rowNum++; // Blank row
+                
+                Row summaryHeader = sheet.createRow(rowNum++);
+                summaryHeader.createCell(0).setCellValue("AGGREGATED SUMMARY");
+                
+                Row totalBatchesRow = sheet.createRow(rowNum++);
+                totalBatchesRow.createCell(0).setCellValue("Total Batches:");
+                totalBatchesRow.createCell(1).setCellValue(report.getAggregatedSummary().getTotalBatches());
+                
+                Row completedRow = sheet.createRow(rowNum++);
+                completedRow.createCell(0).setCellValue("Completed:");
+                completedRow.createCell(1).setCellValue(report.getAggregatedSummary().getCompletedBatches());
+                
+                Row totalSavingsRow = sheet.createRow(rowNum++);
+                totalSavingsRow.createCell(0).setCellValue("Total Savings All Batches:");
+                totalSavingsRow.createCell(1).setCellValue(report.getAggregatedSummary().getTotalSavingsAllBatches().doubleValue());
+                
+                Row eligibleRow = sheet.createRow(rowNum++);
+                eligibleRow.createCell(0).setCellValue("Total Eligible Members:");
+                eligibleRow.createCell(1).setCellValue(report.getAggregatedSummary().getTotalEligibleMembers());
+            }
+            
+            for (int i = 0; i < 2; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Export Monthly Contribution Tracking to PDF
+     */
+    public byte[] exportMonthlyContributionTrackingToPdf(com.minet.sacco.dto.MonthlyContributionTrackingDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            addReportHeader(document, "MONTHLY CONTRIBUTION TRACKING REPORT");
+            document.add(new Paragraph("Generated: " + LocalDateTime.now().format(DATETIME_FORMATTER))
+                .setFontSize(10).setFontColor(ColorConstants.GRAY));
+            document.add(new Paragraph(""));
+            
+            if (report.getAggregatedSummary() != null) {
+                Table summaryTable = new Table(2);
+                summaryTable.setWidth(400);
+                addSummaryRow(summaryTable, "Total Batches:", String.valueOf(report.getAggregatedSummary().getTotalBatches()));
+                addSummaryRow(summaryTable, "Completed:", String.valueOf(report.getAggregatedSummary().getCompletedBatches()));
+                addSummaryRow(summaryTable, "Total Savings:", "KES " + formatCurrency(report.getAggregatedSummary().getTotalSavingsAllBatches()));
+                addSummaryRow(summaryTable, "Eligible Members:", String.valueOf(report.getAggregatedSummary().getTotalEligibleMembers()));
+                document.add(summaryTable);
+            }
+            
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate PDF: " + e.getMessage(), e);
+        }
+        
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export GL Trial Balance to Excel
+     */
+    public byte[] exportTrialBalanceToExcel(com.minet.sacco.dto.TrialBalanceDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Trial Balance");
+            
+            // Header
+            Row headerRow = sheet.createRow(0);
+            headerRow.createCell(0).setCellValue("GL TRIAL BALANCE REPORT");
+            
+            Row dateRow = sheet.createRow(1);
+            dateRow.createCell(0).setCellValue("As at: " + report.getAsOfDate());
+            
+            // Column headers
+            Row colHeaderRow = sheet.createRow(3);
+            colHeaderRow.createCell(0).setCellValue("Code");
+            colHeaderRow.createCell(1).setCellValue("Account Name");
+            colHeaderRow.createCell(2).setCellValue("Type");
+            colHeaderRow.createCell(3).setCellValue("Debit");
+            colHeaderRow.createCell(4).setCellValue("Credit");
+            
+            // Data rows
+            int rowNum = 4;
+            for (com.minet.sacco.dto.TrialBalanceLineDTO line : report.getLines()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(line.getCode());
+                row.createCell(1).setCellValue(line.getName());
+                row.createCell(2).setCellValue(line.getAccountType());
+                
+                // Debit or Credit based on isDebit flag
+                if (line.getIsDebit()) {
+                    row.createCell(3).setCellValue(line.getBalance().doubleValue());
+                    row.createCell(4).setCellValue(0);
+                } else {
+                    row.createCell(3).setCellValue(0);
+                    row.createCell(4).setCellValue(line.getBalance().doubleValue());
+                }
+            }
+            
+            // Summary rows
+            rowNum++;
+            Row totalRow = sheet.createRow(rowNum++);
+            totalRow.createCell(0).setCellValue("TOTALS");
+            totalRow.createCell(3).setCellValue(report.getSummary().getTotalDebit().doubleValue());
+            totalRow.createCell(4).setCellValue(report.getSummary().getTotalCredit().doubleValue());
+            
+            Row balanceRow = sheet.createRow(rowNum++);
+            balanceRow.createCell(0).setCellValue("Balanced: " + (report.getSummary().getIsBalanced() ? "YES" : "NO"));
+            
+            for (int i = 0; i < 5; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Export GL Trial Balance to PDF
+     */
+    public byte[] exportTrialBalanceToPdf(com.minet.sacco.dto.TrialBalanceDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "GL TRIAL BALANCE REPORT");
+            document.add(new Paragraph("As at: " + report.getAsOfDate().format(DATE_FORMATTER))
+                .setFontSize(11));
+            document.add(new Paragraph(""));
+            
+            // Table
+            Table table = new Table(5);
+            table.setWidth(100);
+            addHeaderCell(table, "Code");
+            addHeaderCell(table, "Account Name");
+            addHeaderCell(table, "Type");
+            addHeaderCell(table, "Debit");
+            addHeaderCell(table, "Credit");
+            
+            for (com.minet.sacco.dto.TrialBalanceLineDTO line : report.getLines()) {
+                table.addCell(new Cell().add(new Paragraph(line.getCode()).setFontSize(9)));
+                table.addCell(new Cell().add(new Paragraph(line.getName()).setFontSize(9)));
+                table.addCell(new Cell().add(new Paragraph(line.getAccountType()).setFontSize(9)));
+                
+                if (line.getIsDebit()) {
+                    table.addCell(new Cell().add(new Paragraph(formatCurrency(line.getBalance())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                    table.addCell(new Cell().add(new Paragraph("").setFontSize(9)));
+                } else {
+                    table.addCell(new Cell().add(new Paragraph("").setFontSize(9)));
+                    table.addCell(new Cell().add(new Paragraph(formatCurrency(line.getBalance())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                }
+            }
+            
+            // Totals row
+            table.addCell(new Cell().add(new Paragraph("TOTALS").setBold().setFontSize(9)));
+            table.addCell(new Cell().add(new Paragraph("").setFontSize(9)));
+            table.addCell(new Cell().add(new Paragraph("").setFontSize(9)));
+            table.addCell(new Cell().add(new Paragraph(formatCurrency(report.getSummary().getTotalDebit())).setBold().setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+            table.addCell(new Cell().add(new Paragraph(formatCurrency(report.getSummary().getTotalCredit())).setBold().setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+            
+            document.add(table);
+            document.add(new Paragraph(""));
+            document.add(new Paragraph("Balanced: " + (report.getSummary().getIsBalanced() ? "YES" : "NO")).setBold());
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate PDF: " + e.getMessage(), e);
+        }
+        
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export GL Balance Sheet to Excel
+     */
+    public byte[] exportBalanceSheetToExcel(com.minet.sacco.dto.BalanceSheetDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Balance Sheet");
+            
+            int rowNum = 0;
+            
+            // Header
+            Row headerRow = sheet.createRow(rowNum++);
+            headerRow.createCell(0).setCellValue("GL BALANCE SHEET");
+            
+            Row dateRow = sheet.createRow(rowNum++);
+            dateRow.createCell(0).setCellValue("As at: " + report.getAsOfDate());
+            
+            rowNum++; // Blank row
+            
+            // Assets
+            Row assetsHeader = sheet.createRow(rowNum++);
+            assetsHeader.createCell(0).setCellValue("ASSETS");
+            
+            for (com.minet.sacco.dto.BalanceSheetLineDTO asset : report.getAssets()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(asset.getCode() + " - " + asset.getName());
+                row.createCell(1).setCellValue(asset.getAmount().doubleValue());
+            }
+            
+            Row totalAssetsRow = sheet.createRow(rowNum++);
+            totalAssetsRow.createCell(0).setCellValue("Total Assets");
+            totalAssetsRow.createCell(1).setCellValue(report.getTotalAssets().doubleValue());
+            
+            rowNum++; // Blank row
+            
+            // Liabilities
+            Row liabilitiesHeader = sheet.createRow(rowNum++);
+            liabilitiesHeader.createCell(0).setCellValue("LIABILITIES");
+            
+            for (com.minet.sacco.dto.BalanceSheetLineDTO liability : report.getLiabilities()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(liability.getCode() + " - " + liability.getName());
+                row.createCell(1).setCellValue(liability.getAmount().doubleValue());
+            }
+            
+            Row totalLiabilitiesRow = sheet.createRow(rowNum++);
+            totalLiabilitiesRow.createCell(0).setCellValue("Total Liabilities");
+            totalLiabilitiesRow.createCell(1).setCellValue(report.getTotalLiabilities().doubleValue());
+            
+            rowNum++; // Blank row
+            
+            // Equity
+            Row equityHeader = sheet.createRow(rowNum++);
+            equityHeader.createCell(0).setCellValue("EQUITY");
+            
+            for (com.minet.sacco.dto.BalanceSheetLineDTO eq : report.getEquity()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(eq.getCode() + " - " + eq.getName());
+                row.createCell(1).setCellValue(eq.getAmount().doubleValue());
+            }
+            
+            Row totalEquityRow = sheet.createRow(rowNum++);
+            totalEquityRow.createCell(0).setCellValue("Total Equity");
+            totalEquityRow.createCell(1).setCellValue(report.getTotalEquity().doubleValue());
+            
+            rowNum++; // Blank row
+            
+            Row balanceRow = sheet.createRow(rowNum++);
+            balanceRow.createCell(0).setCellValue("Balanced: " + (report.getIsBalanced() ? "YES" : "NO"));
+            
+            sheet.autoSizeColumn(0);
+            sheet.autoSizeColumn(1);
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Export GL Balance Sheet to PDF
+     */
+    public byte[] exportBalanceSheetToPdf(com.minet.sacco.dto.BalanceSheetDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "GL BALANCE SHEET");
+            document.add(new Paragraph("As at: " + report.getAsOfDate().format(DATE_FORMATTER))
+                .setFontSize(11));
+            document.add(new Paragraph(""));
+            
+            // Assets
+            document.add(new Paragraph("ASSETS").setBold().setFontSize(12));
+            Table assetsTable = new Table(2);
+            assetsTable.setWidth(400);
+            
+            for (com.minet.sacco.dto.BalanceSheetLineDTO asset : report.getAssets()) {
+                addSummaryRow(assetsTable, asset.getCode() + " - " + asset.getName(), 
+                    "KES " + formatCurrency(asset.getAmount()));
+            }
+            addSummaryRow(assetsTable, "Total Assets:", "KES " + formatCurrency(report.getTotalAssets()));
+            document.add(assetsTable);
+            document.add(new Paragraph(""));
+            
+            // Liabilities
+            document.add(new Paragraph("LIABILITIES").setBold().setFontSize(12));
+            Table liabilitiesTable = new Table(2);
+            liabilitiesTable.setWidth(400);
+            
+            for (com.minet.sacco.dto.BalanceSheetLineDTO liability : report.getLiabilities()) {
+                addSummaryRow(liabilitiesTable, liability.getCode() + " - " + liability.getName(), 
+                    "KES " + formatCurrency(liability.getAmount()));
+            }
+            addSummaryRow(liabilitiesTable, "Total Liabilities:", "KES " + formatCurrency(report.getTotalLiabilities()));
+            document.add(liabilitiesTable);
+            document.add(new Paragraph(""));
+            
+            // Equity
+            document.add(new Paragraph("EQUITY").setBold().setFontSize(12));
+            Table equityTable = new Table(2);
+            equityTable.setWidth(400);
+            
+            for (com.minet.sacco.dto.BalanceSheetLineDTO eq : report.getEquity()) {
+                addSummaryRow(equityTable, eq.getCode() + " - " + eq.getName(), 
+                    "KES " + formatCurrency(eq.getAmount()));
+            }
+            addSummaryRow(equityTable, "Total Equity:", "KES " + formatCurrency(report.getTotalEquity()));
+            document.add(equityTable);
+            document.add(new Paragraph(""));
+            
+            document.add(new Paragraph("Balanced: " + (report.getIsBalanced() ? "YES" : "NO")).setBold());
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate PDF: " + e.getMessage(), e);
+        }
+        
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export GL Income Statement to Excel
+     */
+    public byte[] exportIncomeStatementToExcel(com.minet.sacco.dto.IncomeStatementDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Income Statement");
+            
+            int rowNum = 0;
+            
+            // Header
+            Row headerRow = sheet.createRow(rowNum++);
+            headerRow.createCell(0).setCellValue("GL INCOME STATEMENT");
+            
+            Row dateRow = sheet.createRow(rowNum++);
+            dateRow.createCell(0).setCellValue("Period: " + report.getFromDate() + " to " + report.getToDate());
+            
+            rowNum++; // Blank row
+            
+            // Revenues
+            Row revenueHeader = sheet.createRow(rowNum++);
+            revenueHeader.createCell(0).setCellValue("REVENUES");
+            
+            for (com.minet.sacco.dto.IncomeStatementLineDTO revenue : report.getRevenues()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(revenue.getCode() + " - " + revenue.getName());
+                row.createCell(1).setCellValue(revenue.getAmount().doubleValue());
+            }
+            
+            Row totalRevenueRow = sheet.createRow(rowNum++);
+            totalRevenueRow.createCell(0).setCellValue("Total Revenues");
+            totalRevenueRow.createCell(1).setCellValue(report.getTotalRevenues().doubleValue());
+            
+            rowNum++; // Blank row
+            
+            // Expenses
+            Row expenseHeader = sheet.createRow(rowNum++);
+            expenseHeader.createCell(0).setCellValue("EXPENSES");
+            
+            for (com.minet.sacco.dto.IncomeStatementLineDTO expense : report.getExpenses()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(expense.getCode() + " - " + expense.getName());
+                row.createCell(1).setCellValue(expense.getAmount().doubleValue());
+            }
+            
+            Row totalExpenseRow = sheet.createRow(rowNum++);
+            totalExpenseRow.createCell(0).setCellValue("Total Expenses");
+            totalExpenseRow.createCell(1).setCellValue(report.getTotalExpenses().doubleValue());
+            
+            rowNum++; // Blank row
+            
+            // Net Income
+            Row netIncomeRow = sheet.createRow(rowNum++);
+            netIncomeRow.createCell(0).setCellValue("NET INCOME");
+            netIncomeRow.createCell(1).setCellValue(report.getNetIncome().doubleValue());
+            
+            Row profitMarginRow = sheet.createRow(rowNum++);
+            profitMarginRow.createCell(0).setCellValue("Profit Margin (%)");
+            profitMarginRow.createCell(1).setCellValue(report.getProfitMarginPercent().doubleValue());
+            
+            sheet.autoSizeColumn(0);
+            sheet.autoSizeColumn(1);
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    /**
+     * Export GL Income Statement to PDF
+     */
+    public byte[] exportIncomeStatementToPdf(com.minet.sacco.dto.IncomeStatementDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "GL INCOME STATEMENT");
+            document.add(new Paragraph("Period: " + report.getFromDate().format(DATE_FORMATTER) + 
+                " to " + report.getToDate().format(DATE_FORMATTER))
+                .setFontSize(11));
+            document.add(new Paragraph(""));
+            
+            // Revenues
+            document.add(new Paragraph("REVENUES").setBold().setFontSize(12));
+            Table revenuesTable = new Table(2);
+            revenuesTable.setWidth(400);
+            
+            for (com.minet.sacco.dto.IncomeStatementLineDTO revenue : report.getRevenues()) {
+                addSummaryRow(revenuesTable, revenue.getCode() + " - " + revenue.getName(), 
+                    "KES " + formatCurrency(revenue.getAmount()));
+            }
+            addSummaryRow(revenuesTable, "Total Revenues:", "KES " + formatCurrency(report.getTotalRevenues()));
+            document.add(revenuesTable);
+            document.add(new Paragraph(""));
+            
+            // Expenses
+            document.add(new Paragraph("EXPENSES").setBold().setFontSize(12));
+            Table expensesTable = new Table(2);
+            expensesTable.setWidth(400);
+            
+            for (com.minet.sacco.dto.IncomeStatementLineDTO expense : report.getExpenses()) {
+                addSummaryRow(expensesTable, expense.getCode() + " - " + expense.getName(), 
+                    "KES " + formatCurrency(expense.getAmount()));
+            }
+            addSummaryRow(expensesTable, "Total Expenses:", "KES " + formatCurrency(report.getTotalExpenses()));
+            document.add(expensesTable);
+            document.add(new Paragraph(""));
+            
+            // Net Income
+            Table summaryTable = new Table(2);
+            summaryTable.setWidth(400);
+            addSummaryRow(summaryTable, "Net Income:", "KES " + formatCurrency(report.getNetIncome()));
+            addSummaryRow(summaryTable, "Profit Margin (%):", report.getProfitMarginPercent().toString() + "%");
+            document.add(summaryTable);
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate PDF: " + e.getMessage(), e);
+        }
+        
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export Over-Committed Guarantor Report to Excel
+     */
+    public byte[] exportOverCommittedGuarantorToExcel(com.minet.sacco.dto.OverCommittedGuarantorDTO report) throws Exception {
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Over-Committed Guarantors");
+        
+        // Set column widths
+        sheet.setColumnWidth(0, 4000);  // Member ID
+        sheet.setColumnWidth(1, 4000);  // Member Number
+        sheet.setColumnWidth(2, 5000);  // Member Name
+        sheet.setColumnWidth(3, 4000);  // Total Savings
+        sheet.setColumnWidth(4, 4000);  // Available Savings
+        sheet.setColumnWidth(5, 4000);  // Frozen Pledges
+        sheet.setColumnWidth(6, 4000);  // Over-Committed
+        sheet.setColumnWidth(7, 3000);  // # Loans
+        
+        // Title row
+        Row titleRow = sheet.createRow(0);
+        org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+        titleCell.setCellValue("OVER-COMMITTED GUARANTOR RISK REPORT");
+        titleCell.setCellStyle(createHeaderStyle(workbook));
+        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 7));
+        
+        // Summary row
+        Row summaryRow1 = sheet.createRow(1);
+        summaryRow1.createCell(0).setCellValue("Total At Risk:");
+        summaryRow1.createCell(1).setCellValue(formatCurrency(report.getTotalAtRisk()));
+        
+        Row summaryRow2 = sheet.createRow(2);
+        summaryRow2.createCell(0).setCellValue("Count Over-Committed:");
+        summaryRow2.createCell(1).setCellValue(report.getCountOverCommitted());
+        
+        // Header row
+        Row headerRow = sheet.createRow(4);
+        String[] headers = {"Member ID", "Member #", "Name", "Total Savings", "Available Savings", "Frozen Pledges", "Over-Committed By", "# Loans"};
+        for (int i = 0; i < headers.length; i++) {
+            org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(createHeaderStyle(workbook));
+        }
+        
+        // Data rows
+        int rowNum = 5;
+        for (com.minet.sacco.dto.OverCommittedGuarantorDTO.OverCommittedGuarantorDetail detail : report.getOverCommittedGuarantors()) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(detail.getMemberId());
+            row.createCell(1).setCellValue(detail.getMemberNumber());
+            row.createCell(2).setCellValue(detail.getMemberName());
+            row.createCell(3).setCellValue(toDouble(detail.getTotalSavings()));
+            row.createCell(4).setCellValue(toDouble(detail.getAvailableSavings()));
+            row.createCell(5).setCellValue(toDouble(detail.getFrozenPledges()));
+            row.createCell(6).setCellValue(toDouble(detail.getAmountOverCommitted()));
+            row.createCell(7).setCellValue(detail.getNumberOfLoansGuaranteeing());
+        }
+        
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        workbook.write(baos);
+        workbook.close();
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export Over-Committed Guarantor Report to PDF
+     */
+    public byte[] exportOverCommittedGuarantorToPdf(com.minet.sacco.dto.OverCommittedGuarantorDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "OVER-COMMITTED GUARANTOR RISK REPORT");
+            document.add(new Paragraph("Generated: " + java.time.LocalDate.now().format(DATE_FORMATTER))
+                .setFontSize(10));
+            document.add(new Paragraph(""));
+            
+            // Summary
+            Table summaryTable = new Table(2);
+            summaryTable.setWidth(300);
+            addSummaryRow(summaryTable, "Total At Risk", formatCurrency(report.getTotalAtRisk()));
+            addSummaryRow(summaryTable, "Guarantors Over-Committed", String.valueOf(report.getCountOverCommitted()));
+            document.add(summaryTable);
+            document.add(new Paragraph(""));
+            
+            // Details table
+            Table detailsTable = new Table(8);
+            addHeaderCell(detailsTable, "Member #");
+            addHeaderCell(detailsTable, "Name");
+            addHeaderCell(detailsTable, "Total Savings");
+            addHeaderCell(detailsTable, "Available Savings");
+            addHeaderCell(detailsTable, "Frozen Pledges");
+            addHeaderCell(detailsTable, "Over-Committed");
+            addHeaderCell(detailsTable, "# Loans");
+            addHeaderCell(detailsTable, "Status");
+            
+            for (com.minet.sacco.dto.OverCommittedGuarantorDTO.OverCommittedGuarantorDetail detail : report.getOverCommittedGuarantors()) {
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberNumber() != null ? detail.getMemberNumber() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberName() != null ? detail.getMemberName() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getTotalSavings())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getAvailableSavings())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getFrozenPledges())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getAmountOverCommitted())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(String.valueOf(detail.getNumberOfLoansGuaranteeing())).setFontSize(9).setTextAlignment(TextAlignment.CENTER)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberStatus() != null ? detail.getMemberStatus() : "").setFontSize(9)));
+            }
+            
+            document.add(detailsTable);
+            document.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
+        return baos.toByteArray();
+    }
+
+    private CellStyle createHeaderStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        font.setColor(IndexedColors.WHITE.getIndex());
+        style.setFont(font);
+        style.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        return style;
+    }
+
+    /**
+     * Export Exited Members with Outstanding Loans to Excel
+     */
+    public byte[] exportExitedMemberLoanToExcel(ExitedMemberLoanDTO report) throws Exception {
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Exited Members Loans");
+        
+        // Set column widths
+        sheet.setColumnWidth(0, 3000);  // Member ID
+        sheet.setColumnWidth(1, 4000);  // Member Number
+        sheet.setColumnWidth(2, 5000);  // Member Name
+        sheet.setColumnWidth(3, 4000);  // Exit Date
+        sheet.setColumnWidth(4, 4000);  // Exit Reason
+        sheet.setColumnWidth(5, 4000);  // Loan ID
+        sheet.setColumnWidth(6, 4000);  // Loan Number
+        sheet.setColumnWidth(7, 4000);  // Outstanding Balance
+        sheet.setColumnWidth(8, 4000);  // Original Amount
+        sheet.setColumnWidth(9, 4000);  // Disbursement Date
+        
+        // Title row
+        Row titleRow = sheet.createRow(0);
+        org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+        titleCell.setCellValue("EXITED MEMBERS WITH OUTSTANDING LOANS");
+        titleCell.setCellStyle(createHeaderStyle(workbook));
+        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 9));
+        
+        // Header row
+        Row headerRow = sheet.createRow(2);
+        String[] headers = {"Member ID", "Member #", "Name", "Exit Date", "Exit Reason", "Loan ID", "Loan #", 
+                           "Outstanding Balance", "Original Amount", "Disbursement Date"};
+        for (int i = 0; i < headers.length; i++) {
+            org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(createHeaderStyle(workbook));
+        }
+        
+        // Data rows
+        int rowNum = 3;
+        for (ExitedMemberLoanDTO.ExitedMemberLoanDetail detail : report.getExitedMembersWithLoans()) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(detail.getMemberId());
+            row.createCell(1).setCellValue(detail.getMemberNumber());
+            row.createCell(2).setCellValue(detail.getMemberName());
+            row.createCell(3).setCellValue(detail.getExitDate() != null ? detail.getExitDate().toString() : "");
+            row.createCell(4).setCellValue(detail.getExitReason() != null ? detail.getExitReason() : "");
+            row.createCell(5).setCellValue(detail.getLoanId());
+            row.createCell(6).setCellValue(detail.getLoanNumber());
+            row.createCell(7).setCellValue(toDouble(detail.getOutstandingBalance()));
+            row.createCell(8).setCellValue(toDouble(detail.getOriginalAmount()));
+            row.createCell(9).setCellValue(detail.getDisbursementDate() != null ? detail.getDisbursementDate().toString() : "");
+        }
+        
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        workbook.write(baos);
+        workbook.close();
+        return baos.toByteArray();
+    }
+
+    /**
+     * Export Exited Members with Outstanding Loans to PDF
+     */
+    public byte[] exportExitedMemberLoanToPdf(ExitedMemberLoanDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+            
+            // Header
+            addReportHeader(document, "EXITED MEMBERS WITH OUTSTANDING LOANS");
+            document.add(new Paragraph("Generated: " + LocalDate.now().format(DATE_FORMATTER))
+                .setFontSize(10));
+            document.add(new Paragraph(""));
+            
+            // Details table
+            Table detailsTable = new Table(10);
+            addHeaderCell(detailsTable, "Member #");
+            addHeaderCell(detailsTable, "Name");
+            addHeaderCell(detailsTable, "Exit Date");
+            addHeaderCell(detailsTable, "Exit Reason");
+            addHeaderCell(detailsTable, "Loan #");
+            addHeaderCell(detailsTable, "Outstanding Balance");
+            addHeaderCell(detailsTable, "Original Amount");
+            addHeaderCell(detailsTable, "Disbursement Date");
+            addHeaderCell(detailsTable, "Member ID");
+            addHeaderCell(detailsTable, "Loan ID");
+            
+            for (ExitedMemberLoanDTO.ExitedMemberLoanDetail detail : report.getExitedMembersWithLoans()) {
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberNumber() != null ? detail.getMemberNumber() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getMemberName() != null ? detail.getMemberName() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getExitDate() != null ? detail.getExitDate().toString() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getExitReason() != null ? detail.getExitReason() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getLoanNumber() != null ? detail.getLoanNumber() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getOutstandingBalance())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(formatCurrency(detail.getOriginalAmount())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                detailsTable.addCell(new Cell().add(new Paragraph(detail.getDisbursementDate() != null ? detail.getDisbursementDate().toString() : "").setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(String.valueOf(detail.getMemberId())).setFontSize(9)));
+                detailsTable.addCell(new Cell().add(new Paragraph(String.valueOf(detail.getLoanId())).setFontSize(9)));
+            }
+            
+            document.add(detailsTable);
+            document.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
+        return baos.toByteArray();
     }
 }

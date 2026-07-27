@@ -2,6 +2,7 @@ package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.MemberApprovalRequest;
+import com.minet.sacco.dto.MemberCreationResponseDTO;
 import com.minet.sacco.entity.Member;
 import com.minet.sacco.entity.Transaction;
 import com.minet.sacco.entity.User;
@@ -66,7 +67,7 @@ public class MemberController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ROLE_TELLER', 'ROLE_CUSTOMER_SUPPORT')")
-    public ResponseEntity<ApiResponse<Member>> createMember(
+    public ResponseEntity<ApiResponse<MemberCreationResponseDTO>> createMember(
             @Valid @RequestBody Member member,
             Authentication authentication) {
         
@@ -75,8 +76,8 @@ public class MemberController {
         User currentUser = userService.getUserByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
-        Member createdMember = memberService.createMember(member, currentUser.getId());
-        return ResponseEntity.ok(ApiResponse.success("Member application submitted successfully. Awaiting approval.", createdMember));
+        MemberCreationResponseDTO createdMemberResponse = memberService.createMemberWithCredentials(member, currentUser.getId());
+        return ResponseEntity.ok(ApiResponse.success("Member created successfully. Credentials are ready for delivery.", createdMemberResponse));
     }
 
     @PostMapping("/{id}/approve")
@@ -308,16 +309,27 @@ public class MemberController {
         
         List<Transaction> transactions;
         
-        // If no date range provided, get all transactions
-        if (startDate == null || endDate == null) {
+        boolean hasDateRange = startDate != null && endDate != null;
+        boolean hasTypeFilter = transactionType != null && !transactionType.isEmpty();
+
+        if (!hasDateRange && !hasTypeFilter) {
+            // No filters — return all transactions
             transactions = transactionRepository.findByAccountMemberIdOrderByTransactionDateDesc(memberId);
+        } else if (!hasDateRange) {
+            // Type filter only — no date range
+            try {
+                Transaction.TransactionType type = Transaction.TransactionType.valueOf(transactionType.toUpperCase());
+                transactions = transactionRepository.findByMemberIdAndType(memberId, type);
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Invalid transaction type: " + transactionType));
+            }
         } else {
-            // Parse dates
+            // Date range provided (with or without type filter)
             LocalDateTime start = LocalDate.parse(startDate).atStartOfDay();
             LocalDateTime end = LocalDate.parse(endDate).atTime(23, 59, 59);
             
-            // If transaction type filter provided
-            if (transactionType != null && !transactionType.isEmpty()) {
+            if (hasTypeFilter) {
                 try {
                     Transaction.TransactionType type = Transaction.TransactionType.valueOf(transactionType.toUpperCase());
                     transactions = transactionRepository.findByMemberIdAndTypeAndDateRange(memberId, type, start, end);

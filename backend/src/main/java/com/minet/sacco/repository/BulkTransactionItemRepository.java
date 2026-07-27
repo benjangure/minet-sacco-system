@@ -8,6 +8,12 @@ import java.util.List;
 
 @Repository
 public interface BulkTransactionItemRepository extends JpaRepository<BulkTransactionItem, Long> {
-    List<BulkTransactionItem> findByBatchId(Long batchId);
-    List<BulkTransactionItem> findByBatchIdAndStatus(Long batchId, String status);
+    List<BulkTransactionItem> findByBatch_Id(Long batchId);
+    List<BulkTransactionItem> findByBatch_IdAndStatus(Long batchId, String status);
+
+    /**
+     * Delete all BulkTransactionItem records for a specific batch.
+     * Used during batch rollback cleanup.
+     */
+    void deleteByBatch_Id(Long batchId);
 }

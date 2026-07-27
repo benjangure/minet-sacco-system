@@ -7,6 +7,6 @@ import java.util.List;
 
 @Repository
 public interface BulkLoanItemRepository extends JpaRepository<BulkLoanItem, Long> {
-    List<BulkLoanItem> findByBatchId(Long batchId);
+    List<BulkLoanItem> findByBatch_Id(Long batchId);
     List<BulkLoanItem> findByStatus(String status);
 }

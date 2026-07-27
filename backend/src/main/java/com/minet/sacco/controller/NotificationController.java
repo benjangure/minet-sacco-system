@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -39,6 +40,25 @@ public class NotificationController {
             return ResponseEntity.badRequest().body(ApiResponse.error("User not found"));
         }
         List<Notification> notifications = notificationService.getUserNotifications(userId);
+        // Filter notifications based on user role - admin sees all, others see only relevant notifications
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities() != null) {
+            String userRole = auth.getAuthorities().iterator().next().getAuthority();
+            // Remove ROLE_ prefix for comparison with targetRole
+            String roleWithoutPrefix = userRole.replace("ROLE_", "");
+            notifications = notifications.stream()
+                .filter(notification -> {
+                    // Admin sees all notifications
+                    if ("ROLE_ADMIN".equals(userRole)) {
+                        return true;
+                    }
+                    // Staff only see notifications targeted to their role or without role targeting
+                    return notification.getTargetRole() == null || 
+                           notification.getTargetRole().equals(roleWithoutPrefix) ||
+                           notification.getTargetRole().isEmpty();
+                })
+                .collect(java.util.stream.Collectors.toList());
+        }
         return ResponseEntity.ok(ApiResponse.success("Notifications retrieved", notifications));
     }
 
@@ -50,6 +70,25 @@ public class NotificationController {
             return ResponseEntity.badRequest().body(ApiResponse.error("User not found"));
         }
         List<Notification> notifications = notificationService.getUnreadNotifications(userId);
+        // Filter notifications based on user role - admin sees all, others see only relevant notifications
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities() != null) {
+            String userRole = auth.getAuthorities().iterator().next().getAuthority();
+            // Remove ROLE_ prefix for comparison with targetRole
+            String roleWithoutPrefix = userRole.replace("ROLE_", "");
+            notifications = notifications.stream()
+                .filter(notification -> {
+                    // Admin sees all notifications
+                    if ("ROLE_ADMIN".equals(userRole)) {
+                        return true;
+                    }
+                    // Staff only see notifications targeted to their role or without role targeting
+                    return notification.getTargetRole() == null || 
+                           notification.getTargetRole().equals(roleWithoutPrefix) ||
+                           notification.getTargetRole().isEmpty();
+                })
+                .collect(java.util.stream.Collectors.toList());
+        }
         return ResponseEntity.ok(ApiResponse.success("Unread notifications retrieved", notifications));
     }
 
@@ -60,8 +99,30 @@ public class NotificationController {
         if (userId == null) {
             return ResponseEntity.badRequest().body(ApiResponse.error("User not found"));
         }
-        long count = notificationService.getUnreadCount(userId);
-        return ResponseEntity.ok(ApiResponse.success("Unread count retrieved", count));
+        List<Notification> notifications = notificationService.getUnreadNotifications(userId);
+        // Filter notifications based on user role - admin sees all, others see only relevant notifications
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities() != null) {
+            String userRole = auth.getAuthorities().iterator().next().getAuthority();
+            // Remove ROLE_ prefix for comparison with targetRole
+            String roleWithoutPrefix = userRole.replace("ROLE_", "");
+            long count = notifications.stream()
+                .filter(notification -> {
+                    // Admin sees all notifications
+                    if ("ROLE_ADMIN".equals(userRole)) {
+                        return true;
+                    }
+                    // Staff only see notifications targeted to their role or without role targeting
+                    return notification.getTargetRole() == null || 
+                           notification.getTargetRole().equals(roleWithoutPrefix) ||
+                           notification.getTargetRole().isEmpty();
+                })
+                .count();
+            return ResponseEntity.ok(ApiResponse.success("Unread count retrieved", count));
+        } else {
+            long count = notificationService.getUnreadCount(userId);
+            return ResponseEntity.ok(ApiResponse.success("Unread count retrieved", count));
+        }
     }
 
     @PostMapping("/{id}/read")

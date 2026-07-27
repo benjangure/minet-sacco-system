@@ -2,6 +2,8 @@ package com.minet.sacco.service;
 
 import com.minet.sacco.entity.*;
 import com.minet.sacco.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -14,6 +16,8 @@ import java.util.*;
 @Service
 public class LoanEligibilityValidator {
 
+    private static final Logger log = LoggerFactory.getLogger(LoanEligibilityValidator.class);
+
     @Autowired
     private AccountRepository accountRepository;
 
@@ -25,6 +29,12 @@ public class LoanEligibilityValidator {
 
     @Autowired
     private LoanEligibilityRulesService loanEligibilityRulesService;
+
+    @Autowired
+    private SystemSettingsService systemSettingsService;
+
+    @Autowired
+    private MemberSuspensionService memberSuspensionService;
 
     public static class EligibilityResult {
         private boolean eligible;
@@ -103,6 +113,9 @@ public class LoanEligibilityValidator {
      * Frozen pledges from guarantorships reduce available savings
      */
     public EligibilityResult validateMemberEligibility(Member member, BigDecimal loanAmount) {
+        log.debug("=== VALIDATING MEMBER ELIGIBILITY ===");
+        log.debug("Member ID: {}, Loan Amount: {}", member.getId(), loanAmount);
+        
         EligibilityResult result = new EligibilityResult();
         LoanEligibilityRules rules = loanEligibilityRulesService.getRules();
         
@@ -131,6 +144,7 @@ public class LoanEligibilityValidator {
 
         BigDecimal savingsBalance = savingsAccount.map(Account::getBalance).orElse(BigDecimal.ZERO);
         BigDecimal sharesBalance = sharesAccount.map(Account::getBalance).orElse(BigDecimal.ZERO);
+        log.debug("Savings Balance: {}, Shares Balance: {}", savingsBalance, sharesBalance);
         
         // For member loan eligibility, only SAVINGS count (not shares)
         // Shares are capital contributions and don't count toward loan capacity
@@ -139,13 +153,16 @@ public class LoanEligibilityValidator {
         // Get frozen savings from self-guarantee loans
         BigDecimal frozenSavings = savingsAccount.map(Account::getFrozenSavings).orElse(BigDecimal.ZERO);
         if (frozenSavings == null) frozenSavings = BigDecimal.ZERO;
+        log.debug("Frozen Savings from self-guarantees: {}", frozenSavings);
         
         // Subtract frozen pledges from available balance
         // If member is a guarantor for other loans, those pledges freeze their savings
         BigDecimal frozenPledges = guarantorRepository.sumActivePledgesByMemberId(member.getId());
         if (frozenPledges == null) frozenPledges = BigDecimal.ZERO;
+        log.debug("Frozen Pledges (guarantor for others): {}", frozenPledges);
         
         BigDecimal availableBalance = totalBalance.subtract(frozenSavings).subtract(frozenPledges);
+        log.debug("Available Balance: {} - {} - {} = {}", totalBalance, frozenSavings, frozenPledges, availableBalance);
 
         result.setSavingsBalance(savingsBalance);
         result.setSharesBalance(sharesBalance);
@@ -163,6 +180,7 @@ public class LoanEligibilityValidator {
                                loan.getStatus() == Loan.Status.REPAID)
                 .map(Loan::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        log.debug("Total Disbursed Loans: {}", totalDisbursed);
         
         // Calculate true savings using frozen savings (not total disbursed)
         // True Savings = Current Savings - Frozen Savings (from self-guarantees)
@@ -170,6 +188,7 @@ public class LoanEligibilityValidator {
         if (trueSavings.compareTo(BigDecimal.ZERO) < 0) {
             trueSavings = BigDecimal.ZERO;
         }
+        log.debug("True Savings: {} - {} = {}", savingsBalance, frozenSavings, trueSavings);
         
         result.setTotalDisbursed(totalDisbursed);
         result.setTrueSavings(trueSavings);
@@ -202,6 +221,12 @@ public class LoanEligibilityValidator {
             result.setEligible(false);
         }
 
+        // Check 1.5: Member must not be suspended
+        if (memberSuspensionService.isMemberSuspended(member.getId())) {
+            result.getErrors().add("Member is currently suspended");
+            result.setEligible(false);
+        }
+
         // Check 2: Member must not have defaulted loans (unless allowed by rules)
         if (defaultedLoans > 0) {
             if (!rules.getAllowDefaulters()) {
@@ -209,6 +234,23 @@ public class LoanEligibilityValidator {
                 result.setEligible(false);
             } else {
                 result.getWarnings().add("Member has " + defaultedLoans + " defaulted loan(s)");
+            }
+        }
+
+        // Check 2.5: Six-month contribution rule
+        Boolean testModeOverride = systemSettingsService.getSettingAsBoolean("TEST_MODE_OVERRIDE");
+        Integer minContributionMonths = systemSettingsService.getSettingAsInteger("MIN_CONTRIBUTION_MONTHS");
+        if (minContributionMonths == null) minContributionMonths = 6;
+        
+        Integer memberMonths = member.getConsecutiveMonthsCounter() != null ? member.getConsecutiveMonthsCounter() : 0;
+        Boolean isLegacy = member.getIsLegacyMember() != null ? member.getIsLegacyMember() : false;
+        
+        // Legacy members are always eligible (counter = 999)
+        if (!isLegacy && !testModeOverride) {
+            if (memberMonths < minContributionMonths) {
+                result.getErrors().add("Member has contributed " + memberMonths + " months. " + 
+                    (minContributionMonths - memberMonths) + " more months required");
+                result.setEligible(false);
             }
         }
 
@@ -235,21 +277,34 @@ public class LoanEligibilityValidator {
                 "% of true savings (KES " + maxAllowedOutstanding + ")");
         }
 
-        // Check 6: Maximum active loans limit
-        if (activeLoans >= rules.getMaxActiveLoans()) {
-            result.getWarnings().add("Member already has " + activeLoans + " active loans (max recommended: " + rules.getMaxActiveLoans() + ")");
+        // Check 6: Maximum active loans limit (read from system settings)
+        Integer maxActiveLoans = systemSettingsService.getSettingAsInteger("MAX_ACTIVE_LOANS");
+        if (maxActiveLoans == null) maxActiveLoans = 3;
+        
+        if (activeLoans >= maxActiveLoans) {
+            result.getErrors().add("Member has reached the maximum of " + maxActiveLoans + " active loans");
+            result.setEligible(false);
         }
 
-        // Check 7: CRITICAL - Loan amount cannot exceed X times TRUE savings minus outstanding loans
+        // Check 7: CRITICAL - Loan amount cannot exceed X times TRUE savings minus EXTERNAL guaranteed outstanding
         // Formula: Gross Eligibility = True Savings × Multiplier
-        //          Net Eligibility = Gross Eligibility - Outstanding Balance
+        //          Net Eligibility = Gross Eligibility - External Guarantee Outstanding Only
+        // RULE 4 & 5: Self-guaranteed portion already frozen, don't deduct again
         BigDecimal multiplier = rules.getMaxLoanToSavingsMultiplier() != null ? rules.getMaxLoanToSavingsMultiplier() : new BigDecimal("3.0");
         BigDecimal grossEligibility = trueSavings.multiply(multiplier);
-        BigDecimal netEligibleAmount = grossEligibility.subtract(totalOutstanding);
+        log.debug("Gross Eligibility: {} × {} = {}", trueSavings, multiplier, grossEligibility);
+        
+        // Calculate only EXTERNAL guarantee portion (not self-guaranteed portion)
+        BigDecimal externalGuaranteeOutstanding = calculateExternalGuaranteeOutstanding(memberLoans);
+        log.debug("External Guarantee Outstanding: {}", externalGuaranteeOutstanding);
+        
+        BigDecimal netEligibleAmount = grossEligibility.subtract(externalGuaranteeOutstanding);
+        log.debug("Net Eligible Amount: {} - {} = {}", grossEligibility, externalGuaranteeOutstanding, netEligibleAmount);
         
         if (netEligibleAmount.compareTo(BigDecimal.ZERO) < 0) {
             netEligibleAmount = BigDecimal.ZERO;
         }
+        log.debug("Final Net Eligible Amount (after zero check): {}", netEligibleAmount);
         
         result.setGrossEligibility(grossEligibility);
         result.setMaxEligibleAmount(grossEligibility);
@@ -261,5 +316,60 @@ public class LoanEligibilityValidator {
         }
 
         return result;
+    }
+    
+    /**
+     * Calculate only the EXTERNAL guarantee portion of outstanding loans
+     * Self-guaranteed portion is already frozen and should not be deducted again
+     */
+    private BigDecimal calculateExternalGuaranteeOutstanding(List<Loan> memberLoans) {
+        BigDecimal total = BigDecimal.ZERO;
+        
+        for (Loan loan : memberLoans) {
+            // Only consider active loans
+            if (loan.getStatus() != Loan.Status.DISBURSED && 
+                loan.getStatus() != Loan.Status.APPROVED &&
+                loan.getStatus() != Loan.Status.REPAID) {
+                continue;
+            }
+            
+            if (loan.getOutstandingBalance() == null || loan.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            // Get self-guarantee amount for this loan
+            BigDecimal selfGuaranteeAmount = getSelfGuaranteeAmount(loan);
+
+            // Calculate the portion NOT covered by self-guarantee (external portion)
+            BigDecimal outstandingNotCovered = loan.getOutstandingBalance().subtract(selfGuaranteeAmount);
+
+            // Only add if positive (there is external guarantee portion)
+            if (outstandingNotCovered.compareTo(BigDecimal.ZERO) > 0) {
+                total = total.add(outstandingNotCovered);
+            }
+        }
+
+        return total;
+    }
+    
+    /**
+     * Get the self-guarantee amount for a specific loan
+     * Returns the FROZEN amount (pledgeAmount), not the original guarantee amount
+     */
+    private BigDecimal getSelfGuaranteeAmount(Loan loan) {
+        List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
+
+        BigDecimal selfGuaranteeTotal = BigDecimal.ZERO;
+        for (Guarantor guarantor : guarantors) {
+            if (guarantor.isSelfGuarantee()) {
+                // Use pledgeAmount (frozen amount), not guaranteeAmount
+                BigDecimal amount = guarantor.getPledgeAmount();
+                if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+                    selfGuaranteeTotal = selfGuaranteeTotal.add(amount);
+                }
+            }
+        }
+
+        return selfGuaranteeTotal;
     }
 }

@@ -17,7 +17,7 @@ public class LoanEligibilityRulesController {
     private LoanEligibilityRulesService rulesService;
 
     @GetMapping
-    @PreAuthorize("hasRole('ROLE_ADMIN') or hasRole('ROLE_CREDIT_COMMITTEE')")
+    @PreAuthorize("hasRole('ROLE_ADMIN') or hasRole('ROLE_CREDIT_COMMITTEE') or hasRole('ROLE_TREASURER')")
     public ResponseEntity<ApiResponse<LoanEligibilityRules>> getRules() {
         try {
             LoanEligibilityRules rules = rulesService.getRules();

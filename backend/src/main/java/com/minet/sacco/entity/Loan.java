@@ -36,9 +36,8 @@ public class Loan {
     @DecimalMin(value = "0.00")
     private BigDecimal interestRate;
 
-    @NotNull
     @Min(1)
-    private Integer termMonths;
+    private Integer termMonths; // Optional - can be set later during loan update for migrated loans
 
     @Enumerated(EnumType.STRING)
     private Status status = Status.PENDING;
@@ -50,15 +49,33 @@ public class Loan {
     private BigDecimal totalInterest;
 
     @DecimalMin(value = "0.00")
+    @Column(name = "interest_remaining", nullable = true)
+    private BigDecimal interestRemaining;
+
+    @DecimalMin(value = "0.00")
+    @Column(name = "interest_collected", nullable = true)
+    private BigDecimal interestCollected = BigDecimal.ZERO;
+
+    @DecimalMin(value = "0.00")
     private BigDecimal totalRepayable;
+
+    @NotNull
+    @DecimalMin(value = "0.00")
+    @Column(name = "original_principal")
+    private BigDecimal originalPrincipal;
+
+    @DecimalMin(value = "0.00")
+    @Column(name = "original_amount")
+    private BigDecimal originalAmount;  // Store original loan amount for reduction tracking
+
+    @Column(name = "rejection_stage")
+    private String rejectionStage;  // Track which stage rejected (GUARANTOR, LOAN_OFFICER, etc.)
 
     @DecimalMin(value = "0.00")
     private BigDecimal outstandingBalance;
 
     @Column(columnDefinition = "TEXT")
     private String purpose;
-
-    @Column(columnDefinition = "TEXT")
     private String rejectionReason;
 
     @Column(name = "member_eligibility_status", length = 20)
@@ -86,9 +103,14 @@ public class Loan {
     @JoinColumn(name = "disbursed_by")
     private User disbursedBy;
 
+    @Column(name = "migration_status")
+    private String migrationStatus = "ACTIVE"; // ACTIVE or MIGRATED
+
     public enum Status {
         PENDING, 
         PENDING_GUARANTOR_APPROVAL, 
+        PENDING_GUARANTOR_REPLACEMENT,
+        PENDING_GUARANTOR_REASSIGNMENT,
         PENDING_LOAN_OFFICER_REVIEW, 
         PENDING_CREDIT_COMMITTEE, 
         PENDING_TREASURER, 
@@ -130,8 +152,23 @@ public class Loan {
     public BigDecimal getTotalInterest() { return totalInterest; }
     public void setTotalInterest(BigDecimal totalInterest) { this.totalInterest = totalInterest; }
 
+    public BigDecimal getInterestRemaining() { return interestRemaining; }
+    public void setInterestRemaining(BigDecimal interestRemaining) { this.interestRemaining = interestRemaining; }
+
+    public BigDecimal getInterestCollected() { return interestCollected; }
+    public void setInterestCollected(BigDecimal interestCollected) { this.interestCollected = interestCollected; }
+
     public BigDecimal getTotalRepayable() { return totalRepayable; }
     public void setTotalRepayable(BigDecimal totalRepayable) { this.totalRepayable = totalRepayable; }
+
+    public BigDecimal getOriginalPrincipal() { return originalPrincipal; }
+    public void setOriginalPrincipal(BigDecimal originalPrincipal) { this.originalPrincipal = originalPrincipal; }
+
+    public BigDecimal getOriginalAmount() { return originalAmount; }
+    public void setOriginalAmount(BigDecimal originalAmount) { this.originalAmount = originalAmount; }
+
+    public String getRejectionStage() { return rejectionStage; }
+    public void setRejectionStage(String rejectionStage) { this.rejectionStage = rejectionStage; }
 
     public BigDecimal getOutstandingBalance() { return outstandingBalance; }
     public void setOutstandingBalance(BigDecimal outstandingBalance) { this.outstandingBalance = outstandingBalance; }
@@ -167,20 +204,36 @@ public class Loan {
     public User getDisbursedBy() { return disbursedBy; }
     public void setDisbursedBy(User disbursedBy) { this.disbursedBy = disbursedBy; }
 
+    public String getMigrationStatus() { return migrationStatus; }
+    public void setMigrationStatus(String migrationStatus) { this.migrationStatus = migrationStatus; }
+
     /**
      * Calculate loan repayment details based on amount, interest rate, and term
      * Uses simple interest formula: Interest = Principal × (Rate/100) × (Term/12)
+     * For new loans: interestCollected defaults to 0, interestRemaining = totalInterest
+     * For migrated loans: interestCollected is set via migration, interestRemaining = totalInterest - interestCollected
      */
     public void calculateRepaymentDetails() {
         if (this.amount == null || this.interestRate == null || this.termMonths == null) {
             return;
         }
 
+        // Set original principal - this never changes and is used for proportional calculations
+        this.originalPrincipal = this.amount;
+
         // Simple interest calculation: Interest = Principal × Rate × Time
         // Rate is annual, so we convert to decimal and multiply by time in years
         BigDecimal rate = this.interestRate.divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
         BigDecimal timeInYears = new BigDecimal(this.termMonths).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
         this.totalInterest = this.amount.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
+        
+        // For new loans, interestCollected defaults to 0
+        if (this.interestCollected == null) {
+            this.interestCollected = BigDecimal.ZERO;
+        }
+        
+        // Calculate interestRemaining: what's left to collect
+        this.interestRemaining = this.totalInterest.subtract(this.interestCollected).setScale(2, java.math.RoundingMode.HALF_UP);
 
         // Calculate total repayable: amount + totalInterest
         this.totalRepayable = this.amount.add(this.totalInterest);

@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { FileText, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 const Reports = () => {
   const [reportType, setReportType] = useState("cashbook");
@@ -16,8 +17,13 @@ const Reports = () => {
   const { toast } = useToast();
 
   // Check if user has permission to view reports
+  const canViewFinancialReports = user && ["ADMIN", "TREASURER", "AUDITOR"].includes(user.role);
+  const canViewGuarantorReport = user && ["ADMIN", "TREASURER", "AUDITOR", "LOAN_OFFICER"].includes(user.role);
+  const canViewLoanEligibilityReport = user && ["ADMIN", "TREASURER", "AUDITOR", "LOAN_OFFICER", "CUSTOMER_SUPPORT"].includes(user.role);
+  const canViewWithdrawalMonitoringReport = user && ["ADMIN", "TREASURER", "AUDITOR"].includes(user.role);
+
   useEffect(() => {
-    if (user && !["ADMIN", "TREASURER", "AUDITOR"].includes(user.role)) {
+    if (user && !canViewFinancialReports && !canViewGuarantorReport && !canViewLoanEligibilityReport && !canViewWithdrawalMonitoringReport) {
       toast({
         title: "Access Denied",
         description: "You don't have permission to view reports",
@@ -49,6 +55,26 @@ const Reports = () => {
 
   // SASRA Report filters
   const [sasraReportDate, setSasraReportDate] = useState(new Date().toISOString().split("T")[0]);
+
+  // Withdrawal Monitoring filters
+  const [wmStartDate, setWmStartDate] = useState("");
+  const [wmEndDate, setWmEndDate] = useState("");
+  const [wmMemberNumber, setWmMemberNumber] = useState("");
+  const [wmWithdrawalMethod, setWmWithdrawalMethod] = useState("");
+  const [wmTransactionStatus, setWmTransactionStatus] = useState("");
+
+  // Guarantor Report filters
+  const [guarantorMemberId, setGuarantorMemberId] = useState("");
+  const [guarantorStatus, setGuarantorStatus] = useState("");
+  const [guarantorViewMode, setGuarantorViewMode] = useState("single");  // single or all
+
+  // Loan Eligibility filters
+  const [eligibilityMemberId, setEligibilityMemberId] = useState("");
+
+  // Monthly Contribution filters
+  const [mctStartDate, setMctStartDate] = useState("");
+  const [mctEndDate, setMctEndDate] = useState("");
+  const [mctBatchStatus, setMctBatchStatus] = useState("");
 
   const handleExportExcel = async () => {
     try {
@@ -88,13 +114,44 @@ const Reports = () => {
         }
         url += `/profit-loss/export/excel?startDate=${startDate}&endDate=${endDate}`;
       } else if (reportType === "par") {
-        url += `/reports/sasra/par/export/excel?asAtDate=${sasraReportDate}`;
+        url += `/sasra/par/export/excel?asAtDate=${sasraReportDate}`;
       } else if (reportType === "capital-adequacy") {
-        url += `/reports/sasra/capital-adequacy/export/excel?asAtDate=${sasraReportDate}`;
+        url += `/sasra/capital-adequacy/export/excel?asAtDate=${sasraReportDate}`;
       } else if (reportType === "provision-bad-debts") {
-        url += `/reports/sasra/provision-bad-debts/export/excel?asAtDate=${sasraReportDate}`;
+        url += `/sasra/provision-bad-debts/export/excel?asAtDate=${sasraReportDate}`;
       } else if (reportType === "sasra-compliance") {
-        url += `/reports/sasra/compliance/export/excel?asAtDate=${sasraReportDate}`;
+        url += `/sasra/compliance/export/excel?asAtDate=${sasraReportDate}`;
+      } else if (reportType === "withdrawal-monitoring") {
+        if (!wmStartDate || !wmEndDate) {
+          toast({ title: "Error", description: "Start and end dates are required", variant: "destructive" });
+          return;
+        }
+        url += `/withdrawal-monitoring/export/excel?startDate=${wmStartDate}&endDate=${wmEndDate}`;
+        if (wmMemberNumber) url += `&memberNumber=${wmMemberNumber}`;
+        if (wmWithdrawalMethod) url += `&withdrawalMethod=${wmWithdrawalMethod}`;
+        if (wmTransactionStatus) url += `&transactionStatus=${wmTransactionStatus}`;
+      } else if (reportType === "guarantor-report") {
+        if (!guarantorMemberId) {
+          toast({ title: "Error", description: "Member ID is required", variant: "destructive" });
+          return;
+        }
+        url += `/guarantor/${guarantorMemberId}/export/excel`;
+        if (guarantorStatus) url += `?guarantorStatus=${guarantorStatus}`;
+      } else if (reportType === "guarantor-all-report") {
+        url += `/guarantor/all/export/excel`;  // Note: May need endpoint adjustment
+      } else if (reportType === "loan-eligibility-report") {
+        if (!eligibilityMemberId) {
+          toast({ title: "Error", description: "Member ID is required", variant: "destructive" });
+          return;
+        }
+        url += `/loan-eligibility/${eligibilityMemberId}/export/excel`;
+      } else if (reportType === "monthly-contribution-tracking") {
+        if (!mctStartDate || !mctEndDate) {
+          toast({ title: "Error", description: "Start and end dates are required", variant: "destructive" });
+          return;
+        }
+        url += `/monthly-contribution-tracking/export/excel?startDate=${mctStartDate}&endDate=${mctEndDate}`;
+        if (mctBatchStatus) url += `&batchStatus=${mctBatchStatus}`;
       }
 
       const response = await fetch(url, {
@@ -158,13 +215,44 @@ const Reports = () => {
         }
         url += `/profit-loss/export/pdf?startDate=${startDate}&endDate=${endDate}`;
       } else if (reportType === "par") {
-        url += `/reports/sasra/par/export/pdf?asAtDate=${sasraReportDate}`;
+        url += `/sasra/par/export/pdf?asAtDate=${sasraReportDate}`;
       } else if (reportType === "capital-adequacy") {
-        url += `/reports/sasra/capital-adequacy/export/pdf?asAtDate=${sasraReportDate}`;
+        url += `/sasra/capital-adequacy/export/pdf?asAtDate=${sasraReportDate}`;
       } else if (reportType === "provision-bad-debts") {
-        url += `/reports/sasra/provision-bad-debts/export/pdf?asAtDate=${sasraReportDate}`;
+        url += `/sasra/provision-bad-debts/export/pdf?asAtDate=${sasraReportDate}`;
       } else if (reportType === "sasra-compliance") {
-        url += `/reports/sasra/compliance/export/pdf?asAtDate=${sasraReportDate}`;
+        url += `/sasra/compliance/export/pdf?asAtDate=${sasraReportDate}`;
+      } else if (reportType === "withdrawal-monitoring") {
+        if (!wmStartDate || !wmEndDate) {
+          toast({ title: "Error", description: "Start and end dates are required", variant: "destructive" });
+          return;
+        }
+        url += `/withdrawal-monitoring/export/pdf?startDate=${wmStartDate}&endDate=${wmEndDate}`;
+        if (wmMemberNumber) url += `&memberNumber=${wmMemberNumber}`;
+        if (wmWithdrawalMethod) url += `&withdrawalMethod=${wmWithdrawalMethod}`;
+        if (wmTransactionStatus) url += `&transactionStatus=${wmTransactionStatus}`;
+      } else if (reportType === "guarantor-report") {
+        if (!guarantorMemberId) {
+          toast({ title: "Error", description: "Member ID is required", variant: "destructive" });
+          return;
+        }
+        url += `/guarantor/${guarantorMemberId}/export/pdf`;
+        if (guarantorStatus) url += `?guarantorStatus=${guarantorStatus}`;
+      } else if (reportType === "guarantor-all-report") {
+        url += `/guarantor/all/export/pdf`;  // Note: May need endpoint adjustment
+      } else if (reportType === "loan-eligibility-report") {
+        if (!eligibilityMemberId) {
+          toast({ title: "Error", description: "Member ID is required", variant: "destructive" });
+          return;
+        }
+        url += `/loan-eligibility/${eligibilityMemberId}/export/pdf`;
+      } else if (reportType === "monthly-contribution-tracking") {
+        if (!mctStartDate || !mctEndDate) {
+          toast({ title: "Error", description: "Start and end dates are required", variant: "destructive" });
+          return;
+        }
+        url += `/monthly-contribution-tracking/export/pdf?startDate=${mctStartDate}&endDate=${mctEndDate}`;
+        if (mctBatchStatus) url += `&batchStatus=${mctBatchStatus}`;
       }
 
       const response = await fetch(url, {
@@ -192,11 +280,11 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
-      {user && !["ADMIN", "TREASURER", "AUDITOR"].includes(user.role) ? (
+      {user && !canViewFinancialReports && !canViewGuarantorReport && !canViewLoanEligibilityReport && !canViewWithdrawalMonitoringReport ? (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-6">
             <p className="text-red-800">
-              <strong>Access Denied:</strong> You don't have permission to view reports. Only Admin, Treasurer, and Auditor roles can access reports.
+              <strong>Access Denied:</strong> You don't have permission to view reports. Contact your administrator for access.
             </p>
           </CardContent>
         </Card>
@@ -219,16 +307,36 @@ const Reports = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cashbook">Cashbook Report</SelectItem>
-                    <SelectItem value="trial-balance">Trial Balance</SelectItem>
-                    <SelectItem value="balance-sheet">Balance Sheet</SelectItem>
-                    <SelectItem value="member-statement">Member Statement</SelectItem>
-                    <SelectItem value="loan-register">Loan Register</SelectItem>
-                    <SelectItem value="profit-loss">Profit & Loss Report</SelectItem>
-                    <SelectItem value="par">Portfolio At Risk (PAR)</SelectItem>
-                    <SelectItem value="capital-adequacy">Capital Adequacy</SelectItem>
-                    <SelectItem value="provision-bad-debts">Provision for Bad Debts</SelectItem>
-                    <SelectItem value="sasra-compliance">SASRA Compliance Report</SelectItem>
+                    {canViewFinancialReports && (
+                      <>
+                        <SelectItem value="cashbook">Cashbook Report</SelectItem>
+                        <SelectItem value="trial-balance">Trial Balance</SelectItem>
+                        <SelectItem value="balance-sheet">Balance Sheet</SelectItem>
+                        <SelectItem value="profit-loss">Profit & Loss Report</SelectItem>
+                        <SelectItem value="par">Portfolio At Risk (PAR)</SelectItem>
+                        <SelectItem value="capital-adequacy">Capital Adequacy</SelectItem>
+                        <SelectItem value="provision-bad-debts">Provision for Bad Debts</SelectItem>
+                        <SelectItem value="sasra-compliance">SASRA Compliance Report</SelectItem>
+                      </>
+                    )}
+                    {(canViewFinancialReports || canViewGuarantorReport || canViewLoanEligibilityReport) && (
+                      <>
+                        <SelectItem value="member-statement">Member Statement</SelectItem>
+                        <SelectItem value="loan-register">Loan Register</SelectItem>
+                      </>
+                    )}
+                    {canViewLoanEligibilityReport && (
+                      <SelectItem value="loan-eligibility-report">Loan Eligibility Report</SelectItem>
+                    )}
+                    {canViewWithdrawalMonitoringReport && (
+                      <SelectItem value="withdrawal-monitoring">Withdrawal Monitoring Report</SelectItem>
+                    )}
+                    {canViewGuarantorReport && (
+                      <SelectItem value="guarantor-report">Guarantor Report</SelectItem>
+                    )}
+                    {canViewGuarantorReport && (
+                      <SelectItem value="guarantor-all-report">Guarantor Report (All Members)</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -402,6 +510,131 @@ const Reports = () => {
                       {reportType === "provision-bad-debts" && "Provision for Bad Debts report as at selected date"}
                       {reportType === "sasra-compliance" && "SASRA Regulatory Compliance report as at selected date"}
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Withdrawal Monitoring Filters */}
+              {reportType === "withdrawal-monitoring" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Withdrawal Monitoring Filters</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Start Date *</label>
+                      <Input type="date" value={wmStartDate} onChange={(e) => setWmStartDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">End Date *</label>
+                      <Input type="date" value={wmEndDate} onChange={(e) => setWmEndDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Member Number</label>
+                      <Input placeholder="e.g., M001" value={wmMemberNumber} onChange={(e) => setWmMemberNumber(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Withdrawal Method</label>
+                      <Select value={wmWithdrawalMethod} onValueChange={setWmWithdrawalMethod}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="M_PESA">M-Pesa</SelectItem>
+                          <SelectItem value="MANUAL_CASH">Manual Cash</SelectItem>
+                          <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Transaction Status</label>
+                      <Select value={wmTransactionStatus} onValueChange={setWmTransactionStatus}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="COMPLETED">Completed</SelectItem>
+                          <SelectItem value="PENDING">Pending</SelectItem>
+                          <SelectItem value="FAILED">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Guarantor Report Filters */}
+              {reportType === "guarantor-report" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Guarantor Report Filters</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Member ID *</label>
+                      <Input type="text" placeholder="e.g., 1" value={guarantorMemberId} onChange={(e) => setGuarantorMemberId(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Guarantor Status</label>
+                      <Select value={guarantorStatus} onValueChange={setGuarantorStatus}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ACTIVE">Active</SelectItem>
+                          <SelectItem value="RELEASED">Released</SelectItem>
+                          <SelectItem value="DEFAULTED">Defaulted</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Guarantor Report All Members Filters */}
+              {reportType === "guarantor-all-report" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Guarantor Report (All Members)</h3>
+                  <p className="text-sm text-muted-foreground">Displays guarantorship capacity for all members at a glance</p>
+                </div>
+              )}
+
+              {/* Loan Eligibility Report Filters */}
+              {reportType === "loan-eligibility-report" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Loan Eligibility Report Filters</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Member ID *</label>
+                      <Input type="text" placeholder="e.g., 1" value={eligibilityMemberId} onChange={(e) => setEligibilityMemberId(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Monthly Contribution Tracking Filters */}
+              {reportType === "monthly-contribution-tracking" && (
+                <div className="space-y-4 p-4 bg-accent rounded-lg">
+                  <h3 className="font-medium">Monthly Contribution Tracking Filters</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Start Date *</label>
+                      <Input type="date" value={mctStartDate} onChange={(e) => setMctStartDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">End Date *</label>
+                      <Input type="date" value={mctEndDate} onChange={(e) => setMctEndDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Batch Status</label>
+                      <Select value={mctBatchStatus} onValueChange={setMctBatchStatus}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PENDING">Pending</SelectItem>
+                          <SelectItem value="PROCESSING">Processing</SelectItem>
+                          <SelectItem value="COMPLETED">Completed</SelectItem>
+                          <SelectItem value="FAILED">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
               )}

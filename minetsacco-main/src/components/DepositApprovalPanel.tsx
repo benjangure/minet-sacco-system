@@ -46,10 +46,10 @@ export default function DepositApprovalPanel({ open, onOpenChange, onApprovalCha
   const { toast } = useToast();
 
   useEffect(() => {
-    if (open) {
+    if (open && session && (session.role === 'TELLER' || session.role === 'ADMIN')) {
       fetchPendingRequests();
     }
-  }, [open]);
+  }, [open, session]);
 
   const fetchPendingRequests = async () => {
     setLoading(true);

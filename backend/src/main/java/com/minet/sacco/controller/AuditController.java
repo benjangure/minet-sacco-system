@@ -144,13 +144,17 @@ public class AuditController {
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String entityType,
             @RequestParam(required = false) String status,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         
+        // Use default date range if not provided
+        LocalDateTime start = startDate != null ? startDate : LocalDateTime.of(1900, 1, 1, 0, 0, 0);
+        LocalDateTime end = endDate != null ? endDate : LocalDateTime.now();
+        
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "timestamp"));
-        Page<AuditLog> logs = auditService.getAuditLogsByFilters(userId, action, entityType, status, startDate, endDate, pageable);
+        Page<AuditLog> logs = auditService.getAuditLogsByFilters(userId, action, entityType, status, start, end, pageable);
         
         Map<String, Object> response = new HashMap<>();
         response.put("content", logs.getContent());

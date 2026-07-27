@@ -86,6 +86,12 @@ public class BulkValidationService {
         if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) < 0) {
             errors.add("Row " + rowNumber + ": Loan repayment amount cannot be negative");
         }
+        if (item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) < 0) {
+            errors.add("Row " + rowNumber + ": Loan repayment principal amount cannot be negative");
+        }
+        if (item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) < 0) {
+            errors.add("Row " + rowNumber + ": Loan repayment interest amount cannot be negative");
+        }
         if (item.getBenevolentFundAmount().compareTo(BigDecimal.ZERO) < 0) {
             errors.add("Row " + rowNumber + ": Benevolent fund amount cannot be negative");
         }
@@ -114,31 +120,70 @@ public class BulkValidationService {
             errors.add("Row " + rowNumber + ": At least one amount must be greater than zero");
         }
         
-        // Validate loan if repayment specified
-        if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
+        if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0 ||
+            item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) > 0 ||
+            item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) > 0) {
+            
+            // PHASE 3: MANDATORY SPLIT VALIDATION
+            // If any repayment-related field is filled, principal and interest are REQUIRED
+            if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
+                // Loan repayment is provided - principal and interest are MANDATORY
+                if (item.getLoanRepaymentPrincipalAmount() == null || 
+                    item.getLoanRepaymentPrincipalAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                    errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan Repayment Principal Amount is required and must be greater than zero when Loan Repayment is provided");
+                    return errors; // Block entire row on first mandatory field failure
+                }
+                if (item.getLoanRepaymentInterestAmount() == null || 
+                    item.getLoanRepaymentInterestAmount().compareTo(BigDecimal.ZERO) < 0) {
+                    errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan Repayment Interest Amount is required when Loan Repayment is provided (can be zero, but field must be filled)");
+                    return errors; // Block entire row on mandatory field failure
+                }
+                
+                // Validate principal + interest = total (EXACTLY)
+                BigDecimal calculatedTotal = item.getLoanRepaymentPrincipalAmount().add(item.getLoanRepaymentInterestAmount());
+                if (calculatedTotal.compareTo(item.getLoanRepaymentAmount()) != 0) {
+                    errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Principal (" + 
+                             item.getLoanRepaymentPrincipalAmount() + ") + Interest (" + 
+                             item.getLoanRepaymentInterestAmount() + ") = " + calculatedTotal + 
+                             ", but Loan Repayment total is " + item.getLoanRepaymentAmount() + 
+                             ". These must match exactly.");
+                    return errors; // Block entire row
+                }
+            }
+            
+            // Validate loan if any repayment specified
             if (item.getLoanNumber() == null || item.getLoanNumber().trim().isEmpty()) {
-                errors.add("Row " + rowNumber + ": Loan number is required when loan repayment amount is specified");
+                errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan number is required when loan repayment amount is specified");
+                return errors; // Block entire row
             } else {
                 Optional<Loan> loanOpt = loanRepository.findByLoanNumber(item.getLoanNumber());
                 if (loanOpt.isEmpty()) {
-                    errors.add("Row " + rowNumber + ": Loan '" + item.getLoanNumber() + "' not found");
+                    errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan '" + item.getLoanNumber() + "' not found");
+                    return errors; // Block entire row
                 } else {
                     Loan loan = loanOpt.get();
                     
                     // Validate loan belongs to member
                     if (!loan.getMember().getId().equals(member.getId())) {
-                        errors.add("Row " + rowNumber + ": Loan '" + item.getLoanNumber() + "' does not belong to member '" + item.getMemberNumber() + "'");
+                        errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan '" + item.getLoanNumber() + "' does not belong to member '" + item.getMemberNumber() + "'");
+                        return errors; // Block entire row
                     }
                     
                     // Validate loan is active
-                    if (loan.getStatus() != Loan.Status.APPROVED && loan.getStatus() != Loan.Status.DISBURSED) {
-                        errors.add("Row " + rowNumber + ": Loan is not active (Status: " + loan.getStatus() + ")");
+                    if (loan.getStatus() != Loan.Status.DISBURSED && loan.getStatus() != Loan.Status.REPAID) {
+                        errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Loan is not active (Status: " + loan.getStatus() + ")");
+                        return errors; // Block entire row
                     }
                     
-                    // Validate repayment amount doesn't exceed outstanding balance
-                    if (item.getLoanRepaymentAmount().compareTo(loan.getOutstandingBalance()) > 0) {
-                        errors.add("Row " + rowNumber + ": Repayment amount (" + item.getLoanRepaymentAmount() + 
-                                 ") exceeds outstanding balance (" + loan.getOutstandingBalance() + ")");
+                    // Validate repayment amount doesn't exceed outstanding balance (if amount is specified)
+                    if (item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal repaymentRounded = item.getLoanRepaymentAmount().setScale(2, java.math.RoundingMode.HALF_UP);
+                        BigDecimal outstandingRounded = loan.getOutstandingBalance().setScale(2, java.math.RoundingMode.HALF_UP);
+                        if (repaymentRounded.compareTo(outstandingRounded) > 0) {
+                            errors.add("Row " + rowNumber + " (" + item.getMemberNumber() + "): Repayment amount (KES " + repaymentRounded + 
+                                     ") exceeds outstanding balance (KES " + outstandingRounded + ")");
+                            return errors; // Block entire row
+                        }
                     }
                     
                     item.setLoan(loan);
@@ -218,24 +263,47 @@ public class BulkValidationService {
         List<String> errors = new ArrayList<>();
         int rowNumber = item.getRowNumber();
         
-        // Validate first name
+        // ========== MANDATORY FIELDS ==========
+        
+        // Validate first name (REQUIRED)
         if (item.getFirstName() == null || item.getFirstName().trim().isEmpty()) {
             errors.add("Row " + rowNumber + ": First name is required");
         } else if (item.getFirstName().length() > 50) {
             errors.add("Row " + rowNumber + ": First name must be max 50 characters (current: " + item.getFirstName().length() + ")");
         }
         
-        // Validate last name
-        if (item.getLastName() == null || item.getLastName().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Last name is required");
-        } else if (item.getLastName().length() > 50) {
-            errors.add("Row " + rowNumber + ": Last name must be max 50 characters (current: " + item.getLastName().length() + ")");
+        // Validate employee ID (REQUIRED)
+        if (item.getEmployeeId() == null || item.getEmployeeId().trim().isEmpty()) {
+            errors.add("Row " + rowNumber + ": Employee ID is required");
+        } else {
+            String employeeId = item.getEmployeeId().trim();
+            if (employeeId.length() > 50) {
+                errors.add("Row " + rowNumber + ": Employee ID must be max 50 characters (current: " + employeeId.length() + ")");
+            }
+            // NOTE: We no longer reject duplicate employee IDs here.
+            // The system now supports UPDATING existing members via bulk upload.
+            // If employee ID exists, it will be updated; if not, a new member will be created.
         }
         
-        // Validate email
-        if (item.getEmail() == null || item.getEmail().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Email is required");
-        } else {
+        // ========== OPTIONAL FIELDS (Can be edited later) ==========
+        
+        // Validate last name (optional)
+        if (item.getLastName() != null && !item.getLastName().trim().isEmpty()) {
+            if (item.getLastName().length() > 50) {
+                errors.add("Row " + rowNumber + ": Last name must be max 50 characters (current: " + item.getLastName().length() + ")");
+            }
+        }
+        
+        // Validate phone (optional)
+        if (item.getPhone() != null && !item.getPhone().trim().isEmpty()) {
+            String phone = item.getPhone().trim();
+            if (phone.length() < 9 || phone.length() > 15) {
+                errors.add("Row " + rowNumber + ": Phone '" + phone + "' must be 9-15 characters (e.g., 0712345678 or +254712345678)");
+            }
+        }
+        
+        // Validate email (optional but must be valid if provided)
+        if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
             String email = item.getEmail().trim();
             if (!isValidEmail(email)) {
                 errors.add("Row " + rowNumber + ": Invalid email format '" + email + "' - must contain @ symbol and domain (e.g., john.doe@email.com)");
@@ -244,30 +312,16 @@ public class BulkValidationService {
             }
         }
         
-        // Validate phone
-        if (item.getPhone() == null || item.getPhone().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Phone is required");
-        } else {
-            String phone = item.getPhone().trim();
-            if (phone.length() < 9 || phone.length() > 15) {
-                errors.add("Row " + rowNumber + ": Phone '" + phone + "' must be 9-15 characters (e.g., 0712345678 or +254712345678)");
-            }
-        }
-        
-        // Validate national ID
-        if (item.getNationalId() == null || item.getNationalId().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": National ID is required");
-        } else {
+        // Validate national ID (optional but must be unique if provided)
+        if (item.getNationalId() != null && !item.getNationalId().trim().isEmpty()) {
             String nationalId = item.getNationalId().trim();
             if (memberRepository.findByNationalId(nationalId).isPresent()) {
                 errors.add("Row " + rowNumber + ": National ID '" + nationalId + "' is already registered in the system");
             }
         }
         
-        // Validate date of birth
-        if (item.getDateOfBirth() == null) {
-            errors.add("Row " + rowNumber + ": Date of birth is required. Accepted formats: YYYY-MM-DD (e.g., 1990-01-15), DD/MM/YYYY (e.g., 15/01/1990), or MM/DD/YYYY (e.g., 01/15/1990). Make sure the cell is not empty and contains a valid date.");
-        } else {
+        // Validate date of birth (optional but validate if provided)
+        if (item.getDateOfBirth() != null) {
             LocalDate today = LocalDate.now();
             LocalDate minDate = today.minusYears(18);
             if (item.getDateOfBirth().isAfter(minDate)) {
@@ -282,61 +336,62 @@ public class BulkValidationService {
             }
         }
         
-        // Validate department
-        if (item.getDepartment() == null || item.getDepartment().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Department is required");
-        } else if (item.getDepartment().length() > 50) {
-            errors.add("Row " + rowNumber + ": Department must be max 50 characters (current: " + item.getDepartment().length() + ")");
-        }
-        
-        // Validate employee ID
-        if (item.getEmployeeId() == null || item.getEmployeeId().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Employee ID is required");
-        } else {
-            String employeeId = item.getEmployeeId().trim();
-            if (employeeId.length() > 50) {
-                errors.add("Row " + rowNumber + ": Employee ID must be max 50 characters (current: " + employeeId.length() + ")");
-            } else if (memberRepository.existsByEmployeeId(employeeId)) {
-                errors.add("Row " + rowNumber + ": Employee ID '" + employeeId + "' is already registered in the system");
+        // Validate department (optional)
+        if (item.getDepartment() != null && !item.getDepartment().trim().isEmpty()) {
+            if (item.getDepartment().length() > 50) {
+                errors.add("Row " + rowNumber + ": Department must be max 50 characters (current: " + item.getDepartment().length() + ")");
             }
         }
         
-        // Validate employer
-        if (item.getEmployer() == null || item.getEmployer().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Employer is required");
-        } else if (item.getEmployer().length() > 100) {
-            errors.add("Row " + rowNumber + ": Employer must be max 100 characters (current: " + item.getEmployer().length() + ")");
+        // Validate employer (optional)
+        if (item.getEmployer() != null && !item.getEmployer().trim().isEmpty()) {
+            if (item.getEmployer().length() > 100) {
+                errors.add("Row " + rowNumber + ": Employer must be max 100 characters (current: " + item.getEmployer().length() + ")");
+            }
         }
         
-        // Validate bank
-        if (item.getBank() == null || item.getBank().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Bank is required");
-        } else if (item.getBank().length() > 50) {
-            errors.add("Row " + rowNumber + ": Bank must be max 50 characters (current: " + item.getBank().length() + ")");
+        // Validate bank (optional)
+        if (item.getBank() != null && !item.getBank().trim().isEmpty()) {
+            if (item.getBank().length() > 50) {
+                errors.add("Row " + rowNumber + ": Bank must be max 50 characters (current: " + item.getBank().length() + ")");
+            }
         }
         
-        // Validate bank account
-        if (item.getBankAccount() == null || item.getBankAccount().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Bank account is required");
-        } else if (item.getBankAccount().length() > 50) {
-            errors.add("Row " + rowNumber + ": Bank account must be max 50 characters (current: " + item.getBankAccount().length() + ")");
+        // Validate bank account (optional)
+        if (item.getBankAccount() != null && !item.getBankAccount().trim().isEmpty()) {
+            if (item.getBankAccount().length() > 50) {
+                errors.add("Row " + rowNumber + ": Bank account must be max 50 characters (current: " + item.getBankAccount().length() + ")");
+            }
         }
         
-        // Validate next of kin
-        if (item.getNextOfKin() == null || item.getNextOfKin().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": Next of kin is required");
-        } else if (item.getNextOfKin().length() > 100) {
-            errors.add("Row " + rowNumber + ": Next of kin must be max 100 characters (current: " + item.getNextOfKin().length() + ")");
+        // Validate next of kin (optional but must be valid if provided)
+        if (item.getNextOfKin() != null && !item.getNextOfKin().trim().isEmpty()) {
+            if (item.getNextOfKin().length() > 100) {
+                errors.add("Row " + rowNumber + ": Next of kin must be max 100 characters (current: " + item.getNextOfKin().length() + ")");
+            }
         }
         
-        // Validate NOK phone
-        if (item.getNokPhone() == null || item.getNokPhone().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": NOK phone is required");
-        } else {
+        // Validate NOK phone (optional but must be valid if provided)
+        if (item.getNokPhone() != null && !item.getNokPhone().trim().isEmpty()) {
             String nokPhone = item.getNokPhone().trim();
             if (nokPhone.length() < 9 || nokPhone.length() > 15) {
                 errors.add("Row " + rowNumber + ": NOK phone '" + nokPhone + "' must be 9-15 characters");
             }
+        }
+
+        // Validate opening savings balance (optional, must be >= 0 if provided)
+        if (item.getOpeningSavingsBalance() != null && item.getOpeningSavingsBalance().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            errors.add("Row " + rowNumber + ": Opening savings balance cannot be negative");
+        }
+
+        // Validate opening shares balance (optional, must be >= 0 if provided)
+        if (item.getOpeningSharesBalance() != null && item.getOpeningSharesBalance().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            errors.add("Row " + rowNumber + ": Opening shares balance cannot be negative");
+        }
+
+        // Validate date joined (optional, must not be in the future)
+        if (item.getDateJoined() != null && item.getDateJoined().isAfter(LocalDate.now())) {
+            errors.add("Row " + rowNumber + ": Date joined cannot be in the future (" + item.getDateJoined() + ")");
         }
         
         return errors;

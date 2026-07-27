@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle, CheckCircle, XCircle, Loader2, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getApiBaseUrl } from '@/config/api';
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface KycDocument {
   id: number;
@@ -62,7 +63,7 @@ const KycApproval = () => {
   }
 
   useEffect(() => {
-    if (session) {
+    if (session && (session.role === 'TELLER' || session.role === 'ADMIN')) {
       fetchPendingDocuments();
       fetchMembersWithIncompleteKyc();
     }

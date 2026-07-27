@@ -1,6 +1,6 @@
-# Minet SACCO - Usage Guide
+# Minet SACCO - Usage Guide (Updated April 2026)
 
-Step-by-step guide on how to use the system correctly.
+Step-by-step guide on how to use the system correctly, including the new Loan Officer Application feature.
 
 ## Table of Contents
 
@@ -8,10 +8,11 @@ Step-by-step guide on how to use the system correctly.
 2. [Member Portal Setup](#member-portal-setup)
 3. [Member Registration](#member-registration)
 4. [Loan Management](#loan-management)
-5. [Savings Management](#savings-management)
-6. [Bulk Processing](#bulk-processing)
-7. [Reports & Analytics](#reports--analytics)
-8. [Audit Trail](#audit-trail)
+5. [Loan Officer Application](#loan-officer-application) ✨ NEW
+6. [Savings Management](#savings-management)
+7. [Bulk Processing](#bulk-processing)
+8. [Reports & Analytics](#reports--analytics)
+9. [Audit Trail](#audit-trail)
 
 ---
 
@@ -46,7 +47,7 @@ Step-by-step guide on how to use the system correctly.
 2. **Select Role**
    - ADMIN - Full system access
    - TREASURER - Accounting & transactions
-   - LOAN_OFFICER - Loan processing
+   - LOAN_OFFICER - Loan processing & member applications ✨ NEW
    - CREDIT_COMMITTEE - Loan approvals
    - TELLER - Member transactions
    - AUDITOR - Audit trail access
@@ -134,8 +135,7 @@ The member dashboard shows:
      - Email
      - Date of Birth
      - ID Number
-     - Addres
-s
+     - Address
      - Occupation
 
 2. **Upload File**
@@ -278,6 +278,127 @@ s
 4. Upload file
 5. System processes all repayments
 6. Generates report
+
+---
+
+## Loan Officer Application ✨ NEW
+
+### What's New
+
+Loan officers can now apply for loans on behalf of members with live eligibility checking and guarantor validation.
+
+### How to Apply on Behalf of Member
+
+1. **Navigate to Loans**
+   - Click "Loans" in sidebar
+   - Click "New Loan Application" button
+
+2. **Select Member**
+   - Click "Member" dropdown
+   - Search and select member to apply for
+   - System shows member's eligibility status
+
+3. **Select Loan Product**
+   - Choose loan product
+   - System shows:
+     - Interest rate
+     - Loan amount range
+     - Term range
+     - Processing fee
+
+4. **Enter Loan Details**
+   - **Amount**: Enter loan amount
+     - System validates against product limits
+     - Shows error if outside range
+   - **Term**: Enter loan term in months
+     - System validates against product limits
+     - Shows error if outside range
+
+5. **Add Guarantors** (Up to 3)
+   - Click "Add by Employee ID"
+   - Enter guarantor's employee ID (e.g., EMP009)
+   - Click "Search"
+   - System displays:
+     - Guarantor name
+     - Employee ID
+     - Savings balance
+     - Available capacity
+
+6. **Enter Guarantee Amount**
+   - Enter amount this guarantor will guarantee
+   - **Live Eligibility Check**: System automatically validates
+     - ✓ Green checkmark if eligible
+     - ✗ Red X if not eligible (shows reason)
+   - Shows guarantor's available capacity
+
+7. **Add Guarantor**
+   - Click "Add" button
+   - System validates:
+     - Guarantor has sufficient savings
+     - Total guaranteed amount ≤ loan amount
+     - Guarantor not already added
+   - If valid: Guarantor added to list
+   - If invalid: Error message shown
+
+8. **View Added Guarantors**
+   - Shows list of all added guarantors
+   - Displays:
+     - Guarantor name and employee ID
+     - Guarantee amount
+     - Eligibility status (✓ or ✗)
+     - Remove button
+   - Counter shows X/3 guarantors added
+
+9. **Live Eligibility Panel**
+   - Shows real-time eligibility for:
+     - Member (savings, shares, active loans)
+     - Each guarantor (available capacity, outstanding balance)
+   - Updates as form changes
+
+10. **Submit Application**
+    - Click "Submit Application"
+    - System validates:
+      - All required fields filled
+      - Member eligible
+      - All guarantors eligible
+      - Total guarantee = loan amount
+    - If valid: Loan created, notifications sent
+    - If invalid: Error message shown
+
+### Key Features
+
+✅ **Member Selection**: Choose which member to apply for
+✅ **Live Member Eligibility**: See member's eligibility in real-time
+✅ **Guarantor Search**: Find guarantors by employee ID
+✅ **Live Guarantor Eligibility**: Check if guarantor can guarantee specific amount
+✅ **Total Guarantee Validation**: Prevents total from exceeding loan amount
+✅ **Guarantor List**: View all added guarantors with eligibility status
+✅ **Error Prevention**: Clear error messages guide the process
+
+### Example Workflow
+
+```
+1. Loan Officer selects member: Samuel Ochieng
+2. Selects product: Personal Loan (12% interest, 6-24 months)
+3. Enters amount: 10,000 KES
+4. Enters term: 12 months
+5. System shows: ✓ Member eligible for 10,000 KES
+
+6. Searches for guarantor: EMP002
+7. System finds: Amina Hassan
+8. Enters guarantee amount: 5,000 KES
+9. System shows: ✓ Eligible to guarantee 5,000 KES
+10. Clicks Add → Amina added
+
+11. Searches for guarantor: EMP003
+12. System finds: Brian Mutua
+13. Enters guarantee amount: 5,000 KES
+14. System shows: ✓ Eligible to guarantee 5,000 KES
+15. Clicks Add → Brian added
+
+16. Total guaranteed: 10,000 KES = Loan amount ✓
+17. Clicks Submit → Loan created successfully
+```
 
 ---
 
@@ -500,6 +621,16 @@ s
 6. Member makes monthly repayments
 7. Loan marked as PAID when complete
 
+### Loan Officer Application Workflow ✨ NEW
+
+1. Loan Officer selects member
+2. Enters loan details (product, amount, term)
+3. Searches for and adds guarantors
+4. System validates eligibility in real-time
+5. Submits application
+6. Loan created with status PENDING
+7. Follows standard approval workflow
+
 ### Member Onboarding Workflow
 
 1. Staff creates member (manual or bulk)
@@ -552,6 +683,13 @@ s
 3. Try refreshing page
 4. Check browser console for errors
 
+### Loan Officer Application Issues
+
+1. **Guarantor not found**: Verify employee ID is correct
+2. **Guarantor not eligible**: Check guarantor has sufficient savings
+3. **Total guarantee exceeds loan**: Reduce guarantee amounts
+4. **Submit button disabled**: Ensure all fields filled and all eligible
+
 ---
 
 ## Best Practices
@@ -564,6 +702,8 @@ s
 6. **Report Reviews** - Review P&L reports monthly
 7. **User Access** - Regularly review user roles and permissions
 8. **Data Validation** - Validate bulk uploads before processing
+9. **Guarantor Validation** - Always verify guarantor eligibility before approval
+10. **Live Checks** - Use live eligibility checks to prevent errors
 
 ---
 
@@ -574,3 +714,4 @@ For issues or questions:
 - Review system logs in backend
 - Contact system administrator
 - Check audit trail for transaction details
+

@@ -20,14 +20,28 @@ interface Loan {
   disbursementDate: string;
 }
 
+interface LoanRepayment {
+  id: number;
+  amount: number;
+  paymentMethod: string;
+  referenceNumber: string;
+  paymentDate: string;
+  loan: {
+    id: number;
+    loanNumber: string;
+  };
+}
+
 export default function MemberLoanBalances() {
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [repayments, setRepayments] = useState<LoanRepayment[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
     fetchLoans();
+    fetchRepayments();
   }, []);
 
   const fetchLoans = async () => {
@@ -39,6 +53,16 @@ export default function MemberLoanBalances() {
       toast({ title: 'Error', description: 'Failed to load loans', variant: 'destructive' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRepayments = async () => {
+    try {
+      const response = await api.get('/member/loan-repayments');
+      setRepayments(response.data || []);
+    } catch (err) {
+      console.error('Error fetching repayments:', err);
+      toast({ title: 'Error', description: 'Failed to load repayments', variant: 'destructive' });
     }
   };
 
@@ -96,65 +120,92 @@ export default function MemberLoanBalances() {
         Back
       </Button>
 
-      <div className="grid gap-4">
-        {loans.length > 0 ? (
-          loans.map((loan) => (
-            <Card key={loan.id} className="border-l-4 border-l-primary">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg">Loan #{loan.loanNumber}</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {loan.disbursementDate ? `Disbursed: ${formatDate(loan.disbursementDate)}` : 'Status: Pending Disbursement'}
-                    </p>
-                  </div>
-                  <Badge className={getStatusColor(loan.status)}>
-                    {loan.status}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Original Amount</p>
-                    <p className="text-lg font-semibold">{formatCurrency(loan.amount)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Outstanding</p>
-                    <p className="text-lg font-semibold text-red-600">{formatCurrency(loan.outstandingBalance)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Monthly Payment</p>
-                    <p className="text-lg font-semibold">{formatCurrency(loan.monthlyRepayment)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Interest Rate</p>
-                    <p className="text-lg font-semibold">{loan.interestRate}%</p>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Term: {loan.termMonths} months</p>
+      <div className="space-y-6">
+        {/* Loan Repayments Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Loan Repayments</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {repayments.length > 0 ? (
+              <div className="space-y-3">
+                {repayments.map((repayment) => (
+                  <div key={repayment.id} className="border rounded-lg p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Loan #{repayment.loan.loanNumber}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatDate(repayment.paymentDate)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-green-600">{formatCurrency(repayment.amount)}</p>
+                        <p className="text-xs text-muted-foreground">{repayment.paymentMethod}</p>
+                      </div>
                     </div>
-                    {loan.status === 'DISBURSED' && (
-                      <Button 
-                        size="sm"
-                        onClick={() => navigate('/member/dashboard?tab=transact')}
-                      >
-                        Make Payment
-                      </Button>
+                    {repayment.referenceNumber && (
+                      <p className="text-xs text-muted-foreground">Ref: {repayment.referenceNumber}</p>
                     )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : (
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No loan repayments found</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Active Loans Section */}
+        {loans.length > 0 && (
           <Card>
-            <CardContent className="pt-6 text-center">
-              <p className="text-muted-foreground">No active loans</p>
+            <CardHeader>
+              <CardTitle>Active Loans</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {loans.map((loan) => (
+                <div key={loan.id} className="border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg">Loan #{loan.loanNumber}</CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {loan.disbursementDate ? `Disbursed: ${formatDate(loan.disbursementDate)}` : 'Status: Pending Disbursement'}
+                      </p>
+                    </div>
+                    <Badge className={getStatusColor(loan.status)}>
+                      {loan.status}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase">Original Amount</p>
+                      <p className="text-lg font-semibold">{formatCurrency(loan.amount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase">Outstanding</p>
+                      <p className="text-lg font-semibold text-red-600">{formatCurrency(loan.outstandingBalance)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase">Interest Rate</p>
+                      <p className="text-lg font-semibold">{loan.interestRate}%</p>
+                    </div>
+                  </div>
+                  <div className="pt-4 border-t">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Term: {loan.termMonths} months</p>
+                      </div>
+                      {loan.status === 'DISBURSED' && (
+                        <Button
+                          size="sm"
+                          onClick={() => navigate('/member/dashboard?tab=transact')}
+                        >
+                          Make Payment
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}

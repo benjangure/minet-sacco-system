@@ -34,17 +34,33 @@ public class User {
 
     private Boolean enabled = true;
 
+    @Column(name = "first_login")
+    private boolean firstLogin = false;
+
     @Column(name = "created_by")
     private Long createdBy;
 
     @Column(name = "member_id")
     private Long memberId; // Set when role = MEMBER, links to members table
 
+    @Size(max = 100)
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Size(max = 100)
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Size(max = 20)
+    @Column(name = "phone")
+    private String phone;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     public enum Role {
         ADMIN,              // System configuration and user management
+        HR,                 // Human Resources - member exit/suspension initiation
         TREASURER,          // Financial transactions and bulk uploads
         LOAN_OFFICER,       // Loan processing
         CREDIT_COMMITTEE,   // Loan approval and bulk approval (Checker)
@@ -73,11 +89,23 @@ public class User {
     public Boolean getEnabled() { return enabled; }
     public void setEnabled(Boolean enabled) { this.enabled = enabled; }
 
+    public boolean isFirstLogin() { return firstLogin; }
+    public void setFirstLogin(boolean firstLogin) { this.firstLogin = firstLogin; }
+
     public Long getCreatedBy() { return createdBy; }
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
 
     public Long getMemberId() { return memberId; }
     public void setMemberId(Long memberId) { this.memberId = memberId; }
+
+    public String getFirstName() { return firstName; }
+    public void setFirstName(String firstName) { this.firstName = firstName; }
+
+    public String getLastName() { return lastName; }
+    public void setLastName(String lastName) { this.lastName = lastName; }
+
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

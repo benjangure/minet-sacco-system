@@ -18,9 +18,18 @@ public interface LoanRepaymentRepository extends JpaRepository<LoanRepayment, Lo
     @Query("SELECT COALESCE(SUM(lr.amount), 0) FROM LoanRepayment lr WHERE lr.loan.id = :loanId")
     BigDecimal getTotalRepaidAmount(@Param("loanId") Long loanId);
 
+    @Query("SELECT COALESCE(SUM(lr.principalAmount), 0) FROM LoanRepayment lr WHERE lr.loan.id = :loanId")
+    BigDecimal getTotalPrincipalRepaid(@Param("loanId") Long loanId);
+
+    @Query("SELECT COALESCE(SUM(lr.interestAmount), 0) FROM LoanRepayment lr WHERE lr.loan.id = :loanId")
+    BigDecimal getTotalInterestCollected(@Param("loanId") Long loanId);
+
     @Query("SELECT lr FROM LoanRepayment lr WHERE lr.loan.id = :loanId AND lr.paymentDate >= :startDate AND lr.paymentDate <= :endDate ORDER BY lr.paymentDate DESC")
     List<LoanRepayment> findByLoanIdAndDateRange(@Param("loanId") Long loanId, @Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
     @Query("SELECT COUNT(lr) FROM LoanRepayment lr WHERE lr.loan.id = :loanId")
     Long countRepaymentsByLoanId(@Param("loanId") Long loanId);
+
+    @Query("SELECT lr FROM LoanRepayment lr WHERE lr.loan.member.id = :memberId ORDER BY lr.paymentDate DESC")
+    List<LoanRepayment> findByMemberIdOrderByPaymentDateDesc(@Param("memberId") Long memberId);
 }

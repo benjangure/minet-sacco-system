@@ -19,12 +19,7 @@ import { API_BASE_URL } from "@/config/api";
 
 interface AuditLog {
   id: number;
-  user: {
-    id: number;
-    username: string;
-    firstName: string;
-    lastName: string;
-  };
+  username: string;
   action: string;
   entityType: string;
   entityId: number;
@@ -158,7 +153,7 @@ export const AuditTrail = () => {
         const headers = ["Timestamp", "User", "Action", "Entity Type", "Entity ID", "Details", "Comments", "Status", "IP Address"];
         const rows = logs.map((log: AuditLog) => [
           new Date(log.timestamp).toLocaleString(),
-          `${log.user.firstName} ${log.user.lastName}`,
+          log.username,
           log.action,
           log.entityType,
           log.entityId,
@@ -358,8 +353,7 @@ export const AuditTrail = () => {
                           {formatDate(log.timestamp)}
                         </TableCell>
                         <TableCell className="text-sm">
-                          <div className="font-medium">{log.user.firstName} {log.user.lastName}</div>
-                          <div className="text-xs text-muted-foreground">{log.user.username}</div>
+                          <div className="font-medium text-muted-foreground">{log.username}</div>
                         </TableCell>
                         <TableCell>
                           <Badge className={`${actionColors[log.action] || "bg-gray-100 text-gray-800"} text-xs`}>
@@ -449,8 +443,7 @@ export const AuditTrail = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">User</label>
-                  <p className="text-sm font-medium">{selectedLog.user.firstName} {selectedLog.user.lastName}</p>
-                  <p className="text-xs text-muted-foreground">{selectedLog.user.username}</p>
+                  <p className="text-sm font-medium">{selectedLog.username}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Action</label>

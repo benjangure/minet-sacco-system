@@ -5,14 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Download, AlertCircle } from "lucide-react";
+import { Search, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface Member {
   id: number;
@@ -55,7 +55,6 @@ const MemberTransactionHistory = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [transactionTypeFilter, setTransactionTypeFilter] = useState("all");
-  const [memberSearchOpen, setMemberSearchOpen] = useState(true);
   const { toast } = useToast();
   const { session, role } = useAuth();
 
@@ -88,11 +87,11 @@ const MemberTransactionHistory = () => {
     try {
       let url = `${API_BASE_URL}/members/${memberId}/transactions`;
       const params = new URLSearchParams();
-      
+
       if (startDate) params.append("startDate", startDate);
       if (endDate) params.append("endDate", endDate);
       if (transactionTypeFilter && transactionTypeFilter !== "all") params.append("transactionType", transactionTypeFilter);
-      
+
       if (params.toString()) {
         url += "?" + params.toString();
       }
@@ -103,7 +102,12 @@ const MemberTransactionHistory = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.data || []);
+        // Filter out LOAN_REPAYMENT transactions to avoid duplicate display
+        // Loan repayments are already shown in the loan repayments section
+        const filteredTransactions = (data.data || []).filter(
+          (t: Transaction) => t.transactionType !== "LOAN_REPAYMENT"
+        );
+        setTransactions(filteredTransactions);
       } else {
         toast({ title: "Error", description: "Failed to fetch transactions", variant: "destructive" });
       }
@@ -116,7 +120,6 @@ const MemberTransactionHistory = () => {
 
   const handleSelectMember = (member: Member) => {
     setSelectedMember(member);
-    setMemberSearchOpen(false);
     setTransactions([]);
     setStartDate("");
     setEndDate("");
@@ -134,7 +137,11 @@ const MemberTransactionHistory = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.data || []);
+        // Filter out LOAN_REPAYMENT transactions to avoid duplicate display
+        const filteredTransactions = (data.data || []).filter(
+          (t: Transaction) => t.transactionType !== "LOAN_REPAYMENT"
+        );
+        setTransactions(filteredTransactions);
       }
     } catch (error) {
       console.error("Error fetching transactions:", error);
@@ -159,7 +166,6 @@ const MemberTransactionHistory = () => {
   };
 
   const handleChangeMember = () => {
-    setMemberSearchOpen(true);
     setSelectedMember(null);
     setTransactions([]);
   };
@@ -180,11 +186,8 @@ const MemberTransactionHistory = () => {
     const loanDisbursements = transactions
       .filter(t => t.transactionType === "LOAN_DISBURSEMENT")
       .reduce((sum, t) => sum + t.amount, 0);
-    const loanRepayments = transactions
-      .filter(t => t.transactionType === "LOAN_REPAYMENT")
-      .reduce((sum, t) => sum + t.amount, 0);
 
-    return { deposits, withdrawals, loanDisbursements, loanRepayments };
+    return { deposits, withdrawals, loanDisbursements };
   };
 
   if (!canAccessTransactionHistory) {
@@ -210,14 +213,13 @@ const MemberTransactionHistory = () => {
         <p className="text-muted-foreground">View all transactions for a member</p>
       </div>
 
-      {/* Member Selection Dialog */}
-      <Dialog open={memberSearchOpen} onOpenChange={setMemberSearchOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Select Member</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="relative">
+      {!selectedMember && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Select Member</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="relative mb-4">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by member number, name..."
@@ -226,25 +228,46 @@ const MemberTransactionHistory = () => {
                 className="pl-10"
               />
             </div>
-            <div className="max-h-96 overflow-y-auto border rounded-lg">
-              {filteredMembers.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">No members found</div>
-              ) : (
-                filteredMembers.map(member => (
-                  <div
-                    key={member.id}
-                    onClick={() => handleSelectMember(member)}
-                    className="p-3 border-b hover:bg-accent cursor-pointer transition-colors"
-                  >
-                    <div className="font-medium">{member.firstName} {member.lastName}</div>
-                    <div className="text-sm text-muted-foreground">{member.memberNumber}</div>
-                  </div>
-                ))
-              )}
+
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Member</TableHead>
+                    <TableHead>Member No.</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMembers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
+                        No members found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredMembers.map((member) => (
+                      <TableRow
+                        key={member.id}
+                        className="cursor-pointer hover:bg-accent"
+                        onClick={() => handleSelectMember(member)}
+                      >
+                        <TableCell className="font-medium">
+                          {member.firstName} {member.lastName}
+                        </TableCell>
+                        <TableCell>{member.memberNumber}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{member.status}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Member Selected - Show Transactions */}
       {selectedMember && (
@@ -301,7 +324,6 @@ const MemberTransactionHistory = () => {
                       <SelectItem value="DEPOSIT">Deposit</SelectItem>
                       <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
                       <SelectItem value="LOAN_DISBURSEMENT">Loan Disbursement</SelectItem>
-                      <SelectItem value="LOAN_REPAYMENT">Loan Repayment</SelectItem>
                       <SelectItem value="INTEREST">Interest</SelectItem>
                       <SelectItem value="LOAN_DEFAULT_DEBIT">Loan Default Debit</SelectItem>
                     </SelectContent>
@@ -321,7 +343,7 @@ const MemberTransactionHistory = () => {
 
           {/* Summary Cards */}
           {transactions.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Total Deposits</p>
@@ -338,12 +360,6 @@ const MemberTransactionHistory = () => {
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Loan Disbursements</p>
                   <p className="text-lg font-bold text-blue-600">KES {totals.loanDisbursements.toLocaleString()}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs text-muted-foreground">Loan Repayments</p>
-                  <p className="text-lg font-bold text-purple-600">KES {totals.loanRepayments.toLocaleString()}</p>
                 </CardContent>
               </Card>
             </div>

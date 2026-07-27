@@ -7,7 +7,8 @@ import { Users, Landmark, PiggyBank, AlertTriangle, Shield, FileText } from "luc
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import DepositApprovalPanel from "@/components/DepositApprovalPanel";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 const Index = () => {
   const { role, session } = useAuth();
@@ -20,9 +21,15 @@ const Index = () => {
     myUploadedDocuments: 0,
     approvedLoansForDisbursement: 0,
     pendingDeposits: 0,
+    totalDisbursedPrincipal: 0,
+    totalDisbursedOutstanding: 0,
+    totalDisbursedOutstandingPrincipal: 0,
+    totalDisbursedOutstandingInterest: 0,
+    totalInterestCollected: 0,
   });
   const [loansByProduct, setLoansByProduct] = useState<any[]>([]);
   const [membersByStatus, setMembersByStatus] = useState<any[]>([]);
+  const [loanPortfolioBreakdown, setLoanPortfolioBreakdown] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [depositPanelOpen, setDepositPanelOpen] = useState(false);
 
@@ -49,34 +56,49 @@ const Index = () => {
         }).catch(() => null);
         const loansData = loansRes?.ok ? (await loansRes.json()).data || [] : [];
 
-        // Fetch KYC data
-        const kycPendingRes = await fetch(`${API_BASE_URL}/kyc-documents/pending`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const kycPendingData = kycPendingRes?.ok ? (await kycPendingRes.json()).data || [] : [];
+        // Initialize data variables
+        let kycPendingData = [];
+        let kycIncompleteData = [];
+        let myUploadsData = [];
+        let approvedLoansData = [];
+        let pendingDepositsData = [];
 
-        const kycIncompleteRes = await fetch(`${API_BASE_URL}/kyc-documents/incomplete-members`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const kycIncompleteData = kycIncompleteRes?.ok ? (await kycIncompleteRes.json()).data || [] : [];
+        // Fetch KYC data (only for users with appropriate roles)
+        if (session.role === 'TELLER' || session.role === 'ADMIN') {
+          const kycPendingRes = await fetch(`${API_BASE_URL}/kyc-documents/pending`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          kycPendingData = kycPendingRes?.ok ? (await kycPendingRes.json()).data || [] : [];
 
-        // Fetch my uploaded documents (for CUSTOMER_SUPPORT)
-        const myUploadsRes = await fetch(`${API_BASE_URL}/kyc-documents/my-uploads`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const myUploadsData = myUploadsRes?.ok ? (await myUploadsRes.json()).data || [] : [];
+          const kycIncompleteRes = await fetch(`${API_BASE_URL}/kyc-documents/incomplete-members`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          kycIncompleteData = kycIncompleteRes?.ok ? (await kycIncompleteRes.json()).data || [] : [];
+        }
 
-        // Fetch approved loans (for TREASURER)
-        const approvedLoansRes = await fetch(`${API_BASE_URL}/bulk/loan-items/approved`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const approvedLoansData = approvedLoansRes?.ok ? (await approvedLoansRes.json()).data || [] : [];
+        // Fetch my uploaded documents (only for CUSTOMER_SUPPORT)
+        if (session.role === 'CUSTOMER_SUPPORT') {
+          const myUploadsRes = await fetch(`${API_BASE_URL}/kyc-documents/my-uploads`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          myUploadsData = myUploadsRes?.ok ? (await myUploadsRes.json()).data || [] : [];
+        }
 
-        // Fetch pending deposits (for TELLER)
-        const pendingDepositsRes = await fetch(`${API_BASE_URL}/teller/deposit-requests/pending`, {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        }).catch(() => null);
-        const pendingDepositsData = pendingDepositsRes?.ok ? (await pendingDepositsRes.json()).data || [] : [];
+        // Fetch approved loans (only for TREASURER)
+        if (session.role === 'TREASURER' || session.role === 'ADMIN') {
+          const approvedLoansRes = await fetch(`${API_BASE_URL}/bulk/loan-items/approved`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          approvedLoansData = approvedLoansRes?.ok ? (await approvedLoansRes.json()).data || [] : [];
+        }
+
+        // Fetch pending deposits (only for TELLER)
+        if (session.role === 'TELLER' || session.role === 'ADMIN') {
+          const pendingDepositsRes = await fetch(`${API_BASE_URL}/teller/deposit-requests/pending`, {
+            headers: { "Authorization": `Bearer ${session.token}` },
+          }).catch(() => null);
+          pendingDepositsData = pendingDepositsRes?.ok ? (await pendingDepositsRes.json()).data || [] : [];
+        }
 
         // Calculate stats
         const activeMembers = membersData.filter((m: any) => m.status === "ACTIVE").length;
@@ -91,6 +113,45 @@ const Index = () => {
         const pendingLoans = loansData.filter((l: any) => ["PENDING", "PENDING_GUARANTOR_APPROVAL", "PENDING_LOAN_OFFICER_REVIEW", "PENDING_CREDIT_COMMITTEE", "PENDING_TREASURER", "UNDER_REVIEW"].includes(l.status)).length;
         const defaultedLoans = loansData.filter((l: any) => l.status === "DEFAULTED").length;
         const approvedLoansForDisbursement = loansData.filter((l: any) => l.status === "APPROVED").length;
+
+        // Loan portfolio totals (DISBURSED loans only)
+        const disbursedLoans = loansData.filter((l: any) => l.status === "DISBURSED");
+        const totalDisbursedPrincipal = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0);
+        const totalDisbursedOutstanding = disbursedLoans.reduce((sum: number, l: any) => sum + Number(l.outstandingBalance || 0), 0);
+        
+        // Calculate total interest collected from all repayments across all disbursed loans
+        // Plus historical interest collected from migrated loans
+        let totalInterestCollected = 0;
+        
+        // First, add interest collected from migrated loans (stored in interestCollected field)
+        const migratedLoans = loansData.filter((l: any) => l.migrationStatus === "MIGRATED");
+        totalInterestCollected += migratedLoans.reduce((sum: number, l: any) => sum + Number(l.interestCollected || 0), 0);
+        
+        // Then, add interest from repayments on disbursed loans
+        try {
+          for (const loan of disbursedLoans) {
+            const repaymentRes = await fetch(`${API_BASE_URL}/loans/${loan.id}/repayments`, {
+              headers: { "Authorization": `Bearer ${session.token}` },
+            });
+            if (repaymentRes.ok) {
+              const repaymentData = await repaymentRes.json();
+              const repayments = repaymentData.data || [];
+              totalInterestCollected += repayments.reduce((sum: number, rep: any) => sum + (rep.interestAmount || 0), 0);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching repayments for interest calculation:", error);
+          // Continue with migrated loan interest if repayment data unavailable
+        }
+        
+        // Calculate outstanding interest more accurately
+        // NOTE: In REDUCING BALANCE system, totalRepayable is NULL for new loans
+        // Outstanding interest is tracked from actual repayments, not pre-calculated
+        // So we skip this calculation for reducing balance loans
+        const totalDisbursedOutstandingInterest = 0; // Not applicable in reducing balance system
+        
+        // Repaid = Total Disbursed - Outstanding Balance
+        const totalRepaidAmount = Math.max(0, totalDisbursedPrincipal - totalDisbursedOutstanding);
 
         setStats({
           totalMembers: membersData.length,
@@ -108,7 +169,19 @@ const Index = () => {
           myUploadedDocuments: myUploadsData.length,
           approvedLoansForDisbursement,
           pendingDeposits: pendingDepositsData.length,
+          totalDisbursedPrincipal,
+          totalDisbursedOutstanding,
+          totalDisbursedOutstandingPrincipal: totalDisbursedOutstanding, // For reducing balance: all outstanding is principal
+          totalDisbursedOutstandingInterest: 0,
+          totalInterestCollected,
         });
+
+        // Pie chart breakdown: Outstanding Principal + Repaid
+        // In reducing balance system, we don't show estimated interest breakdown
+        setLoanPortfolioBreakdown([
+          { name: "Outstanding Principal", value: totalDisbursedOutstanding },
+          { name: "Repaid", value: totalRepaidAmount },
+        ]);
 
         // Members by status for pie chart
         const statusCount: Record<string, number> = {};
@@ -187,8 +260,10 @@ const Index = () => {
 
   const statCards = getStatCards();
   const showCharts = ["ADMIN", "TREASURER", "AUDITOR", "LOAN_OFFICER", "CUSTOMER_SUPPORT"].includes(role || "");
+  const showLoanPortfolio = ["ADMIN", "TREASURER", "LOAN_OFFICER"].includes(role || "");
 
   const COLORS = ["hsl(0, 72%, 51%)", "hsl(0, 0%, 70%)", "hsl(40, 90%, 50%)", "hsl(0, 0%, 45%)"];
+  const LOAN_PORTFOLIO_COLORS = ["hsl(0, 72%, 51%)", "hsl(28, 90%, 55%)", "hsl(142, 71%, 45%)"];
 
   return (
     <div>
@@ -294,6 +369,96 @@ const Index = () => {
           </Card>
         ))}
       </div>
+
+      {/* Loan Portfolio (Admin/Treasurer/Loan Officer only) */}
+      {showLoanPortfolio && (
+        <Card className="border-none shadow-sm mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg">Loan Portfolio (Disbursed)</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Live totals across all disbursed loans.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 md:grid-cols-4">
+              <Card
+                className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => navigate("/loans?status=DISBURSED")}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Disbursed</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-foreground">
+                    {loading ? "..." : `KES ${stats.totalDisbursedPrincipal.toLocaleString()}`}
+                  </div>
+                  <p className="text-xs mt-1 text-muted-foreground">Click to view disbursed loans</p>
+                </CardContent>
+              </Card>
+
+              <Card
+                className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => navigate("/loans?status=DISBURSED")}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Outstanding</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">
+                    {loading ? "..." : `KES ${stats.totalDisbursedOutstanding.toLocaleString()}`}
+                  </div>
+                  <p className="text-xs mt-1 text-muted-foreground">
+                    Principal remaining to be repaid
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-none shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Interest Collected</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {loading ? "..." : `KES ${stats.totalInterestCollected.toLocaleString()}`}
+                  </div>
+                  <p className="text-xs mt-1 text-muted-foreground">Total from all repayments</p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-none shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Repayment Progress</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loanPortfolioBreakdown.some((d: any) => Number(d.value) > 0) ? (
+                    <ResponsiveContainer width="100%" height={180}>
+                      <PieChart>
+                        <Pie
+                          data={loanPortfolioBreakdown}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={75}
+                          dataKey="value"
+                        >
+                          {loanPortfolioBreakdown.map((_: any, i: number) => (
+                            <Cell key={i} fill={LOAN_PORTFOLIO_COLORS[i % LOAN_PORTFOLIO_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => `KES ${Number(value).toLocaleString()}`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[180px] flex items-center justify-center text-muted-foreground">
+                      No disbursed loan data yet
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {showCharts && (
         <div className="grid gap-6 md:grid-cols-2">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
-import api, { getBackendUrl, setBackendUrl } from '@/config/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, LogIn, Eye, EyeOff, Settings, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 import logo from '@/assets/images/logo.png';
+import { BackendConnectionManager } from '@/components/BackendConnectionManager';
+import { getBackendUrl, setBackendUrl } from '@/config/api';
 
 export default function MemberLogin() {
   const [username, setUsername] = useState('');
@@ -16,6 +18,7 @@ export default function MemberLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [accessError, setAccessError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [backendUrl, setBackendUrlLocal] = useState('');
@@ -23,13 +26,59 @@ export default function MemberLogin() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { memberSignIn } = useAuth();
 
   useEffect(() => {
+    // If already logged in with valid token, redirect to dashboard
+    const sessionStr = localStorage.getItem('session');
+    if (sessionStr) {
+      try {
+        const session = JSON.parse(sessionStr);
+        if (session?.token && typeof session.token === 'string') {
+          // Validate token hasn't expired
+          try {
+            const tokenParts = session.token.split('.');
+            if (tokenParts.length === 3) {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              // Check if token has exp claim and if it's expired
+              if (payload.exp) {
+                const expirationTime = payload.exp * 1000; // Convert to milliseconds
+                const currentTime = Date.now();
+                if (currentTime < expirationTime) {
+                  // Token is valid and not expired
+                  console.log('DEBUG: Valid session exists in localStorage, redirecting to dashboard');
+                  navigate('/member/dashboard', { replace: true });
+                  return;
+                }
+              } else {
+                // No expiration claim, assume token is valid
+                console.log('DEBUG: Session exists (no expiry), redirecting to dashboard');
+                navigate('/member/dashboard', { replace: true });
+                return;
+              }
+            }
+          } catch (tokenErr) {
+            console.error('Failed to validate token:', tokenErr);
+            // Token is invalid, clear it and continue to login
+            localStorage.removeItem('session');
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse session:', e);
+      }
+    }
+
     // Check if there's an access error from ProtectedRoute
     const error = localStorage.getItem('accessError');
     if (error) {
       setAccessError(error);
       localStorage.removeItem('accessError');
+    }
+
+    // Check for success message from password setup
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
     }
 
     // Load current backend URL
@@ -43,37 +92,58 @@ export default function MemberLogin() {
     setError('');
     setLoading(true);
 
+    console.log('DEBUG: Member login attempt starting for user:', username);
+
     try {
-      const response = await api.post('/auth/member/login', {
-        username,
-        password
+      const result = await memberSignIn(username, password);
+
+      console.log('DEBUG: memberSignIn result:', { 
+        error: result.error?.message, 
+        firstLogin: result.firstLogin,
+        username: result.username 
       });
 
-      const token = response.data.token;
-      const decoded: any = jwtDecode(token);
-
-      // Verify user is a member
-      if (decoded.role !== 'MEMBER') {
-        setError('Invalid credentials for member login');
+      if (result.error) {
+        console.error('DEBUG: Login error received:', result.error.message);
+        setError(result.error.message);
         setLoading(false);
         return;
       }
 
-      // Store token and user info
-      localStorage.setItem('token', token);
-      localStorage.setItem('userRole', decoded.role);
-      // Use memberId from token if available, otherwise use username
-      if (decoded.memberId) {
-        localStorage.setItem('memberId', decoded.memberId);
+      if (result.firstLogin) {
+        console.log('DEBUG: First login detected - redirecting to password setup');
+        // Redirect to password setup page with credentials
+        navigate('/member/password-setup', { 
+          state: { 
+            username: result.username, 
+            currentPassword: result.password 
+          },
+          replace: true
+        });
+        return;
       }
-      localStorage.setItem('username', decoded.sub);
 
-      // Redirect to member dashboard
-      navigate('/member/dashboard');
+      // Normal login successful - redirect to dashboard
+      console.log('DEBUG: Login successful, redirecting to member dashboard');
+      // Verify session is in localStorage before navigating
+      const sessionCheck = localStorage.getItem('session');
+      console.log('DEBUG: Session in localStorage before navigate:', sessionCheck ? 'YES' : 'NO');
+      if (sessionCheck) {
+        try {
+          const parsed = JSON.parse(sessionCheck);
+          console.log('DEBUG: Session has token:', parsed.token ? 'YES' : 'NO');
+        } catch (e) {
+          console.error('DEBUG: Failed to parse session:', e);
+        }
+      }
+      console.log('DEBUG: Current URL before navigate:', window.location.href);
+      console.log('DEBUG: About to call navigate("/member/dashboard", { replace: true })');
+      
+      // No delay needed - session is already written and validated
+      navigate('/member/dashboard', { replace: true });
+      console.log('DEBUG: Navigate called, current URL is now:', window.location.href);
     } catch (err: any) {
       console.error('Login error:', err);
-      console.error('Error response:', err.response);
-      console.error('Error message:', err.message);
       
       let errorMsg = 'Login failed. Please check your credentials.';
       
@@ -85,8 +155,8 @@ export default function MemberLogin() {
         errorMsg = err.message;
       }
       
+      console.error('DEBUG: Final error message:', errorMsg);
       setError(errorMsg);
-    } finally {
       setLoading(false);
     }
   };
@@ -145,158 +215,181 @@ export default function MemberLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Card className="border-none shadow-lg">
-          <CardHeader className="space-y-2 text-center">
-            <div className="flex justify-center mb-4">
-              <img src={logo} alt="Minet SACCO" className="h-16 w-auto" />
-            </div>
-            <CardTitle className="text-2xl">Minet SACCO</CardTitle>
-            <p className="text-sm text-muted-foreground">Member Portal</p>
-          </CardHeader>
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <Card className="border-none shadow-lg">
+            <CardHeader className="space-y-2 text-center">
+              <div className="flex justify-center mb-4">
+                <img src={logo} alt="Minet SACCO" className="h-16 w-auto" />
+              </div>
+              <CardTitle className="text-2xl">Minet SACCO</CardTitle>
+              <p className="text-sm text-muted-foreground">Member Portal</p>
+            </CardHeader>
 
-          <CardContent className="space-y-6">
-            {/* Settings Toggle Button */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowSettings(!showSettings)}
-              className="w-full gap-2"
-            >
-              <Settings className="h-4 w-4" />
-              {showSettings ? 'Hide Settings' : 'Backend Settings'}
-              {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
+            <CardContent className="space-y-6">
+              {/* Backend Settings Toggle Button - Commented out for production deployment */}
+              {/* 
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSettings(!showSettings)}
+                className="w-full gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                {showSettings ? 'Hide Settings' : 'Backend Settings'}
+                {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
 
-            {/* Settings Panel */}
-            {showSettings && (
-              <div className="space-y-4 p-4 bg-muted rounded-lg border">
+              {/* Settings Panel - Commented out for production */}
+              {/* {showSettings && (
+                <div className="space-y-4 p-4 bg-muted rounded-lg border">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Current Backend</Label>
+                    <div className="p-2 bg-background rounded text-xs font-mono break-all">
+                      {backendUrl}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="backend-url" className="text-sm">Backend URL</Label>
+                    <Input
+                      id="backend-url"
+                      type="text"
+                      value={tempUrl}
+                      onChange={(e) => setTempUrl(e.target.value)}
+                      placeholder="http://192.168.0.41:8080"
+                      className="text-xs font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Format: http://IP:PORT or https://domain
+                    </p>
+                  </div>
+
+                  {connectionStatus && (
+                    <Alert variant={connectionStatus.type === 'error' ? 'destructive' : 'default'}>
+                      {connectionStatus.type === 'error' ? (
+                        <AlertCircle className="h-4 w-4" />
+                      ) : (
+                        <CheckCircle className="h-4 w-4" />
+                      )}
+                      <AlertDescription className="text-xs">{connectionStatus.text}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      onClick={testConnection}
+                      disabled={testingConnection}
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-xs"
+                    >
+                      {testingConnection ? 'Testing...' : 'Test'}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSaveUrl}
+                      disabled={testingConnection || tempUrl === backendUrl}
+                      size="sm"
+                      className="flex-1 text-xs"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              )}
+              */}
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                {successMessage && (
+                  <Alert>
+                    <CheckCircle className="h-4 w-4" />
+                    <AlertDescription className="text-green-700">{successMessage}</AlertDescription>
+                  </Alert>
+                )}
+                {accessError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-700">{accessError}</p>
+                  </div>
+                )}
                 <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Current Backend</Label>
-                  <div className="p-2 bg-background rounded text-xs font-mono break-all">
-                    {backendUrl}
+                  <Label htmlFor="username">Phone Number or Employee ID</Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="e.g., 0722123456 or EMP001"
+                    required
+                    disabled={loading}
+                    className="h-10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">National ID (Initial Password)</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Your National ID"
+                      required
+                      disabled={loading}
+                      className="h-10 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={loading}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="backend-url" className="text-sm">Backend URL</Label>
-                  <Input
-                    id="backend-url"
-                    type="text"
-                    value={tempUrl}
-                    onChange={(e) => setTempUrl(e.target.value)}
-                    placeholder="http://192.168.0.50:8080"
-                    className="text-xs font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Format: http://IP:PORT or https://domain
-                  </p>
-                </div>
-
-                {connectionStatus && (
-                  <Alert variant={connectionStatus.type === 'error' ? 'destructive' : 'default'}>
-                    {connectionStatus.type === 'error' ? (
-                      <AlertCircle className="h-4 w-4" />
-                    ) : (
-                      <CheckCircle className="h-4 w-4" />
-                    )}
-                    <AlertDescription className="text-xs">{connectionStatus.text}</AlertDescription>
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
 
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    onClick={testConnection}
-                    disabled={testingConnection}
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 text-xs"
-                  >
-                    {testingConnection ? 'Testing...' : 'Test'}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={handleSaveUrl}
-                    disabled={testingConnection || tempUrl === backendUrl}
-                    size="sm"
-                    className="flex-1 text-xs"
-                  >
-                    Save
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleLogin} className="space-y-4">
-              {accessError && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <p className="text-sm text-red-700">{accessError}</p>
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="username">Phone Number or Employee ID</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g., 0722123456 or EMP001"
-                  required
+                <Button 
+                  type="submit" 
+                  className="w-full h-10 gap-2"
                   disabled={loading}
-                  className="h-10"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">National ID (Initial Password)</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Your National ID"
-                    required
-                    disabled={loading}
-                    className="h-10 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:opacity-50"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <Button 
-                type="submit" 
-                className="w-full h-10 gap-2"
-                disabled={loading}
-              >
-                <LogIn className="h-4 w-4" />
-                {loading ? 'Logging in...' : 'Login'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                >
+                  <LogIn className="h-4 w-4" />
+                  {loading ? 'Logging in...' : 'Login'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </div>
+
+      {/* BackendConnectionManager component commented out for production deployment */}
+      {/* 
+      <BackendConnectionManager 
+        showOnMount={false}
+        onConnectionSuccess={() => {
+          // Refresh the backend URL after successful connection
+          const currentUrl = getBackendUrl();
+          setBackendUrlLocal(currentUrl);
+          setTempUrl(currentUrl);
+        }}
+      />
+      */}
+    </>
   );
 }

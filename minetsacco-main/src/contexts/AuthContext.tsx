@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { useNavigate } from "react-router-dom";
 import { getBackendUrl } from "@/config/api";
 
-type AppRole = "ADMIN" | "TREASURER" | "LOAN_OFFICER" | "CREDIT_COMMITTEE" | "AUDITOR" | "TELLER" | "CUSTOMER_SUPPORT";
+type AppRole = "ADMIN" | "TREASURER" | "LOAN_OFFICER" | "CREDIT_COMMITTEE" | "AUDITOR" | "TELLER" | "CUSTOMER_SUPPORT" | "MEMBER";
 
 interface User {
   id: number;
@@ -12,6 +12,7 @@ interface User {
 }
 
 interface Session {
+  role: string;
   token: string;
   user: User;
 }
@@ -23,6 +24,7 @@ interface AuthContextType {
   profile: { full_name: string; email: string; avatar_url: string | null } | null;
   loading: boolean;
   signIn: (username: string, password: string) => Promise<{ error: Error | null }>;
+  memberSignIn: (username: string, password: string) => Promise<{ error: Error | null; firstLogin?: boolean; username?: string; password?: string }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedVersion !== APP_VERSION) {
       // Version mismatch, clear all sessions
       localStorage.removeItem("session");
+      localStorage.removeItem("token");
       localStorage.setItem("appVersion", APP_VERSION);
       setLoading(false);
       return;
@@ -114,6 +117,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
+  const memberSignIn = async (username: string, password: string) => {
+    try {
+      console.log('DEBUG: memberSignIn - fetching from', `${getApiBaseUrl()}/auth/member/login`);
+      
+      const response = await fetch(`${getApiBaseUrl()}/auth/member/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      console.log('DEBUG: memberSignIn - response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('DEBUG: memberSignIn - error response:', errorData);
+        throw new Error(errorData.message || "Login failed");
+      }
+
+      const data = await response.json();
+      console.log('DEBUG: memberSignIn - success response received, firstLogin:', data.firstLogin);
+      
+      // Check if this is a first login
+      if (data.firstLogin) {
+        console.log('DEBUG: memberSignIn - first login detected');
+        return { 
+          error: null, 
+          firstLogin: true, 
+          username: username,
+          password: password 
+        };
+      }
+      
+      // Decode JWT to get user info (basic decode, not verification)
+      const tokenParts = data.token.split('.');
+      const payload = JSON.parse(atob(tokenParts[1]));
+      
+      const sessionData: Session = {
+        token: data.token,
+        user: {
+          id: data.memberId || 0,
+          username: payload.sub,
+          email: username,
+          role: (payload.role || "MEMBER") as AppRole,
+        },
+        role: ""
+      };
+
+      console.log('DEBUG: memberSignIn - setting session for user:', payload.sub);
+
+      setSession(sessionData);
+      setUser(sessionData.user);
+      setRole(sessionData.user.role);
+      setProfile({
+        full_name: sessionData.user.username,
+        email: sessionData.user.email,
+        avatar_url: null,
+      });
+
+      // Store under "session" (used by AuthContext's own restore logic)
+      // AND under "token" (used by MemberSettings.tsx, notificationService.ts,
+      // and other member-portal pages that read the raw token directly)
+      localStorage.setItem("session", JSON.stringify(sessionData));
+      localStorage.setItem("token", data.token);
+
+      console.log('DEBUG: memberSignIn - session saved to localStorage');
+
+      return { error: null, firstLogin: false };
+    } catch (error) {
+      console.error('DEBUG: memberSignIn - catch block error:', error);
+      return { error: error as Error };
+    }
+  };
+
   const signIn = async (username: string, password: string) => {
     try {
       const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
@@ -143,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: username,
           role: (payload.role || "ADMIN") as AppRole,
         },
+        role: ""
       };
 
       setSession(sessionData);
@@ -173,6 +252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(null);
     setProfile(null);
     localStorage.removeItem("session");
+    localStorage.removeItem("token");
     // Clear browser history and navigate to login
     navigate("/login", { replace: true });
     // Clear the history stack to prevent back button from returning to previous pages
@@ -180,7 +260,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, role, profile, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ session, user, role, profile, loading, signIn, memberSignIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

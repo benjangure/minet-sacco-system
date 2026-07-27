@@ -8,7 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Search, LogOut, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const API_BASE_URL = "http://localhost:8080/api";
+import { getApiBaseUrl } from "../config/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface Member {
   id: number;

@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Landmark, PiggyBank, FileText, Settings, Shield, LogOut, HelpCircle, Package, Upload, CheckCircle2, BarChart3,
+  LayoutDashboard, Users, Landmark, PiggyBank, FileText, Settings, Shield, LogOut, HelpCircle, Package, Upload, CheckCircle2, BarChart3, Database, Sliders, Ban, LogOut as LogOutIcon, Notebook, AlertCircle,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,7 +14,7 @@ import logo from '@/assets/images/logo.png';
 
 const allMainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
-  { title: "Members", url: "/members", icon: Users, roles: ["admin", "treasurer", "loan_officer", "teller", "customer_support"] },
+  { title: "Members", url: "/members", icon: Users, roles: ["admin", "treasurer", "loan_officer", "teller", "customer_support", "credit_committee"] },
   { title: "Loans", url: "/loans", icon: Landmark, roles: ["admin", "loan_officer", "credit_committee", "treasurer"] },
   { title: "Loan Repayments", url: "/loan-repayment-recording", icon: CheckCircle2, roles: ["teller", "treasurer"] },
   { title: "Savings", url: "/savings", icon: PiggyBank, roles: ["admin", "treasurer", "teller"] },
@@ -22,7 +22,14 @@ const allMainItems = [
   { title: "Teller Member Context", url: "/teller-member-context", icon: Users, roles: ["teller"] },
   { title: "Customer Support", url: "/customer-support-portal", icon: FileText, roles: ["customer_support"] },
   { title: "Bulk Processing", url: "/bulk-processing", icon: Upload, roles: ["treasurer", "credit_committee"] },
+  { title: "Loan Migration", url: "/loan-migration", icon: Database, roles: ["treasurer", "admin"] },
   { title: "Reports", url: "/reports", icon: FileText, roles: ["admin", "treasurer", "auditor"] },
+  { title: "Over-Committed Guarantors", url: "/over-committed-guarantors", icon: AlertCircle, roles: ["admin", "treasurer", "auditor", "loan_officer"] },
+];
+
+const glAccountingItems = [
+  { title: "GL Configuration", url: "/gl-configuration", icon: Sliders, roles: ["admin", "treasurer"] },
+  { title: "GL Manual Entries", url: "/gl-manual-entries", icon: Notebook, roles: ["treasurer", "admin"] },
 ];
 
 const kycItems = [
@@ -34,18 +41,28 @@ const kycItems = [
 
 const allAdminItems = [
   { title: "User Management", url: "/admin/users", icon: Shield, roles: ["admin", "treasurer"] },
+  { title: "Member Credentials", url: "/admin/member-credentials", icon: Users, roles: ["admin", "treasurer", "customer_support"] },
   { title: "Loan Products", url: "/admin/loan-products", icon: Package, roles: ["admin"] },
   { title: "Fund Configuration", url: "/admin/fund-configuration", icon: Settings, roles: ["admin"] },
   { title: "Loan Eligibility Rules", url: "/admin/loan-eligibility-rules", icon: Settings, roles: ["admin"] },
   { title: "Audit Trail", url: "/admin/audit-trail", icon: BarChart3, roles: ["admin", "auditor"] },
   { title: "Audit Reports", url: "/audit-reports", icon: BarChart3, roles: ["admin", "auditor"] },
-  { title: "Settings", url: "/settings", icon: Settings, roles: ["admin"] },
-  { title: "User Guide", url: "/guide", icon: HelpCircle, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
+  // { title: "Data Migration", url: "/admin/data-migration", icon: Database, roles: ["admin", "treasurer"] }, // TODO: Not implemented
+  { title: "Member Suspension", url: "/admin/member-suspension", icon: Ban, roles: ["admin", "credit_committee", "treasurer"] },
+  { title: "Member Exit", url: "/admin/member-exit", icon: LogOutIcon, roles: ["admin", "credit_committee", "treasurer"] },
+  { title: "Settings", url: "/settings", icon: Settings, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] },
+  // { title: "User Guide", url: "/guide", icon: HelpCircle, roles: ["admin", "treasurer", "loan_officer", "credit_committee", "auditor", "teller", "customer_support"] }, // TODO: Not implemented
 ];
+
+// Helper function to check if user has any of the required roles
+const userHasRole = (userRole: string | null, requiredRoles: string[]): boolean => {
+  if (!userRole) return false;
+  return requiredRoles.includes(userRole.toLowerCase());
+};
 
 const roleLabels: Record<string, string> = {
   admin: "Admin", treasurer: "Treasurer", loan_officer: "Loan Officer",
-  credit_committee: "Committee", auditor: "Auditor", teller: "Teller", helpdesk: "Support",
+  credit_committee: "Committee", auditor: "Auditor", teller: "Teller", customer_support: "Support", hr_staff: "HR Staff",
 };
 
 export function AppSidebar() {
@@ -53,9 +70,10 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const { profile, role, signOut } = useAuth();
 
-  const mainItems = allMainItems.filter(item => !role || item.roles.includes(role.toLowerCase()));
-  const kycItemsFiltered = kycItems.filter(item => !role || item.roles.includes(role.toLowerCase()));
-  const adminItems = allAdminItems.filter(item => !role || item.roles.includes(role.toLowerCase()));
+  const mainItems = allMainItems.filter(item => userHasRole(role, item.roles));
+  const glItems = glAccountingItems.filter(item => userHasRole(role, item.roles));
+  const kycItemsFiltered = kycItems.filter(item => userHasRole(role, item.roles));
+  const adminItems = allAdminItems.filter(item => userHasRole(role, item.roles));
 
   return (
     <Sidebar collapsible="icon">
@@ -88,6 +106,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {glItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>GL/Accounting</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {glItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink to={item.url} className="hover:bg-accent" activeClassName="bg-accent text-accent-foreground font-medium">
+                        <item.icon className="mr-2 h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {adminItems.length > 0 && (
           <SidebarGroup>

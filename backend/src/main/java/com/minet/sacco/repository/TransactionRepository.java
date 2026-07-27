@@ -142,6 +142,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     @Query("SELECT t FROM Transaction t WHERE t.account.member.id = :memberId " +
            "AND t.transactionType = :transactionType " +
+           "ORDER BY t.transactionDate DESC")
+    List<Transaction> findByMemberIdAndType(@Param("memberId") Long memberId,
+                                             @Param("transactionType") Transaction.TransactionType transactionType);
+
+    @Query("SELECT t FROM Transaction t WHERE t.account.member.id = :memberId " +
+           "AND t.transactionType = :transactionType " +
            "AND t.transactionDate >= :startDate AND t.transactionDate <= :endDate " +
            "ORDER BY t.transactionDate DESC")
     List<Transaction> findByMemberIdAndTypeAndDateRange(@Param("memberId") Long memberId,

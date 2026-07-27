@@ -43,7 +43,9 @@ public class Transaction {
 
     @PrePersist
     protected void onCreate() {
-        transactionDate = LocalDateTime.now();
+        if (transactionDate == null) {
+            transactionDate = LocalDateTime.now();
+        }
     }
 
     // Getters and Setters

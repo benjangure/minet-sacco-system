@@ -13,6 +13,10 @@ public class LoanRepaymentRequest {
     @DecimalMin(value = "0.01")
     private BigDecimal amount;
 
+    private BigDecimal principalAmount;
+
+    private BigDecimal interestAmount;
+
     private String paymentMethod; // MPESA, BANK_TRANSFER, CASH
 
     private String transactionReference;
@@ -23,6 +27,12 @@ public class LoanRepaymentRequest {
 
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
+
+    public BigDecimal getPrincipalAmount() { return principalAmount; }
+    public void setPrincipalAmount(BigDecimal principalAmount) { this.principalAmount = principalAmount; }
+
+    public BigDecimal getInterestAmount() { return interestAmount; }
+    public void setInterestAmount(BigDecimal interestAmount) { this.interestAmount = interestAmount; }
 
     public String getPaymentMethod() { return paymentMethod; }
     public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }

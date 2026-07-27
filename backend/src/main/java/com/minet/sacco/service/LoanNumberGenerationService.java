@@ -5,6 +5,7 @@ import com.minet.sacco.repository.LoanRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class LoanNumberGenerationService {
@@ -13,31 +14,49 @@ public class LoanNumberGenerationService {
     private LoanRepository loanRepository;
 
     /**
-     * Generate a unique loan number with year-specific counter
+     * Generate a unique loan number based on max suffix scanning.
      * Format: LN-YYYY-NNNNN (e.g., LN-2026-00001)
+     * 
+     * Scans all loans with matching prefix, finds the maximum numeric suffix,
+     * and returns the next sequential number.
+     * This is based on what loan numbers actually exist, not on disbursement status.
      * 
      * @param loan the loan to generate number for
      * @return unique loan number
      */
     public String generateLoanNumber(Loan loan) {
         int year = LocalDateTime.now().getYear();
-        
-        // Count loans disbursed in current year
-        long yearCount = loanRepository.countByYearAndDisbursed(year);
-        
-        // Generate number with year-specific counter
-        return String.format("LN-%d-%05d", year, yearCount + 1);
+        return generateLoanNumberForYear(year);
     }
 
     /**
-     * Generate a unique loan number for a specific year
-     * Useful for testing or manual generation
+     * Generate a unique loan number for a specific year using max suffix scanning.
+     * Queries all loans, filters where loanNumber starts with "LN-YYYY-",
+     * parses the numeric suffix from each, takes the max, and returns prefix + next number.
      * 
      * @param year the year for the loan number
      * @return unique loan number for that year
      */
     public String generateLoanNumberForYear(int year) {
-        long yearCount = loanRepository.countByYearAndDisbursed(year);
-        return String.format("LN-%d-%05d", year, yearCount + 1);
+        String prefix = "LN-" + year + "-";
+        
+        // Query all loans and filter by prefix
+        List<Loan> yearLoans = loanRepository.findAll().stream()
+            .filter(l -> l.getLoanNumber() != null && l.getLoanNumber().startsWith(prefix))
+            .toList();
+        
+        // Parse numeric suffix and find maximum
+        int maxSeq = yearLoans.stream()
+            .map(l -> {
+                try {
+                    return Integer.parseInt(l.getLoanNumber().split("-")[2]);
+                } catch (Exception e) {
+                    return 0;
+                }
+            })
+            .max(Integer::compare)
+            .orElse(0);
+        
+        return prefix + String.format("%05d", maxSeq + 1);
     }
 }

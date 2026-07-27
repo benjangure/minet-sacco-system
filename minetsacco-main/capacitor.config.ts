@@ -18,6 +18,13 @@ const config: CapacitorConfig = {
       backgroundColor: '#ffffff',
       showSpinner: false
     }
+  },
+  ios: {
+    scheme: 'MinetSACCO'
+  },
+  android: {
+    allowMixedContent: true,
+    captureInput: true
   }
 };
 

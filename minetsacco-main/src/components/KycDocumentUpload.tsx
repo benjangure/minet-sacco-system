@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileCheck, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getBackendUrl } from "@/config/api";
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = `${getBackendUrl()}/api`;
 
 interface KycDocumentUploadProps {
   memberId: number;

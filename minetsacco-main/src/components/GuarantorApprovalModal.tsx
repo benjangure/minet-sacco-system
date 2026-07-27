@@ -53,27 +53,6 @@ export default function GuarantorApprovalModal({
   }, [open]);
 
   const loadEligibility = async () => {
-    const token = localStorage.getItem('token');
-    const memberId = localStorage.getItem('memberId');
-    
-    if (!token) {
-      toast({
-        title: 'Error',
-        description: 'Authentication token not found',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    if (!memberId) {
-      toast({
-        title: 'Error',
-        description: 'Member ID not found',
-        variant: 'destructive'
-      });
-      return;
-    }
-
     setLoadingEligibility(true);
     try {
       // Get the guarantee amount from the guarantor object
@@ -91,14 +70,21 @@ export default function GuarantorApprovalModal({
         guaranteeAmount = parseFloat(guaranteeAmount);
       }
       
+      // Get the guarantor ID from the guarantor object
+      // The endpoint expects: /member/guarantor-eligibility/{guarantorId}/{loanAmount}
+      const guarantorId = guarantor?.member?.id;
+      
       console.log('Guarantor object:', guarantor);
+      console.log('Guarantor ID extracted:', guarantorId);
       console.log('Guarantee amount extracted:', guaranteeAmount);
       console.log('Loan amount:', loan.amount);
-      console.log('API call URL:', `/member/guarantor-eligibility/${memberId}/${loan.amount}`);
+      console.log('API call URL:', `/member/guarantor-eligibility/${guarantorId}/${loan.amount}`);
       console.log('API call params:', { guaranteeAmount: guaranteeAmount });
       
+      // The api instance will automatically inject the token via the interceptor
+      // Endpoint: GET /member/guarantor-eligibility/{guarantorId}/{loanAmount}
       const response = await api.get(
-        `/member/guarantor-eligibility/${memberId}/${loan.amount}`,
+        `/member/guarantor-eligibility/${guarantorId}/${loan.amount}`,
         {
           params: {
             guaranteeAmount: guaranteeAmount
@@ -120,16 +106,6 @@ export default function GuarantorApprovalModal({
   };
 
   const handleApprove = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast({
-        title: 'Error',
-        description: 'Authentication token not found',
-        variant: 'destructive'
-      });
-      return;
-    }
-
     setProcessing(true);
     try {
       await api.post(
@@ -161,16 +137,6 @@ export default function GuarantorApprovalModal({
       toast({
         title: 'Error',
         description: 'Please provide a reason for rejection',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast({
-        title: 'Error',
-        description: 'Authentication token not found',
         variant: 'destructive'
       });
       return;

@@ -7,5 +7,5 @@ import java.util.List;
 
 @Repository
 public interface BulkMemberItemRepository extends JpaRepository<BulkMemberItem, Long> {
-    List<BulkMemberItem> findByBatchId(Long batchId);
+    List<BulkMemberItem> findByBatch_Id(Long batchId);
 }

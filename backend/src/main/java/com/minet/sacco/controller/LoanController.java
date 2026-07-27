@@ -5,19 +5,30 @@ import com.minet.sacco.dto.LoanApplicationRequest;
 import com.minet.sacco.dto.LoanApprovalRequest;
 import com.minet.sacco.dto.LoanApprovalValidationDTO;
 import com.minet.sacco.dto.LoanRepaymentRequest;
+import com.minet.sacco.dto.LoanUpdateRequestDTO;
+import com.minet.sacco.dto.TreasurerLoanApprovalRequest;
 import com.minet.sacco.entity.Loan;
 import com.minet.sacco.entity.LoanRepayment;
 import com.minet.sacco.entity.User;
 import com.minet.sacco.entity.Guarantor;
+import com.minet.sacco.entity.LoanProduct;
+import com.minet.sacco.entity.Member;
+import com.minet.sacco.entity.Account;
 import com.minet.sacco.repository.LoanRepository;
+import com.minet.sacco.repository.LoanRepaymentRepository;
 import com.minet.sacco.repository.GuarantorRepository;
+import com.minet.sacco.repository.LoanProductRepository;
+import com.minet.sacco.repository.MemberRepository;
+import com.minet.sacco.repository.AccountRepository;
 import com.minet.sacco.service.LoanService;
 import com.minet.sacco.service.UserService;
 import com.minet.sacco.service.GuarantorValidationService;
 import com.minet.sacco.service.GuarantorApprovalService;
 import com.minet.sacco.service.GuarantorTrackingService;
 import com.minet.sacco.service.NotificationService;
+import com.minet.sacco.service.EligibilityCalculationService;
 import jakarta.validation.Valid;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,6 +39,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.ArrayList;
 
 @RestController
 @RequestMapping("/api/loans")
@@ -47,10 +59,22 @@ public class LoanController {
     private NotificationService notificationService;
 
     @Autowired
+    private EligibilityCalculationService eligibilityCalculationService;
+
+    @Autowired
+    private LoanProductRepository loanProductRepository;
+
+    @Autowired
+    private MemberRepository memberRepository;
+
+    @Autowired
     private GuarantorApprovalService guarantorApprovalService;
 
     @Autowired
     private LoanRepository loanRepository;
+
+    @Autowired
+    private LoanRepaymentRepository loanRepaymentRepository;
 
     @Autowired
     private GuarantorRepository guarantorRepository;
@@ -58,55 +82,17 @@ public class LoanController {
     @Autowired
     private GuarantorTrackingService guarantorTrackingService;
 
+    @Autowired
+    private AccountRepository accountRepository;
+
     @GetMapping
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAllLoans() {
         List<Loan> loans = loanService.getAllLoans();
-        List<Map<String, Object>> loansWithGuarantors = new java.util.ArrayList<>();
+        List<Map<String, Object>> loansWithGuarantors = new ArrayList<>();
         
         for (Loan loan : loans) {
-            Map<String, Object> loanMap = new java.util.HashMap<>();
-            loanMap.put("id", loan.getId());
-            loanMap.put("loanNumber", loan.getLoanNumber());
-            loanMap.put("member", loan.getMember());
-            loanMap.put("loanProduct", loan.getLoanProduct());
-            loanMap.put("amount", loan.getAmount());
-            loanMap.put("interestRate", loan.getInterestRate());
-            loanMap.put("termMonths", loan.getTermMonths());
-            loanMap.put("status", loan.getStatus());
-            loanMap.put("monthlyRepayment", loan.getMonthlyRepayment());
-            loanMap.put("totalInterest", loan.getTotalInterest());
-            loanMap.put("totalRepayable", loan.getTotalRepayable());
-            loanMap.put("outstandingBalance", loan.getOutstandingBalance());
-            loanMap.put("purpose", loan.getPurpose());
-            loanMap.put("rejectionReason", loan.getRejectionReason());
-            loanMap.put("memberEligibilityStatus", loan.getMemberEligibilityStatus());
-            loanMap.put("memberEligibilityErrors", loan.getMemberEligibilityErrors());
-            loanMap.put("memberEligibilityWarnings", loan.getMemberEligibilityWarnings());
-            loanMap.put("applicationDate", loan.getApplicationDate());
-            loanMap.put("approvalDate", loan.getApprovalDate());
-            loanMap.put("disbursementDate", loan.getDisbursementDate());
-            loanMap.put("createdBy", loan.getCreatedBy());
-            loanMap.put("approvedBy", loan.getApprovedBy());
-            loanMap.put("disbursedBy", loan.getDisbursedBy());
-            
-            // Fetch and add guarantors with their guarantee amounts
-            List<Guarantor> guarantors = loanService.getGuarantorsForLoan(loan.getId());
-            List<Map<String, Object>> guarantorsList = new java.util.ArrayList<>();
-            for (Guarantor g : guarantors) {
-                Map<String, Object> gMap = new java.util.HashMap<>();
-                gMap.put("id", g.getId());
-                gMap.put("member", g.getMember());
-                gMap.put("status", g.getStatus());
-                gMap.put("guaranteeAmount", g.getGuaranteeAmount());
-                gMap.put("pledgeAmount", g.getPledgeAmount());
-                gMap.put("selfGuarantee", g.isSelfGuarantee());
-                gMap.put("createdAt", g.getCreatedAt());
-                gMap.put("approvedAt", g.getApprovedAt());
-                guarantorsList.add(gMap);
-            }
-            loanMap.put("guarantors", guarantorsList);
-            
+            Map<String, Object> loanMap = buildLoanMap(loan);
             loansWithGuarantors.add(loanMap);
         }
         
@@ -115,24 +101,44 @@ public class LoanController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<Loan>> getLoanById(@PathVariable Long id) {
-        return loanService.getLoanById(id)
-                .map(loan -> ResponseEntity.ok(ApiResponse.success("Loan found", loan)))
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getLoanById(@PathVariable Long id) {
+        Optional<Loan> loanOpt = loanService.getLoanById(id);
+        if (!loanOpt.isPresent()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        Loan loan = loanOpt.get();
+        Map<String, Object> loanMap = buildLoanMap(loan);
+        
+        return ResponseEntity.ok(ApiResponse.success("Loan found", loanMap));
     }
 
     @GetMapping("/member/{memberId}")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<List<Loan>>> getLoansByMemberId(@PathVariable Long memberId) {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getLoansByMemberId(@PathVariable Long memberId) {
         List<Loan> loans = loanService.getLoansByMemberId(memberId);
-        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loans));
+        List<Map<String, Object>> loansWithDynamicInterest = new ArrayList<>();
+        
+        for (Loan loan : loans) {
+            Map<String, Object> loanMap = buildLoanMap(loan);
+            loansWithDynamicInterest.add(loanMap);
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loansWithDynamicInterest));
     }
 
     @GetMapping("/status/{status}")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<List<Loan>>> getLoansByStatus(@PathVariable String status) {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getLoansByStatus(@PathVariable String status) {
         List<Loan> loans = loanService.getLoansByStatus(Loan.Status.valueOf(status));
-        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loans));
+        List<Map<String, Object>> loansWithDynamicInterest = new ArrayList<>();
+        
+        for (Loan loan : loans) {
+            Map<String, Object> loanMap = buildLoanMap(loan);
+            loansWithDynamicInterest.add(loanMap);
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loansWithDynamicInterest));
     }
 
     /**
@@ -173,6 +179,58 @@ public class LoanController {
         }
     }
 
+    @GetMapping("/product/{productId}/available-capacity")
+    @PreAuthorize("hasAnyRole('ROLE_MEMBER', 'ROLE_LOAN_OFFICER', 'ROLE_TELLER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getAvailableBorrowingCapacity(
+            @PathVariable Long productId,
+            Authentication authentication) {
+        try {
+            Map<String, Object> result = new HashMap<>();
+
+            // Get current user
+            User user = userService.getUserByUsername(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            // Get member ID from user
+            Long memberId = user.getMemberId();
+            if (memberId == null) {
+                throw new RuntimeException("User is not linked to a member");
+            }
+
+            Member member = memberRepository.findById(memberId)
+                    .orElseThrow(() -> new RuntimeException("Member not found"));
+
+            // Get loan product
+            LoanProduct product = loanProductRepository.findById(productId)
+                    .orElseThrow(() -> new RuntimeException("Loan product not found"));
+
+            // If no max limit set, return null
+            if (product.getMaxTotalBorrowingLimit() == null || 
+                product.getMaxTotalBorrowingLimit().compareTo(BigDecimal.ZERO) <= 0) {
+                result.put("hasLimit", false);
+                result.put("availableCapacity", null);
+                return ResponseEntity.ok(ApiResponse.success("No borrowing limit set for this product", result));
+            }
+
+            // Calculate current outstanding
+            BigDecimal currentOutstanding = eligibilityCalculationService
+                    .getOutstandingBalanceByProduct(member, productId);
+
+            // Calculate available
+            BigDecimal availableCapacity = product.getMaxTotalBorrowingLimit()
+                    .subtract(currentOutstanding);
+
+            result.put("hasLimit", true);
+            result.put("maxLimit", product.getMaxTotalBorrowingLimit());
+            result.put("currentOutstanding", currentOutstanding);
+            result.put("availableCapacity", availableCapacity);
+
+            return ResponseEntity.ok(ApiResponse.success("Available capacity retrieved", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     @PostMapping("/apply")
     @PreAuthorize("hasAnyRole('ROLE_LOAN_OFFICER', 'ROLE_TELLER')")
     public ResponseEntity<ApiResponse<Loan>> applyForLoan(
@@ -187,6 +245,52 @@ public class LoanController {
             // Notifications are sent by LoanService.applyForLoan() for non-self guarantors
             
             return ResponseEntity.ok(ApiResponse.success("Loan application submitted successfully", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/apply-on-behalf")
+    @PreAuthorize("hasRole('ROLE_LOAN_OFFICER')")
+    public ResponseEntity<ApiResponse<Loan>> applyForLoanOnBehalf(
+            @Valid @RequestBody LoanApplicationRequest request,
+            Authentication authentication) {
+        try {
+            User loanOfficer = userService.getUserByUsername(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Loan loan = loanService.applyForLoanOnBehalf(request, loanOfficer);
+            
+            return ResponseEntity.ok(ApiResponse.success("Loan application submitted successfully on behalf of member", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/validate-member-eligibility")
+    @PreAuthorize("hasRole('ROLE_LOAN_OFFICER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> validateMemberEligibility(
+            @RequestParam Long memberId,
+            @RequestParam BigDecimal loanAmount,
+            @RequestParam(required = false) BigDecimal selfGuaranteeAmount) {
+        try {
+            Map<String, Object> validation = loanService.validateMemberEligibilityForLoanOfficer(
+                memberId, loanAmount, selfGuaranteeAmount != null ? selfGuaranteeAmount : BigDecimal.ZERO);
+            return ResponseEntity.ok(ApiResponse.success("Member eligibility validated", validation));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/validate-guarantor-eligibility")
+    @PreAuthorize("hasRole('ROLE_LOAN_OFFICER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> validateGuarantorEligibility(
+            @RequestParam Long guarantorMemberId,
+            @RequestParam BigDecimal guaranteeAmount) {
+        try {
+            Map<String, Object> validation = loanService.validateGuarantorEligibilityForLoanOfficer(
+                guarantorMemberId, guaranteeAmount);
+            return ResponseEntity.ok(ApiResponse.success("Guarantor eligibility validated", validation));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
@@ -235,6 +339,26 @@ public class LoanController {
         String notificationMessage = "Loan " + loan.getLoanNumber() + " for member " + 
             loan.getMember().getMemberNumber() + " has been disbursed";
         notificationService.notifyUsersByRole("LOAN_OFFICER", notificationMessage, "LOAN_DISBURSEMENT");
+        
+        // Send notification to member about loan disbursement
+        Optional<User> memberUserOpt = userService.getUserByMemberId(loan.getMember().getId());
+        if (memberUserOpt.isPresent()) {
+            String memberMessage = String.format(
+                "Your loan application for KES %,.2f has been approved and disbursed to your bank account (%s - %s). Loan Number: %s",
+                loan.getAmount(),
+                loan.getMember().getBankName(),
+                loan.getMember().getBankAccountNumber(),
+                loan.getLoanNumber()
+            );
+            notificationService.notifyUser(
+                memberUserOpt.get().getId(),
+                memberMessage,
+                "LOAN_DISBURSED",
+                loan.getId(),
+                loan.getMember().getId(),
+                "LOAN_DISBURSEMENT"
+            );
+        }
         
         return ResponseEntity.ok(ApiResponse.success("Loan disbursed successfully", loan));
     }
@@ -398,6 +522,7 @@ public class LoanController {
                 dto.setLastName(g.getMember().getLastName());
                 dto.setStatus(g.getStatus().toString());
                 dto.setGuaranteeAmount(g.getGuaranteeAmount());
+                dto.setPreviousGuaranteeAmount(g.getPreviousGuaranteeAmount());
                 dto.setFrozenPledge(g.getPledgeAmount());
                 dto.setSelfGuarantee(g.isSelfGuarantee());
                 dto.setCreatedAt(g.getCreatedAt());
@@ -445,5 +570,363 @@ public class LoanController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
+    }
+
+    /**
+     * Replace a rejected guarantor with a new one
+     * Only works when loan is in PENDING_GUARANTOR_REPLACEMENT status
+     */
+    @PostMapping("/{loanId}/replace-guarantor")
+    @PreAuthorize("hasRole('ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Loan>> replaceGuarantor(
+            @PathVariable Long loanId,
+            @RequestParam Long oldGuarantorId,
+            @RequestParam Long newGuarantorMemberId,
+            @RequestParam BigDecimal newGuaranteeAmount,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.replaceGuarantor(loanId, oldGuarantorId, newGuarantorMemberId, 
+                newGuaranteeAmount, user);
+            
+            Loan loan = loanService.getLoanById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Guarantor replaced successfully", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Reduce loan amount when guarantor rejects
+     * Loan moves back to PENDING_CREDIT_COMMITTEE for re-approval
+     */
+    @PostMapping("/{loanId}/reduce-amount")
+    @PreAuthorize("hasRole('ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Loan>> reduceLoanAmount(
+            @PathVariable Long loanId,
+            @RequestParam BigDecimal newAmount,
+            @RequestParam String reason,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.reduceLoanAmount(loanId, newAmount, reason, user);
+            
+            Loan loan = loanService.getLoanById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Loan amount reduced successfully", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Withdraw loan application when guarantor rejects
+     * Loan is marked as REJECTED and all guarantors marked as DECLINED
+     */
+    @PostMapping("/{loanId}/withdraw")
+    @PreAuthorize("hasRole('ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Loan>> withdrawLoanApplication(
+            @PathVariable Long loanId,
+            @RequestParam String reason,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.withdrawLoanApplication(loanId, reason, user);
+            
+            Loan loan = loanService.getLoanById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Loan application withdrawn successfully", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Reassign guarantors after loan amount reduction
+     * Member provides new guarantor assignments with new guarantee amounts
+     * Validates that total guarantees cover the new loan amount
+     * Creates new guarantor approval requests
+     */
+    @PostMapping("/{loanId}/reassign-guarantors")
+    @PreAuthorize("hasRole('ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Loan>> reassignGuarantors(
+            @PathVariable Long loanId,
+            @RequestBody List<Map<String, Object>> guarantorAssignments,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.reassignGuarantors(loanId, guarantorAssignments, user);
+            
+            Loan loan = loanService.getLoanById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            return ResponseEntity.ok(ApiResponse.success("Guarantors reassigned successfully", loan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * RESTRUCTURED: Treasurer sets interest rate and approves/rejects loan
+     * Called when loan is in PENDING_TREASURER status
+     * Only accessible by TREASURER role
+     */
+    @PostMapping("/{loanId}/treasurer/set-interest")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Loan>> treasurerSetInterest(
+            @PathVariable Long loanId,
+            @Valid @RequestBody com.minet.sacco.dto.TreasurerLoanApprovalRequest request,
+            Authentication authentication) {
+        try {
+            User treasurer = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("Treasurer user not found"));
+            
+            // Ensure request has the correct loan ID
+            request.setLoanId(loanId);
+            
+            Loan loan = loanService.treasurerSetInterestAndApprove(request, treasurer);
+            
+            return ResponseEntity.ok(ApiResponse.success(
+                request.getApproved() ? "Loan approved with interest set" : "Loan rejected",
+                loan
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Load data needed for reassigning guarantors on a loan
+     * Returns: current guarantors with details, member eligibility info, and available members for selection
+     * Used by UI to populate the reassign guarantors dialog
+     */
+    @GetMapping("/{loanId}/reassign-guarantors-data")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_MEMBER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getReassignGuarantorsData(
+            @PathVariable Long loanId,
+            Authentication authentication) {
+        try {
+            Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+            
+            Map<String, Object> responseData = new HashMap<>();
+            
+            // 1. Load current guarantors with their details and amounts
+            List<Guarantor> currentGuarantors = loanService.getGuarantorsForLoan(loanId);
+            List<Map<String, Object>> guarantorsList = new ArrayList<>();
+            BigDecimal totalCurrentGuarantee = BigDecimal.ZERO;
+            
+            for (Guarantor g : currentGuarantors) {
+                Map<String, Object> gMap = new HashMap<>();
+                gMap.put("guarantorId", g.getId());
+                gMap.put("memberId", g.getMember().getId());
+                gMap.put("memberNumber", g.getMember().getMemberNumber());
+                gMap.put("firstName", g.getMember().getFirstName());
+                gMap.put("lastName", g.getMember().getLastName());
+                gMap.put("employeeId", g.getMember().getEmployeeId());
+                gMap.put("status", g.getStatus().toString());
+                gMap.put("guaranteeAmount", g.getGuaranteeAmount());
+                gMap.put("pledgeAmount", g.getPledgeAmount());
+                gMap.put("selfGuarantee", g.isSelfGuarantee());
+                gMap.put("createdAt", g.getCreatedAt());
+                gMap.put("approvedAt", g.getApprovedAt());
+                guarantorsList.add(gMap);
+                
+                if (g.getGuaranteeAmount() != null) {
+                    totalCurrentGuarantee = totalCurrentGuarantee.add(g.getGuaranteeAmount());
+                }
+            }
+            
+            responseData.put("currentGuarantors", guarantorsList);
+            responseData.put("totalCurrentGuarantee", totalCurrentGuarantee);
+            responseData.put("loanAmount", loan.getAmount());
+            responseData.put("outstandingBalance", loan.getOutstandingBalance());
+            
+            // 2. Member eligibility info
+            Map<String, Object> memberInfo = new HashMap<>();
+            memberInfo.put("memberId", loan.getMember().getId());
+            memberInfo.put("memberNumber", loan.getMember().getMemberNumber());
+            memberInfo.put("firstName", loan.getMember().getFirstName());
+            memberInfo.put("lastName", loan.getMember().getLastName());
+            
+            // Get member eligibility details
+            try {
+                com.minet.sacco.service.LoanEligibilityValidator.EligibilityResult eligibilityResult =
+                    loanService.checkMemberEligibility(loan.getMember(), loan.getAmount());
+                memberInfo.put("eligible", eligibilityResult.isEligible());
+                memberInfo.put("errors", eligibilityResult.getErrors());
+                memberInfo.put("warnings", eligibilityResult.getWarnings());
+                memberInfo.put("savingsBalance", eligibilityResult.getSavingsBalance());
+                memberInfo.put("sharesBalance", eligibilityResult.getSharesBalance());
+                memberInfo.put("totalBalance", eligibilityResult.getTotalBalance());
+                memberInfo.put("activeLoans", eligibilityResult.getActiveLoans());
+            } catch (Exception e) {
+                memberInfo.put("eligible", false);
+                memberInfo.put("errors", List.of("Could not verify member eligibility: " + e.getMessage()));
+                memberInfo.put("warnings", new ArrayList<>());
+            }
+            
+            responseData.put("memberInfo", memberInfo);
+            
+            // 3. Available active members for selection (for reassigning)
+            List<Member> activeMembers = memberRepository.findByStatus(Member.Status.ACTIVE);
+            List<Map<String, Object>> availableMembers = new ArrayList<>();
+            for (Member member : activeMembers) {
+                Map<String, Object> mMap = new HashMap<>();
+                mMap.put("memberId", member.getId());
+                mMap.put("memberNumber", member.getMemberNumber());
+                mMap.put("firstName", member.getFirstName());
+                mMap.put("lastName", member.getLastName());
+                mMap.put("employeeId", member.getEmployeeId());
+                
+                // Get member's savings balance for display
+                Optional<Account> savingsAccount = 
+                    accountRepository.findByMemberIdAndAccountType(member.getId(), Account.AccountType.SAVINGS);
+                if (savingsAccount.isPresent()) {
+                    mMap.put("savingsBalance", savingsAccount.get().getBalance());
+                    mMap.put("frozenSavings", savingsAccount.get().getFrozenSavings());
+                    mMap.put("availableSavings", savingsAccount.get().getBalance().subtract(savingsAccount.get().getFrozenSavings()));
+                } else {
+                    mMap.put("savingsBalance", BigDecimal.ZERO);
+                    mMap.put("frozenSavings", BigDecimal.ZERO);
+                    mMap.put("availableSavings", BigDecimal.ZERO);
+                }
+                
+                availableMembers.add(mMap);
+            }
+            
+            responseData.put("availableMembers", availableMembers);
+            
+            return ResponseEntity.ok(ApiResponse.success("Reassign guarantors data retrieved", responseData));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * PHASE A: Individual field edit (low-risk, no guarantor changes)
+     * Editable fields only: loanStatus, disbursementDate, interestRate, outstandingBalance, purpose
+     * This is kept completely separate from Phase B to prevent mixing concerns
+     */
+    @PutMapping("/{loanId}/fields/update")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateLoanFieldsOnly(
+            @PathVariable Long loanId,
+            @RequestBody com.minet.sacco.dto.LoanFieldUpdateDTO fieldUpdate,
+            Authentication authentication) {
+        try {
+            Optional<User> userOptional = userService.getUserByUsername(authentication.getName());
+            if (!userOptional.isPresent()) {
+                throw new RuntimeException("User not found");
+            }
+            User user = userOptional.get();
+            Loan updatedLoan = loanService.updateLoanFieldsOnly(loanId, fieldUpdate, user);
+            
+            // Build response with updated loan data
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("id", updatedLoan.getId());
+            responseData.put("loanNumber", updatedLoan.getLoanNumber());
+            responseData.put("status", updatedLoan.getStatus());
+            responseData.put("disbursementDate", updatedLoan.getDisbursementDate());
+            responseData.put("interestRate", updatedLoan.getInterestRate());
+            responseData.put("outstandingBalance", updatedLoan.getOutstandingBalance());
+            responseData.put("purpose", updatedLoan.getPurpose());
+            responseData.put("message", "Loan fields updated successfully");
+            
+            return ResponseEntity.ok(ApiResponse.success("Loan fields updated successfully", responseData));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Helper method to build a standardized loan map with all fields including dynamic calculations.
+     * Used across all loan endpoints to ensure consistent data.
+     */
+    private Map<String, Object> buildLoanMap(Loan loan) {
+        Map<String, Object> loanMap = new HashMap<>();
+        loanMap.put("id", loan.getId());
+        loanMap.put("loanNumber", loan.getLoanNumber());
+        loanMap.put("member", loan.getMember());
+        loanMap.put("loanProduct", loan.getLoanProduct());
+        loanMap.put("amount", loan.getAmount());
+        loanMap.put("interestRate", loan.getInterestRate());
+        loanMap.put("termMonths", loan.getTermMonths());
+        loanMap.put("status", loan.getStatus());
+        loanMap.put("monthlyRepayment", loan.getMonthlyRepayment());
+        loanMap.put("totalInterest", loan.getTotalInterest());
+        
+        // Calculate dynamic interest collected (migration snapshot + post-migration repayments)
+        BigDecimal migrationInterest = loan.getInterestCollected() != null ? loan.getInterestCollected() : BigDecimal.ZERO;
+        BigDecimal postMigrationInterest = loanRepaymentRepository.getTotalInterestCollected(loan.getId());
+        BigDecimal totalInterestCollected = migrationInterest.add(postMigrationInterest);
+        loanMap.put("interestCollected", totalInterestCollected);
+        
+        loanMap.put("interestRemaining", loan.getInterestRemaining());
+        loanMap.put("totalRepayable", loan.getTotalRepayable());
+        loanMap.put("outstandingBalance", loan.getOutstandingBalance());
+        loanMap.put("purpose", loan.getPurpose());
+        loanMap.put("rejectionReason", loan.getRejectionReason());
+        loanMap.put("memberEligibilityStatus", loan.getMemberEligibilityStatus());
+        loanMap.put("memberEligibilityErrors", loan.getMemberEligibilityErrors());
+        loanMap.put("memberEligibilityWarnings", loan.getMemberEligibilityWarnings());
+        loanMap.put("applicationDate", loan.getApplicationDate());
+        loanMap.put("approvalDate", loan.getApprovalDate());
+        loanMap.put("disbursementDate", loan.getDisbursementDate());
+        loanMap.put("migrationStatus", loan.getMigrationStatus());
+        loanMap.put("createdBy", loan.getCreatedBy());
+        loanMap.put("approvedBy", loan.getApprovedBy());
+        loanMap.put("disbursedBy", loan.getDisbursedBy());
+        
+        // Principal repaid — derived from outstanding balance, not summed from loan_repayments.
+        // This works uniformly for migrated loans (no repayment history) and live loans,
+        // because outstandingBalance is authoritatively decremented by principal on every
+        // correctly-processed repayment (see LoanService.makeRepayment()).
+        BigDecimal principal = loan.getAmount() != null ? loan.getAmount() : BigDecimal.ZERO;
+        BigDecimal outstanding = loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO;
+        BigDecimal principalRepaid = principal.subtract(outstanding);
+        
+        // Calculate repayment percentage: (Principal Repaid / Principal Amount) * 100
+        BigDecimal repaymentPercentage = BigDecimal.ZERO;
+        if (principal.compareTo(BigDecimal.ZERO) > 0) {
+            repaymentPercentage = principalRepaid
+                    .divide(principal, 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100"))
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+        
+        loanMap.put("principalRepaid", principalRepaid);
+        loanMap.put("repaymentPercentage", repaymentPercentage);
+        
+        // Fetch and add guarantors
+        List<Guarantor> guarantors = loanService.getGuarantorsForLoan(loan.getId());
+        List<Map<String, Object>> guarantorsList = new ArrayList<>();
+        for (Guarantor g : guarantors) {
+            Map<String, Object> gMap = new HashMap<>();
+            gMap.put("id", g.getId());
+            gMap.put("member", g.getMember());
+            gMap.put("status", g.getStatus());
+            gMap.put("guaranteeAmount", g.getGuaranteeAmount());
+            gMap.put("pledgeAmount", g.getPledgeAmount());
+            gMap.put("selfGuarantee", g.isSelfGuarantee());
+            gMap.put("createdAt", g.getCreatedAt());
+            gMap.put("approvedAt", g.getApprovedAt());
+            guarantorsList.add(gMap);
+        }
+        loanMap.put("guarantors", guarantorsList);
+        
+        return loanMap;
     }
 }

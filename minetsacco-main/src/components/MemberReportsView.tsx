@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Download, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { API_BASE_URL } from '@/config/api';
+import api, { getAuthToken } from '@/config/api';
 import { downloadAndOpenFile } from '@/utils/downloadHelper';
 
 export default function MemberReportsView() {
@@ -13,8 +13,13 @@ export default function MemberReportsView() {
   const downloadReport = async (endpoint: string, filename: string) => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/member/${endpoint}`, {
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+      
+      const response = await fetch(api.defaults.baseURL + `/member/${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 

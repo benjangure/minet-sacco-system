@@ -27,7 +27,6 @@ public class Member {
     @Size(max = 50)
     private String firstName;
 
-    @NotBlank(message = "Last name is required")
     @Size(max = 50)
     private String lastName;
 
@@ -35,11 +34,9 @@ public class Member {
     @Size(max = 100)
     private String email;
 
-    @NotBlank(message = "Phone number is required")
     @Size(max = 15)
     private String phone;
 
-    @NotBlank(message = "National ID is required")
     @Size(max = 20)
     @Column(unique = true)
     private String nationalId;
@@ -111,6 +108,16 @@ public class Member {
     // Exit tracking
     private LocalDateTime exitDate;
     private String exitReason; // RESIGNED, RETIRED, TERMINATED, DECEASED, OTHER
+
+    // Migration tracking
+    @Column(name = "consecutive_months_counter")
+    private Integer consecutiveMonthsCounter = 0;
+
+    @Column(name = "migration_status")
+    private String migrationStatus = "ACTIVE"; // ACTIVE or MIGRATED
+
+    @Column(name = "is_legacy_member")
+    private Boolean isLegacyMember = false;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -237,4 +244,13 @@ public class Member {
 
     public String getExitReason() { return exitReason; }
     public void setExitReason(String exitReason) { this.exitReason = exitReason; }
+
+    public Integer getConsecutiveMonthsCounter() { return consecutiveMonthsCounter; }
+    public void setConsecutiveMonthsCounter(Integer consecutiveMonthsCounter) { this.consecutiveMonthsCounter = consecutiveMonthsCounter; }
+
+    public String getMigrationStatus() { return migrationStatus; }
+    public void setMigrationStatus(String migrationStatus) { this.migrationStatus = migrationStatus; }
+
+    public Boolean getIsLegacyMember() { return isLegacyMember; }
+    public void setIsLegacyMember(Boolean isLegacyMember) { this.isLegacyMember = isLegacyMember; }
 }

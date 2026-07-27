@@ -25,6 +25,12 @@ public class LoanRepayment {
     @DecimalMin(value = "0.01")
     private BigDecimal amount;
 
+    @Column(name = "principal_amount", precision = 15, scale = 2)
+    private BigDecimal principalAmount = BigDecimal.ZERO;
+
+    @Column(name = "interest_amount", precision = 15, scale = 2)
+    private BigDecimal interestAmount = BigDecimal.ZERO;
+
     @Enumerated(EnumType.STRING)
     private PaymentMethod paymentMethod = PaymentMethod.CASH;
 
@@ -37,7 +43,7 @@ public class LoanRepayment {
 
     @NotNull
     @ManyToOne
-    @JoinColumn(name = "recorded_by")
+    @JoinColumn(name = "created_by")
     private User recordedBy;
 
     @CreationTimestamp
@@ -47,6 +53,7 @@ public class LoanRepayment {
     private LocalDateTime updatedAt;
 
     public enum PaymentMethod {
+        SALARY_DEDUCTION,
         CASH,
         MPESA,
         BANK_TRANSFER,
@@ -63,6 +70,12 @@ public class LoanRepayment {
 
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
+
+    public BigDecimal getPrincipalAmount() { return principalAmount; }
+    public void setPrincipalAmount(BigDecimal principalAmount) { this.principalAmount = principalAmount; }
+
+    public BigDecimal getInterestAmount() { return interestAmount; }
+    public void setInterestAmount(BigDecimal interestAmount) { this.interestAmount = interestAmount; }
 
     public PaymentMethod getPaymentMethod() { return paymentMethod; }
     public void setPaymentMethod(PaymentMethod paymentMethod) { this.paymentMethod = paymentMethod; }

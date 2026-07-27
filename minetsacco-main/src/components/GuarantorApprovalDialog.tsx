@@ -39,19 +39,6 @@ export default function GuarantorApprovalDialog({
   }, [open]);
 
   const fetchPendingRequests = async () => {
-    // Get token from localStorage (member portal uses localStorage, not AuthContext)
-    const token = localStorage.getItem('token');
-    
-    if (!token) {
-      console.error('No token available');
-      toast({
-        title: 'Error',
-        description: 'Authentication token not found',
-        variant: 'destructive'
-      });
-      return;
-    }
-
     setLoading(true);
     try {
       const response = await api.get(
@@ -60,11 +47,14 @@ export default function GuarantorApprovalDialog({
       setRequests(response.data.data || []);
     } catch (err: any) {
       console.error('Error fetching guarantor requests:', err);
-      toast({
-        title: 'Error',
-        description: 'Failed to load guarantor requests',
-        variant: 'destructive'
-      });
+      // Only show error if it's a real error, not a 401/403
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        toast({
+          title: 'Error',
+          description: 'Failed to load guarantor requests',
+          variant: 'destructive'
+        });
+      }
     } finally {
       setLoading(false);
     }

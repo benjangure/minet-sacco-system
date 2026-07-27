@@ -3,10 +3,8 @@
     <!-- White background -->
     <item android:drawable="@android:color/white" />
     
-    <!-- Logo centered, larger size -->
+    <!-- Logo centered -->
     <item
         android:drawable="@mipmap/ic_launcher_foreground_logo"
-        android:gravity="center"
-        android:width="300dp"
-        android:height="300dp" />
+        android:gravity="center" />
 </layer-list>
