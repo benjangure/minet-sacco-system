@@ -23,4 +23,4 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 -- Add missing columns if they don't exist (for idempotency)
-ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS comments LONGTEXT;
+ALTER TABLE audit_logs ADD COLUMN comments LONGTEXT;

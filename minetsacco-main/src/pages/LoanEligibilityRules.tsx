@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Save } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getApiBaseUrl } from '@/config/api';
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface LoanRules {
   id: number;

@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS bulk_member_items (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     batch_id BIGINT NOT NULL,
-    row_number INTEGER NOT NULL,
+    `row_number` INTEGER NOT NULL,
     first_name VARCHAR(50),
     last_name VARCHAR(50),
     email VARCHAR(100),
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS bulk_member_items (
 CREATE TABLE IF NOT EXISTS bulk_loan_items (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     batch_id BIGINT NOT NULL,
-    row_number INTEGER NOT NULL,
+    `row_number` INTEGER NOT NULL,
     member_number VARCHAR(50),
     loan_product_name VARCHAR(100),
     amount DECIMAL(15,2),

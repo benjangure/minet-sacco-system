@@ -762,4 +762,209 @@ public class LoanService {
             throw new RuntimeException(errorMessage);
         }
     }
+
+    /**
+     * Delete a loan and all related entities (Treasurer only)
+     * Handles cleanup of guarantors, transactions, repayments, and releases frozen pledges
+     */
+    @Transactional
+    public void deleteLoan(Long loanId, User deletedBy) {
+        Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        // Prevent deletion of disbursed loans with repayments
+        if (loan.getStatus() == Loan.Status.DISBURSED) {
+            BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loanId);
+            if (totalRepaid != null && totalRepaid.compareTo(BigDecimal.ZERO) > 0) {
+                throw new RuntimeException("Cannot delete loan with existing repayments. Total repaid: KES " + totalRepaid);
+            }
+        }
+
+        String loanDetails = "Loan #" + loan.getLoanNumber() + " - Member: " + 
+                            loan.getMember().getFirstName() + " " + loan.getMember().getLastName() + 
+                            " - Amount: KES " + loan.getAmount() + " - Status: " + loan.getStatus();
+
+        // 1. Release all guarantor pledges (unfreeze savings)
+        List<Guarantor> guarantors = guarantorRepository.findByLoanId(loanId);
+        for (Guarantor guarantor : guarantors) {
+            if (guarantor.getPledgeAmount() != null && guarantor.getPledgeAmount().compareTo(BigDecimal.ZERO) > 0) {
+                Account guarantorAccount = accountRepository
+                        .findByMemberIdAndAccountType(guarantor.getMember().getId(), Account.AccountType.SAVINGS)
+                        .orElse(null);
+                
+                if (guarantorAccount != null && guarantorAccount.getFrozenSavings() != null) {
+                    BigDecimal currentFrozen = guarantorAccount.getFrozenSavings();
+                    BigDecimal pledgeToRelease = guarantor.getPledgeAmount();
+                    BigDecimal newFrozen = currentFrozen.subtract(pledgeToRelease);
+                    
+                    // Ensure frozen savings don't go negative
+                    if (newFrozen.compareTo(BigDecimal.ZERO) < 0) {
+                        newFrozen = BigDecimal.ZERO;
+                    }
+                    
+                    guarantorAccount.setFrozenSavings(newFrozen);
+                    accountRepository.save(guarantorAccount);
+                }
+            }
+            
+            // Notify guarantor about loan deletion
+            Optional<User> guarantorUserOpt = userService.getUserByMemberId(guarantor.getMember().getId());
+            if (guarantorUserOpt.isPresent() && !guarantor.isSelfGuarantee()) {
+                notificationService.notifyUser(guarantorUserOpt.get().getId(),
+                    "Loan " + (loan.getLoanNumber() != null ? loan.getLoanNumber() : "#" + loan.getId()) + 
+                    " for " + loan.getMember().getFirstName() + " " + loan.getMember().getLastName() + 
+                    " has been deleted by Treasurer. Your pledged amount has been released.",
+                    "LOAN_DELETED", null, guarantor.getMember().getId(), "LOAN_DELETED");
+            }
+        }
+
+        // 2. Delete guarantors
+        guarantorRepository.deleteAll(guarantors);
+
+        // 3. Delete loan repayments
+        List<LoanRepayment> repayments = loanRepaymentRepository.findByLoanIdOrderByPaymentDateDesc(loanId);
+        loanRepaymentRepository.deleteAll(repayments);
+
+        // 4. Delete related transactions (loan disbursement and repayments)
+        // Query transactions by account and filter by description
+        if (loan.getStatus() == Loan.Status.DISBURSED) {
+            Account memberAccount = accountRepository
+                    .findByMemberIdAndAccountType(loan.getMember().getId(), Account.AccountType.SAVINGS)
+                    .orElse(null);
+            
+            if (memberAccount != null) {
+                // Find transactions related to this loan by account
+                List<Transaction> allTransactions = transactionRepository.findByAccountId(memberAccount.getId());
+                List<Transaction> loanTransactions = new java.util.ArrayList<>();
+                
+                // Filter transactions related to this loan by description
+                String loanRef = loan.getLoanNumber() != null ? loan.getLoanNumber() : String.valueOf(loan.getId());
+                for (Transaction transaction : allTransactions) {
+                    if (transaction.getDescription() != null && 
+                        (transaction.getDescription().contains(loanRef) ||
+                         (transaction.getTransactionType() == Transaction.TransactionType.LOAN_DISBURSEMENT && 
+                          transaction.getDescription().contains("Loan disbursement")))) {
+                        loanTransactions.add(transaction);
+                    }
+                }
+                
+                // Reverse the disbursement transaction
+                for (Transaction transaction : loanTransactions) {
+                    if (transaction.getTransactionType() == Transaction.TransactionType.LOAN_DISBURSEMENT) {
+                        BigDecimal currentBalance = memberAccount.getBalance();
+                        BigDecimal newBalance = currentBalance.subtract(loan.getAmount());
+                        
+                        // Check if member has sufficient balance for reversal
+                        if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
+                            throw new RuntimeException("Cannot delete loan: Member account has insufficient balance to reverse disbursement. " +
+                                    "Current balance: KES " + currentBalance + ", Loan amount: KES " + loan.getAmount());
+                        }
+                        
+                        memberAccount.setBalance(newBalance);
+                        accountRepository.save(memberAccount);
+                        break; // Only reverse once
+                    }
+                }
+                
+                transactionRepository.deleteAll(loanTransactions);
+            }
+        }
+
+        // 5. Notify member about loan deletion
+        Optional<User> memberUserOpt = userService.getUserByMemberId(loan.getMember().getId());
+        if (memberUserOpt.isPresent()) {
+            notificationService.notifyUser(memberUserOpt.get().getId(),
+                "Your loan application " + (loan.getLoanNumber() != null ? loan.getLoanNumber() : "#" + loan.getId()) + 
+                " for KES " + loan.getAmount() + " has been deleted by Treasurer.",
+                "LOAN_DELETED", null, loan.getMember().getId(), "LOAN_DELETED");
+        }
+
+        // 6. Log audit event
+        auditService.logAction(deletedBy, "DELETE", "LOAN", loanId, loanDetails, "Loan deleted by Treasurer", "SUCCESS");
+
+        // 7. Delete the loan
+        loanRepository.delete(loan);
+    }
+
+    /**
+     * Update loan principal (amount) and outstanding balance (Treasurer only)
+     * Recalculates all loan financials and logs the change
+     */
+    @Transactional
+    public Loan updateLoanFinancials(Long loanId, BigDecimal newPrincipal, BigDecimal newOutstandingBalance, String reason, User updatedBy) {
+        Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        // Validate inputs
+        if (newPrincipal == null || newPrincipal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Principal amount must be greater than zero");
+        }
+        if (newOutstandingBalance == null || newOutstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Outstanding balance cannot be negative");
+        }
+
+        // Store old values for audit
+        BigDecimal oldPrincipal = loan.getAmount();
+        BigDecimal oldOutstanding = loan.getOutstandingBalance();
+
+        // Update principal
+        loan.setAmount(newPrincipal);
+
+        // Recalculate loan financials based on new principal
+        if (loan.getInterestRate() != null && loan.getTermMonths() != null) {
+            BigDecimal rate = loan.getInterestRate().divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
+            BigDecimal timeInYears = new BigDecimal(loan.getTermMonths()).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
+            BigDecimal totalInterest = newPrincipal.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
+            BigDecimal totalRepayable = newPrincipal.add(totalInterest);
+            BigDecimal monthlyRepayment = totalRepayable.divide(new BigDecimal(loan.getTermMonths()), 2, java.math.RoundingMode.HALF_UP);
+
+            loan.setTotalInterest(totalInterest);
+            loan.setTotalRepayable(totalRepayable);
+            loan.setMonthlyRepayment(monthlyRepayment);
+        }
+
+        // Update outstanding balance
+        loan.setOutstandingBalance(newOutstandingBalance);
+
+        // Save loan
+        loan = loanRepository.save(loan);
+
+        // Prepare audit details
+        String auditDetails = "Loan #" + loan.getLoanNumber() + " - Member: " + 
+                             loan.getMember().getFirstName() + " " + loan.getMember().getLastName() + "\n" +
+                             "Principal: KES " + oldPrincipal + " → KES " + newPrincipal + "\n" +
+                             "Outstanding: KES " + oldOutstanding + " → KES " + newOutstandingBalance + "\n" +
+                             "New Total Repayable: KES " + loan.getTotalRepayable() + "\n" +
+                             "New Monthly Repayment: KES " + loan.getMonthlyRepayment() + "\n" +
+                             "Reason: " + (reason != null ? reason : "Not specified");
+
+        // Log audit event
+        auditService.logAction(updatedBy, "UPDATE_FINANCIALS", "LOAN", loanId, auditDetails, 
+                              "Loan financials updated by Treasurer", "SUCCESS");
+
+        // Notify member about the change
+        Optional<User> memberUserOpt = userService.getUserByMemberId(loan.getMember().getId());
+        if (memberUserOpt.isPresent()) {
+            String changeMessage = "Your loan " + loan.getLoanNumber() + " has been updated:\n" +
+                                  "Principal: KES " + oldPrincipal + " → KES " + newPrincipal + "\n" +
+                                  "Outstanding Balance: KES " + oldOutstanding + " → KES " + newOutstandingBalance;
+            if (reason != null && !reason.trim().isEmpty()) {
+                changeMessage += "\nReason: " + reason;
+            }
+            
+            notificationService.notifyUser(memberUserOpt.get().getId(),
+                changeMessage,
+                "LOAN_UPDATED", loan.getId(), loan.getMember().getId(), "LOAN_FINANCIALS_UPDATED");
+        }
+
+        // Notify Loan Officer
+        String staffMessage = "Loan " + loan.getLoanNumber() + " for " + 
+                             loan.getMember().getFirstName() + " " + loan.getMember().getLastName() + 
+                             " has been updated by Treasurer. Principal: KES " + oldPrincipal + " → KES " + newPrincipal + 
+                             ", Outstanding: KES " + oldOutstanding + " → KES " + newOutstandingBalance;
+        notificationService.notifyUsersByRole("LOAN_OFFICER", staffMessage, "LOAN_UPDATED", 
+                                             loan.getId(), loan.getMember().getId(), "LOAN_FINANCIALS_UPDATED");
+
+        return loan;
+    }
 }

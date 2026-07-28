@@ -12,8 +12,9 @@ import { Plus, Edit, Trash2, AlertCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getApiBaseUrl } from '@/config/api';
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface LoanProduct {
   id: number;

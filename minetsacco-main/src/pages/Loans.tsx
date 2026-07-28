@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Eye, CheckCircle, XCircle, DollarSign, AlertCircle } from "lucide-react";
+import { Plus, Search, Eye, CheckCircle, XCircle, DollarSign, AlertCircle, Trash2, Edit } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import GuarantorDetailsModal from "@/components/GuarantorDetailsModal";
@@ -123,12 +123,25 @@ const Loans = () => {
   const [guarantorModalOpen, setGuarantorModalOpen] = useState(false);
   const [selectedLoanGuarantors, setSelectedLoanGuarantors] = useState<any[]>([]);
   const [selectedLoanForGuarantors, setSelectedLoanForGuarantors] = useState<Loan | null>(null);
+  
+  // Treasurer edit/delete states
+  const [editLoanDialog, setEditLoanDialog] = useState(false);
+  const [deleteLoanDialog, setDeleteLoanDialog] = useState(false);
+  const [loanToEdit, setLoanToEdit] = useState<Loan | null>(null);
+  const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null);
+  const [editPrincipal, setEditPrincipal] = useState("");
+  const [editOutstanding, setEditOutstanding] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  
   const { toast } = useToast();
   const { session, role } = useAuth();
 
   const canCreateLoans = role === "LOAN_OFFICER" || role === "TELLER";
   const canApproveLoans = role === "CREDIT_COMMITTEE";
   const canDisburseLoans = role === "TREASURER";
+  const canEditDeleteLoans = role === "TREASURER";
 
   const fetchLoans = async () => {
     setLoading(true);
@@ -443,6 +456,207 @@ const Loans = () => {
       }
     } catch (error) {
       toast({ title: "Error", description: "Failed to load guarantors", variant: "destructive" });
+    }
+  };
+
+  const handleEditLoan = (loan: Loan) => {
+    setLoanToEdit(loan);
+    setEditPrincipal(loan.amount.toString());
+    setEditOutstanding(loan.outstandingBalance.toString());
+    setEditReason("");
+    setEditLoanDialog(true);
+  };
+
+  const handleDeleteLoan = (loan: Loan) => {
+    setLoanToDelete(loan);
+    setDeleteLoanDialog(true);
+  };
+
+  const confirmEditLoan = async () => {
+    if (!loanToEdit) return;
+    
+    if (!editPrincipal || !editOutstanding) {
+      toast({ title: "Required", description: "Principal and outstanding balance are required", variant: "destructive" });
+      return;
+    }
+
+    const principal = parseFloat(editPrincipal);
+    const outstanding = parseFloat(editOutstanding);
+
+    if (isNaN(principal) || principal <= 0) {
+      toast({ title: "Invalid", description: "Principal must be greater than zero", variant: "destructive" });
+      return;
+    }
+
+    if (isNaN(outstanding) || outstanding < 0) {
+      toast({ title: "Invalid", description: "Outstanding balance cannot be negative", variant: "destructive" });
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      const params = new URLSearchParams({
+        principal: principal.toString(),
+        outstandingBalance: outstanding.toString(),
+      });
+      if (editReason.trim()) {
+        params.append("reason", editReason.trim());
+      }
+
+      const response = await fetch(`${API_BASE_URL}/loans/${loanToEdit.id}/update-financials?${params}`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${session?.token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Loan financials updated successfully" });
+        setEditLoanDialog(false);
+        setLoanToEdit(null);
+        setEditReason("");
+        fetchLoans();
+      } else {
+        const error = await response.json();
+        toast({ title: "Error", description: error.message || "Failed to update loan", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to update loan", variant: "destructive" });
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const confirmDeleteLoan = async () => {
+    if (!loanToDelete) return;
+
+    setDeleteSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/loans/${loanToDelete.id}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${session?.token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({ 
+          title: "✅ Loan Deleted Successfully", 
+          description: (
+            <div className="space-y-2">
+              <p className="font-medium">
+                Loan <span className="font-mono">#{loanToDelete.loanNumber || loanToDelete.id}</span> has been permanently removed
+              </p>
+              <p className="text-sm text-muted-foreground">
+                All related records (guarantors, transactions) have been cleaned up.
+              </p>
+            </div>
+          ),
+          duration: 6000,
+        });
+        setDeleteLoanDialog(false);
+        setLoanToDelete(null);
+        fetchLoans();
+      } else {
+        const error = await response.json();
+        
+        // Enhanced error message for loans with repayments
+        const errorMessage = error.message || "Failed to delete loan";
+        const isRepaymentError = errorMessage.toLowerCase().includes("repayment") || 
+                                errorMessage.toLowerCase().includes("total repaid");
+        
+        if (isRepaymentError) {
+          // Extract total repaid amount from error message
+          const match = errorMessage.match(/KES\s+([\d,]+(?:\.\d{2})?)/);
+          const totalRepaid = match ? match[0] : "some amount";
+          
+          toast({ 
+            title: "⚠️ Cannot Delete Loan", 
+            description: (
+              <div className="space-y-3 text-sm text-white">
+                {/* Main error - highlighted */}
+                <div className="bg-white/20 border border-white/30 rounded-md p-3">
+                  <p className="font-semibold text-white">
+                    This loan has existing repayments
+                  </p>
+                  <p className="text-white/90 mt-1">
+                    Total amount repaid: <span className="font-bold">{totalRepaid}</span>
+                  </p>
+                </div>
+
+                {/* Explanation */}
+                <div className="flex gap-2 items-start">
+                  <span className="text-lg">ℹ️</span>
+                  <p className="text-white/80 leading-relaxed">
+                    Loans with repayment history cannot be deleted to maintain financial integrity and audit trail.
+                  </p>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-white/20"></div>
+
+                {/* Alternative actions */}
+                <div className="space-y-2">
+                  <p className="font-semibold text-white flex items-center gap-2">
+                    <span className="text-lg">💡</span>
+                    What you can do instead:
+                  </p>
+                  <ul className="space-y-1.5 ml-7 text-white/90">
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-300 mt-0.5">•</span>
+                      <span><strong className="text-white">Edit Outstanding Balance</strong> - Use the Edit button to adjust loan financials</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-300 mt-0.5">•</span>
+                      <span><strong className="text-white">Mark as Written Off</strong> - Change loan status to exclude from active reports</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-300 mt-0.5">•</span>
+                      <span><strong className="text-white">Keep for Records</strong> - Leave loan as-is for audit purposes</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            ),
+            variant: "destructive",
+            duration: 12000,
+          });
+        } else {
+          toast({ 
+            title: "❌ Failed to Delete Loan", 
+            description: (
+              <div className="space-y-2 text-white">
+                <p className="font-medium">
+                  {errorMessage}
+                </p>
+                <p className="text-sm text-white/80">
+                  Please try again or contact support if the issue persists.
+                </p>
+              </div>
+            ),
+            variant: "destructive",
+            duration: 7000,
+          });
+        }
+      }
+    } catch (error) {
+      toast({ 
+        title: "⚠️ Network Error", 
+        description: (
+          <div className="space-y-2 text-white">
+            <p className="font-medium">
+              Unable to connect to the server
+            </p>
+            <p className="text-sm text-white/80">
+              Please check your internet connection and try again.
+            </p>
+          </div>
+        ),
+        variant: "destructive",
+        duration: 6000,
+      });
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -926,6 +1140,38 @@ const Loans = () => {
                         >
                           <DollarSign className="h-4 w-4" />
                         </Button>
+                      )}
+                      {canEditDeleteLoans && (
+                        <>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleEditLoan(loan);
+                            }}
+                            title="Edit Loan Financials"
+                            className="text-blue-600"
+                            type="button"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteLoan(loan);
+                            }}
+                            title="Delete Loan"
+                            className="text-red-600"
+                            type="button"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </TableCell>
@@ -1607,6 +1853,167 @@ const Loans = () => {
           loanAmount={selectedLoanForGuarantors.amount}
         />
       )}
+
+      {/* Edit Loan Dialog - Treasurer Only */}
+      <Dialog open={editLoanDialog} onOpenChange={(open) => {
+        setEditLoanDialog(open);
+        if (!open) {
+          setLoanToEdit(null);
+          setEditReason("");
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Loan Financials</DialogTitle>
+          </DialogHeader>
+          {loanToEdit && (
+            <div className="space-y-4">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  Editing loan #{loanToEdit.loanNumber || loanToEdit.id} for {loanToEdit.member?.firstName} {loanToEdit.member?.lastName}
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2">
+                <Label>Principal Amount (KES) *</Label>
+                <Input
+                  type="number"
+                  value={editPrincipal}
+                  onChange={(e) => setEditPrincipal(e.target.value)}
+                  placeholder="Enter new principal amount"
+                  min="0"
+                  step="0.01"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Current: KES {loanToEdit.amount?.toLocaleString()}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Outstanding Balance (KES) *</Label>
+                <Input
+                  type="number"
+                  value={editOutstanding}
+                  onChange={(e) => setEditOutstanding(e.target.value)}
+                  placeholder="Enter new outstanding balance"
+                  min="0"
+                  step="0.01"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Current: KES {loanToEdit.outstandingBalance?.toLocaleString()}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Reason for Update (Optional)</Label>
+                <Textarea
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="Enter reason for updating loan financials..."
+                  rows={3}
+                />
+              </div>
+
+              <Alert className="bg-amber-50 border-amber-200">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-sm text-amber-800">
+                  <strong>Note:</strong> Updating the principal will recalculate total interest, total repayable, and monthly repayment. 
+                  This action will be logged for audit purposes.
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setEditLoanDialog(false)}
+                  disabled={editSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmEditLoan}
+                  disabled={editSubmitting}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {editSubmitting ? "Updating..." : "Update Loan"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Loan Dialog - Treasurer Only */}
+      <Dialog open={deleteLoanDialog} onOpenChange={(open) => {
+        setDeleteLoanDialog(open);
+        if (!open) {
+          setLoanToDelete(null);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Loan</DialogTitle>
+          </DialogHeader>
+          {loanToDelete && (
+            <div className="space-y-4">
+              <Alert className="bg-red-50 border-red-200">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-sm text-red-800">
+                  <strong>Warning:</strong> This action cannot be undone. Deleting this loan will:
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">Loan Details:</p>
+                <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                  <li>Loan #: {loanToDelete.loanNumber || loanToDelete.id}</li>
+                  <li>Member: {loanToDelete.member?.firstName} {loanToDelete.member?.lastName}</li>
+                  <li>Amount: KES {loanToDelete.amount?.toLocaleString()}</li>
+                  <li>Status: {loanToDelete.status}</li>
+                </ul>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <p className="font-medium text-red-600">This will permanently remove:</p>
+                <ul className="list-disc list-inside space-y-1 text-red-700">
+                  <li>The loan record</li>
+                  <li>All guarantor records and release frozen pledges</li>
+                  <li>All related transactions</li>
+                  <li>All repayment records</li>
+                </ul>
+              </div>
+
+              {loanToDelete.status === "DISBURSED" && (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-sm text-amber-800">
+                    This loan has been disbursed. Deletion will reverse the disbursement transaction. 
+                    Ensure the member's account has sufficient balance.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteLoanDialog(false)}
+                  disabled={deleteSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmDeleteLoan}
+                  disabled={deleteSubmitting}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {deleteSubmitting ? "Deleting..." : "Delete Loan"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

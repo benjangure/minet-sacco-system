@@ -12,8 +12,9 @@ import { Upload, Eye, CheckCircle, XCircle, AlertCircle, FileSpreadsheet, FileDo
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
+import { getApiBaseUrl } from '@/config/api';
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = getApiBaseUrl();
 
 interface BulkBatch {
   id: number;

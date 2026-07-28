@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Shield } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getApiBaseUrl } from '@/config/api';
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = getApiBaseUrl();
 
 const Settings = () => {
   const { session, role } = useAuth();

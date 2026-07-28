@@ -149,7 +149,7 @@ The application uses Flyway for database migrations. The initial schema includes
 ### 1. Login to get JWT token
 
 ```bash
-curl -X POST http://localhost:8080/api/auth/login \
+curl -X POST http://localhost:9090/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
@@ -160,7 +160,7 @@ curl -X POST http://localhost:8080/api/auth/login \
 ### 2. Use the token in subsequent requests
 
 ```bash
-curl -X GET http://localhost:8080/api/members \
+curl -X GET http://localhost:9090/api/members \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 

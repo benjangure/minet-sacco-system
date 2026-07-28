@@ -20,7 +20,8 @@ public class CorsConfig {
         config.setAllowCredentials(true);
         config.setAllowedOriginPatterns(List.of(
             "http://localhost:*",
-            "http://192.168.0.*",
+            "http://192.168.0.*:*",
+            "http://10.39.60.*:*",
             "capacitor://localhost",
             "ionic://localhost",
             "http://localhost"

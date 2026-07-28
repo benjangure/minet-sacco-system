@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Storage - Minet SACCO</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .warning {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .success {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        .storage-info {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .storage-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Clear Browser Storage</h1>
+        
+        <div class="info">
+            <strong>Current Location:</strong> <span id="currentUrl"></span><br>
+            <strong>Backend URL would be:</strong> <span id="backendUrl"></span>
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ Problem:</strong> Your browser might be caching an old backend URL pointing to "localhost:9090" instead of using the network IP.
+        </div>
+
+        <div id="storageInfo" class="storage-info">
+            <strong>Current localStorage values:</strong>
+            <div id="storageList"></div>
+        </div>
+
+        <button onclick="clearStorage()">Clear All Storage</button>
+        <button onclick="location.reload()">Refresh Page</button>
+        <button onclick="goToLogin()">Go to Login</button>
+
+        <div id="success" class="success">
+            ✅ Storage cleared successfully! The app will now use the correct backend URL based on your access point.
+        </div>
+    </div>
+
+    <script>
+        // Display current URLs
+        document.getElementById('currentUrl').textContent = window.location.origin;
+        const protocol = window.location.protocol;
+        const hostname = window.location.hostname;
+        const backendUrl = `${protocol}//${hostname}:9090`;
+        document.getElementById('backendUrl').textContent = backendUrl;
+
+        // Display current localStorage
+        function displayStorage() {
+            const storageList = document.getElementById('storageList');
+            storageList.innerHTML = '';
+            
+            if (localStorage.length === 0) {
+                storageList.innerHTML = '<div class="storage-item">No items in localStorage</div>';
+            } else {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    const value = localStorage.getItem(key);
+                    const item = document.createElement('div');
+                    item.className = 'storage-item';
+                    item.innerHTML = `<strong>${key}:</strong> ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`;
+                    storageList.appendChild(item);
+                }
+            }
+        }
+
+        // Clear all storage
+        function clearStorage() {
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Clear cookies
+            document.cookie.split(";").forEach(function(c) { 
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+            });
+
+            document.getElementById('success').style.display = 'block';
+            displayStorage();
+            
+            console.log('✅ Storage cleared!');
+            console.log('New backend URL will be:', backendUrl);
+        }
+
+        // Go to login
+        function goToLogin() {
+            window.location.href = '/login';
+        }
+
+        // Initial display
+        displayStorage();
+
+        // Log diagnostic info
+        console.log('=================================');
+        console.log('Minet SACCO - Storage Diagnostic');
+        console.log('=================================');
+        console.log('Current URL:', window.location.origin);
+        console.log('Backend URL should be:', backendUrl);
+        console.log('localStorage.backendUrl:', localStorage.getItem('backendUrl'));
+        console.log('=================================');
+    </script>
+</body>
+</html>

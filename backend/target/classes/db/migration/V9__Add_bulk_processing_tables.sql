@@ -27,7 +27,7 @@ CREATE TABLE bulk_batches (
 CREATE TABLE bulk_transaction_items (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     batch_id BIGINT NOT NULL,
-    row_number INT NOT NULL,
+    `row_number` INT NOT NULL,
     member_number VARCHAR(50),
     member_id BIGINT,
     savings_amount DECIMAL(15,2) DEFAULT 0,

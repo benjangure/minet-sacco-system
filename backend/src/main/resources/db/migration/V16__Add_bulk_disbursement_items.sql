@@ -2,7 +2,7 @@
 CREATE TABLE bulk_disbursement_items (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     batch_id BIGINT NOT NULL,
-    row_number INT,
+    `row_number` INT,
     loan_number VARCHAR(50),
     loan_id BIGINT,
     disbursement_amount DECIMAL(19, 2),

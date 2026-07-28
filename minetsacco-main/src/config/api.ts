@@ -12,10 +12,12 @@ const getDefaultBackendUrl = (): string => {
   
   if (isNative) {
     // For APK: use laptop IP (can be changed in settings)
-    return 'http://192.168.0.50:8080';
+    return 'http://192.168.0.50:9090';
   } else {
-    // For web: use localhost
-    return 'http://localhost:8080';
+    // For web: use the same host as the frontend, but port 9090
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:9090`;
   }
 };
 

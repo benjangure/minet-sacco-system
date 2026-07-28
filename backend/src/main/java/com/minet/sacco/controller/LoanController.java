@@ -446,4 +446,47 @@ public class LoanController {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
+
+    /**
+     * Delete a loan - Only treasurers can delete loans
+     * Handles cleanup of related entities (guarantors, transactions, repayments)
+     */
+    @DeleteMapping("/{loanId}")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<String>> deleteLoan(
+            @PathVariable Long loanId,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            loanService.deleteLoan(loanId, user);
+            return ResponseEntity.ok(ApiResponse.success("Loan deleted successfully", "Loan has been removed from the system"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Update loan principal and outstanding balance - Only treasurers can update
+     * Recalculates all loan financials and updates related entities
+     */
+    @PutMapping("/{loanId}/update-financials")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Loan>> updateLoanFinancials(
+            @PathVariable Long loanId,
+            @RequestParam BigDecimal principal,
+            @RequestParam BigDecimal outstandingBalance,
+            @RequestParam(required = false) String reason,
+            Authentication authentication) {
+        try {
+            User user = userService.getUserByUsername(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Loan updatedLoan = loanService.updateLoanFinancials(loanId, principal, outstandingBalance, reason, user);
+            return ResponseEntity.ok(ApiResponse.success("Loan financials updated successfully", updatedLoan));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
 }

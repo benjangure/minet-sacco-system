@@ -34,25 +34,25 @@ CREATE TABLE IF NOT EXISTS guarantor_default_tracking (
 -- Step 3: Remove old guarantor fields from loans table (if they exist)
 -- These will be replaced by the one-to-many relationship via guarantors table
 ALTER TABLE loans 
-DROP COLUMN IF EXISTS guarantor1_id,
-DROP COLUMN IF EXISTS guarantor2_id,
-DROP COLUMN IF EXISTS guarantor3_id,
-DROP COLUMN IF EXISTS guarantor1_eligibility_status,
-DROP COLUMN IF EXISTS guarantor1_eligibility_errors,
-DROP COLUMN IF EXISTS guarantor2_eligibility_status,
-DROP COLUMN IF EXISTS guarantor2_eligibility_errors,
-DROP COLUMN IF EXISTS guarantor3_eligibility_status,
-DROP COLUMN IF EXISTS guarantor3_eligibility_errors;
+DROP COLUMN guarantor1_id,
+DROP COLUMN guarantor2_id,
+DROP COLUMN guarantor3_id,
+DROP COLUMN guarantor1_eligibility_status,
+DROP COLUMN guarantor1_eligibility_errors,
+DROP COLUMN guarantor2_eligibility_status,
+DROP COLUMN guarantor2_eligibility_errors,
+DROP COLUMN guarantor3_eligibility_status,
+DROP COLUMN guarantor3_eligibility_errors;
 
 -- Step 4: Ensure guarantors table has all required fields
 -- Add columns if they don't exist
 ALTER TABLE guarantors 
-ADD COLUMN IF NOT EXISTS pledge_amount DECIMAL(15,2),
-ADD COLUMN IF NOT EXISTS guarantee_amount DECIMAL(15,2),
-ADD COLUMN IF NOT EXISTS self_guarantee BOOLEAN DEFAULT FALSE,
-ADD COLUMN IF NOT EXISTS rejection_reason TEXT,
-ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+ADD COLUMN pledge_amount DECIMAL(15,2),
+ADD COLUMN guarantee_amount DECIMAL(15,2),
+ADD COLUMN self_guarantee BOOLEAN DEFAULT FALSE,
+ADD COLUMN rejection_reason TEXT,
+ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN approved_at TIMESTAMP;
 
 -- Step 5: Create indexes for better query performance
 ALTER TABLE guarantors 
@@ -63,7 +63,7 @@ ADD INDEX IF NOT EXISTS idx_loan_member_status (loan_id, member_id, status);
 
 -- Step 6: Add self_guarantee flag to loans table to track if member self-guaranteed
 ALTER TABLE loans 
-ADD COLUMN IF NOT EXISTS self_guarantee BOOLEAN DEFAULT FALSE;
+ADD COLUMN self_guarantee BOOLEAN DEFAULT FALSE;
 
 -- Step 7: Verify migration
 SELECT 'Guarantor system migration completed successfully' as status;
