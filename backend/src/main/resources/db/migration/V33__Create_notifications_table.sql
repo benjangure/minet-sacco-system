@@ -11,5 +11,5 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 -- Ensure the `read` column exists (in case table was created without it)
-ALTER TABLE notifications ADD COLUMN IF NOT EXISTS `read` TINYINT(1) DEFAULT 0;
+ALTER TABLE notifications ADD COLUMN `read` TINYINT(1) DEFAULT 0;
 

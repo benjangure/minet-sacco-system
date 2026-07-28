@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Download, TrendingUp, Activity, BarChart3 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getApiBaseUrl } from '@/config/api';
 
 const API_BASE_URL = getApiBaseUrl();
 

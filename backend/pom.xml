@@ -14,7 +14,7 @@
     <name>Minet SACCO Backend</name>
     <description>Spring Boot backend for Minet SACCO management system</description>
     <properties>
-        <java.version>21</java.version>
+        <java.version>17</java.version>
     </properties>
     <dependencies>
         <!-- Spring Boot Starters -->

@@ -96,18 +96,18 @@ You should see the Swagger API documentation page.
 
 ```bash
 # Login
-curl -X POST http://localhost:8080/api/auth/login \
+curl -X POST http://localhost:9090/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
 
 # Copy the token from response, then:
-curl -X GET http://localhost:8080/api/members \
+curl -X GET http://localhost:9090/api/members \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
 ### Using Postman:
 
-1. Create new request: `POST http://localhost:8080/api/auth/login`
+1. Create new request: `POST http://localhost:9090/api/auth/login`
 2. Body → raw → JSON:
    ```json
    {
@@ -117,7 +117,7 @@ curl -X GET http://localhost:8080/api/members \
    ```
 3. Send
 4. Copy the token
-5. Create new request: `GET http://localhost:8080/api/members`
+5. Create new request: `GET http://localhost:9090/api/members`
 6. Headers → Add: `Authorization: Bearer YOUR_TOKEN`
 7. Send
 
