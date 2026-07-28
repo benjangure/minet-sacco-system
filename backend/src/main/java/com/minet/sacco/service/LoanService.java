@@ -1794,7 +1794,6 @@ public class LoanService {
         
         return updatedLoan;
     }
-}
 
     /**
      * Delete a loan and all related entities (Treasurer only)
