@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Download, Loader2, ChevronDown, ChevronUp } from "lucide-react";
@@ -49,11 +50,12 @@ const OverCommittedGuarantors = () => {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const { session } = useAuth();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
 
   useEffect(() => {
     fetchReport();
     fetchExitedLoansReport();
-  }, []);
+  }, [refreshKey]);
 
   const fetchReport = async () => {
     try {

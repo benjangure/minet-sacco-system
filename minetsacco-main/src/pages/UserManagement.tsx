@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -78,6 +79,7 @@ const UserManagement = () => {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const { toast } = useToast();
   const { role: currentUserRole, session } = useAuth();
+  const { refreshKey } = useRefresh();
 
   const allowedRoles = currentUserRole ? (roleHierarchy[currentUserRole] || []) : [];
 
@@ -153,7 +155,7 @@ const UserManagement = () => {
     if (session) {
       fetchUsers();
     }
-  }, [session, currentUserRole]);
+  }, [session, currentUserRole, refreshKey]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();

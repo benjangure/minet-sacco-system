@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,12 +45,13 @@ export default function MemberCredentials() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const { toast } = useToast();
   const { session } = useAuth();
+  const { refreshKey } = useRefresh();
 
   useEffect(() => {
     if (session) {
       fetchCredentials();
     }
-  }, [session]);
+  }, [session, refreshKey]);
 
   const fetchCredentials = async () => {
     setLoading(true);

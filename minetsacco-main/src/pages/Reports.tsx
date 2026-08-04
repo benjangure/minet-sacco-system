@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,6 +16,7 @@ const Reports = () => {
   const [loading, setLoading] = useState(false);
   const { session, user } = useAuth();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
 
   // Check if user has permission to view reports
   const canViewFinancialReports = user && ["ADMIN", "TREASURER", "AUDITOR"].includes(user.role);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,6 +58,7 @@ const MemberTransactionHistory = () => {
   const [transactionTypeFilter, setTransactionTypeFilter] = useState("all");
   const { toast } = useToast();
   const { session, role } = useAuth();
+  const { refreshKey } = useRefresh();
 
   // Check if user has access
   const canAccessTransactionHistory = ["ADMIN", "TREASURER", "LOAN_OFFICER", "CREDIT_COMMITTEE", "AUDITOR"].includes(role || "");
@@ -66,7 +68,7 @@ const MemberTransactionHistory = () => {
       return;
     }
     fetchMembers();
-  }, [session]);
+  }, [session, refreshKey]);
 
   const fetchMembers = async () => {
     try {

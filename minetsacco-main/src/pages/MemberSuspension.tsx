@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useRefresh } from '@/contexts/RefreshContext';
 import { AlertCircle, CheckCircle, Loader, Search, Ban, RotateCcw } from 'lucide-react';
 import api from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +23,7 @@ interface Suspension {
 
 export default function MemberSuspension() {
   const { role } = useAuth();
+  const { refreshKey } = useRefresh();
   const [members, setMembers] = useState<Member[]>([]);
   const [suspensions, setSuspensions] = useState<Suspension[]>([]);
   const [pendingSuspensions, setPendingSuspensions] = useState<Suspension[]>([]);
@@ -49,7 +51,7 @@ export default function MemberSuspension() {
       fetchPendingSuspensions();
       fetchPendingReactivations();
     }
-  }, [role]);
+  }, [role, refreshKey]);
 
   const fetchActiveSuspensions = async () => {
     try {

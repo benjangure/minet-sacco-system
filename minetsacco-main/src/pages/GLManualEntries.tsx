@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useRefresh } from '@/contexts/RefreshContext';
 import {
   AlertCircle,
   Plus,
@@ -16,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function GLManualEntries() {
   const { session } = useAuth();
+  const { refreshKey } = useRefresh();
   const [entries, setEntries] = useState<GLManualEntry[]>([]);
   const [glAccounts, setGlAccounts] = useState<GLAccount[]>([]);
   const [loading, setLoading] = useState(false);

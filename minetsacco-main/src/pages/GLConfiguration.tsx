@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +68,7 @@ const normalBalanceDefaults: Record<string, string> = {
 export default function GLConfiguration() {
   const { session } = useAuth();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
   const token = session?.token;
 
   // Tab 1 State
@@ -101,7 +103,7 @@ export default function GLConfiguration() {
   useEffect(() => {
     fetchAccounts();
     fetchDataSources();
-  }, []);
+  }, [refreshKey]);
 
   // ============ Tab 1: GL Accounts ============
   const fetchAccounts = async () => {

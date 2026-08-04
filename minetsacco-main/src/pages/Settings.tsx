@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ interface UserProfile {
 const Settings = () => {
   const { session, role } = useAuth();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
   
   // Log token availability for debugging
   useEffect(() => {

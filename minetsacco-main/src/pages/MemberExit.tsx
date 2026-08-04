@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useRefresh } from '@/contexts/RefreshContext';
 import { AlertCircle, CheckCircle, Loader, LogOut, CheckCheck } from 'lucide-react';
 import api from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,6 +36,7 @@ interface ExitSummary {
 
 export default function MemberExit() {
   const { role } = useAuth();
+  const { refreshKey } = useRefresh();
   const [pendingExits, setPendingExits] = useState<ExitRecord[]>([]);
   const [approvedExits, setApprovedExits] = useState<ExitRecord[]>([]);
   const [allExits, setAllExits] = useState<ExitRecord[]>([]);
@@ -55,7 +57,7 @@ export default function MemberExit() {
   useEffect(() => {
     fetchExits();
     fetchAllExits();
-  }, []);
+  }, [refreshKey]);
 
   const fetchExits = async () => {
     try {

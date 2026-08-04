@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useRefresh } from '@/contexts/RefreshContext';
 import api from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,10 +60,11 @@ export default function LoanRepaymentRequests() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [processing, setProcessing] = useState(false);
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
 
   useEffect(() => {
     fetchRequests();
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     if (statusFilter === 'ALL') {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/config/api";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ interface MigrationItem {
 export default function LoanMigration() {
   const { session } = useAuth();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<MigrationResult | null>(null);
