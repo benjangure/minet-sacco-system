@@ -46,6 +46,7 @@ public class CacheConfig {
             new ConcurrentMapCache("loanById"),
             new ConcurrentMapCache("loansByMember"),
             new ConcurrentMapCache("loansByStatus"),
+            new ConcurrentMapCache("loansByStatusList"),
             
             // Account caches
             new ConcurrentMapCache("accounts"),
