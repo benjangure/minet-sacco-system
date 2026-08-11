@@ -1146,7 +1146,7 @@ public class BulkProcessingService {
             MemberCredential credential = new MemberCredential(
                 member.getId(),
                 username,
-                member.getFirstName() + " " + member.getLastName(),
+                member.getFullName(),
                 member.getEmail(),
                 hasNationalId,
                 user.getId() // created by system user

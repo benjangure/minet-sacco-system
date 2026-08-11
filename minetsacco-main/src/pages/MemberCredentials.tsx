@@ -15,7 +15,7 @@ import {
   Search
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getApiBaseUrl } from "../config/api";
 
 const API_BASE_URL = getApiBaseUrl();
@@ -284,6 +284,9 @@ export default function MemberCredentials() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Member Credentials</DialogTitle>
+            <DialogDescription>
+              View and copy member login credentials
+            </DialogDescription>
           </DialogHeader>
 
           {selectedCredential && (

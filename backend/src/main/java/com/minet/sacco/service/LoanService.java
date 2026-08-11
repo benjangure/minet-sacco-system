@@ -8,6 +8,8 @@ import com.minet.sacco.dto.GuarantorRequest;
 import com.minet.sacco.entity.*;
 import com.minet.sacco.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -80,7 +82,13 @@ public class LoanService {
     private GuarantorTrackingService guarantorTrackingService;
 
     @Autowired
+    private BulkTransactionItemRepository bulkTransactionItemRepository;
+
+    @Autowired
     private EligibilityCalculationService eligibilityCalculationService;
+
+    @Autowired
+    private LoanGuarantorUpdateService loanGuarantorUpdateService;
 
     public Member getMemberById(Long memberId) {
         return memberRepository.findById(memberId)
@@ -91,23 +99,32 @@ public class LoanService {
         return loanEligibilityValidator.validateMemberEligibility(member, amount);
     }
 
+    @Cacheable(value = "allLoans", unless = "#result == null || #result.isEmpty()")
     public List<Loan> getAllLoans() {
-        return loanRepository.findAll();
+        return loanRepository.findAllWithDetails(); // Optimized with JOIN FETCH
     }
 
+    public org.springframework.data.domain.Page<Loan> getAllLoansPaginated(org.springframework.data.domain.Pageable pageable) {
+        return loanRepository.findAll(pageable);
+    }
+
+    @Cacheable(value = "loanById", key = "#id", unless = "#result == null || !#result.isPresent()")
     public Optional<Loan> getLoanById(Long id) {
         return loanRepository.findById(id);
     }
 
+    @Cacheable(value = "loansByMember", key = "#memberId", unless = "#result == null || #result.isEmpty()")
     public List<Loan> getLoansByMemberId(Long memberId) {
-        return loanRepository.findByMemberId(memberId);
+        return loanRepository.findByMemberIdWithDetails(memberId); // Optimized with JOIN FETCH
     }
 
+    @Cacheable(value = "loansByStatus", key = "#status", unless = "#result == null || #result.isEmpty()")
     public List<Loan> getLoansByStatus(Loan.Status status) {
-        return loanRepository.findByStatus(status);
+        return loanRepository.findByStatusWithDetails(status); // Optimized with JOIN FETCH
     }
 
     @Transactional
+    @CacheEvict(value = {"allLoans", "loansByMember", "loansByStatus", "loanById"}, allEntries = true)
     public Loan applyForLoan(LoanApplicationRequest request, User createdBy) {
         Member member = memberRepository.findById(request.getMemberId())
                 .orElseThrow(() -> new RuntimeException("Member not found"));
@@ -278,17 +295,19 @@ public class LoanService {
         // Don't call calculateRepaymentDetails() - interest not calculated at application
         loan = loanRepository.save(loan);
 
-        // Create guarantor records with custom guarantee amounts
+        // Create guarantor records with custom guarantee amounts and NOK support
         if (request.getGuarantors() != null && !request.getGuarantors().isEmpty()) {
             for (com.minet.sacco.dto.GuarantorRequest gReq : request.getGuarantors()) {
                 Member guarantorMember = memberRepository.findById(gReq.getGuarantorId())
                         .orElseThrow(() -> new RuntimeException("Guarantor member not found"));
 
+                // PRIMARY GUARANTOR
                 Guarantor guarantor = new Guarantor();
                 guarantor.setLoan(loan);
                 guarantor.setMember(guarantorMember);
                 guarantor.setGuaranteeAmount(gReq.getGuaranteeAmount());  // Custom guarantee amount
                 guarantor.setSelfGuarantee(gReq.isSelfGuarantee());
+                guarantor.setNextOfKin(false);  // This is a primary guarantor
                 
                 // Auto-approve self-guarantors
                 if (gReq.isSelfGuarantee()) {
@@ -298,9 +317,62 @@ public class LoanService {
                     guarantor.setStatus(Guarantor.Status.PENDING);
                 }
                 
-                guarantorRepository.save(guarantor);
+                guarantor = guarantorRepository.save(guarantor);
                 
-                // Send notification to guarantor (skip if self-guarantee)
+                // NEXT OF KIN (NOK) GUARANTOR - if provided
+                if (gReq.getNextOfKinGuarantorId() != null) {
+                    // Validate NOK guarantor
+                    if (gReq.getNextOfKinGuarantorId().equals(gReq.getGuarantorId())) {
+                        throw new RuntimeException("Next of kin guarantor cannot be the same as primary guarantor");
+                    }
+                    
+                    // Validate NOK guarantee amount matches primary
+                    if (gReq.getNextOfKinGuaranteeAmount() == null || 
+                        !gReq.getNextOfKinGuaranteeAmount().equals(gReq.getGuaranteeAmount())) {
+                        throw new RuntimeException("Next of kin guarantee amount must match primary guarantor amount");
+                    }
+                    
+                    Member nokMember = memberRepository.findById(gReq.getNextOfKinGuarantorId())
+                            .orElseThrow(() -> new RuntimeException("Next of kin guarantor member not found"));
+                    
+                    if (nokMember.getStatus() != Member.Status.ACTIVE) {
+                        throw new RuntimeException("Next of kin guarantor is not ACTIVE: " + nokMember.getFullName());
+                    }
+                    
+                    // Create NOK guarantor record
+                    Guarantor nokGuarantor = new Guarantor();
+                    nokGuarantor.setLoan(loan);
+                    nokGuarantor.setMember(nokMember);
+                    nokGuarantor.setGuaranteeAmount(gReq.getNextOfKinGuaranteeAmount());
+                    nokGuarantor.setSelfGuarantee(false);  // NOK cannot be self-guarantee
+                    nokGuarantor.setNextOfKin(true);  // This is a NOK (backup) guarantor
+                    nokGuarantor.setPrimaryGuarantor(guarantor);  // Link to primary
+                    nokGuarantor.setStatus(Guarantor.Status.PENDING);  // NOK also needs to approve
+                    
+                    nokGuarantor = guarantorRepository.save(nokGuarantor);
+                    
+                    // Update primary guarantor to link to NOK
+                    guarantor.setNextOfKinGuarantor(nokGuarantor);
+                    guarantorRepository.save(guarantor);
+                    
+                    // Send notification to NOK guarantor
+                    Optional<User> nokUserOpt = userService.getUserByMemberId(gReq.getNextOfKinGuarantorId());
+                    if (nokUserOpt.isPresent()) {
+                        String nokMessage = String.format(
+                            "%s %s has requested you to be a NEXT OF KIN (backup) guarantor for %s for a loan of KES %s. " +
+                            "You will cover KES %s if the primary guarantor (%s) is unavailable.",
+                            member.getFullName(), 
+                            member.getEmployeeId() != null ? "(" + member.getEmployeeId() + ")" : "",
+                            loan.getLoanProduct().getName(),
+                            request.getAmount(),
+                            gReq.getNextOfKinGuaranteeAmount(),
+                            guarantorMember.getFullName()
+                        );
+                        notificationService.notifyUser(nokUserOpt.get().getId(), nokMessage, "GUARANTOR_REQUEST");
+                    }
+                }
+                
+                // Send notification to primary guarantor (skip if self-guarantee)
                 if (!gReq.isSelfGuarantee()) {
                     Optional<User> guarantorUserOpt = userService.getUserByMemberId(gReq.getGuarantorId());
                     if (guarantorUserOpt.isPresent()) {
@@ -345,6 +417,7 @@ public class LoanService {
     }
 
     @Transactional
+    @CacheEvict(value = {"allLoans", "loansByMember", "loansByStatus", "loanById"}, allEntries = true)
     public Loan approveLoan(LoanApprovalRequest request, User approvedBy) {
         Loan loan = loanRepository.findById(request.getLoanId())
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
@@ -482,6 +555,7 @@ public class LoanService {
     }
 
     @Transactional
+    @CacheEvict(value = {"allLoans", "loansByMember", "loansByStatus", "loanById"}, allEntries = true)
     public Loan disburseLoan(Long loanId, User disbursedBy) {
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
@@ -493,6 +567,7 @@ public class LoanService {
     }
 
     @Transactional
+    @CacheEvict(value = {"allLoans", "loansByMember", "loansByStatus", "loanById"}, allEntries = true)
     public LoanRepayment makeRepayment(LoanRepaymentRequest request, User createdBy) {
         Loan loan = loanRepository.findById(request.getLoanId())
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
@@ -683,7 +758,7 @@ public class LoanService {
     }
 
     public List<Guarantor> getGuarantorsForLoan(Long loanId) {
-        return guarantorRepository.findByLoanId(loanId);
+        return guarantorRepository.findByLoanIdWithDetails(loanId); // Optimized with JOIN FETCH
     }
 
     /**
@@ -714,7 +789,7 @@ public class LoanService {
                 loanEligibilityValidator.validateMemberEligibility(loan.getMember(), loan.getAmount());
         
         LoanApprovalValidationDTO.MemberEligibilityInfo memberInfo = new LoanApprovalValidationDTO.MemberEligibilityInfo();
-        memberInfo.setMemberName(loan.getMember().getFirstName() + " " + loan.getMember().getLastName());
+        memberInfo.setMemberName(loan.getMember().getFullName());
         memberInfo.setStatus(loan.getMember().getStatus().toString());
         
         // Get member account balances
@@ -1763,6 +1838,33 @@ public class LoanService {
             loan.setPurpose(fieldUpdate.getPurpose());
         }
         
+        // Handle guarantor updates if provided
+        if (fieldUpdate.getGuarantors() != null) {
+            // Get current outstanding balance (either updated or existing)
+            BigDecimal currentOutstanding = fieldUpdate.getOutstandingBalance() != null 
+                ? fieldUpdate.getOutstandingBalance() 
+                : (loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : loan.getAmount());
+            
+            // Special case: If outstanding balance is 0, allow removing all guarantors (fully paid loan)
+            boolean isFullyPaid = currentOutstanding.compareTo(BigDecimal.ZERO) == 0;
+            
+            if (fieldUpdate.getGuarantors().isEmpty() && !isFullyPaid) {
+                throw new RuntimeException("At least one guarantor must be assigned for loans with outstanding balance > 0");
+            }
+            
+            // Convert DTO guarantors to GuarantorPair format for LoanGuarantorUpdateService
+            List<com.minet.sacco.service.LoanGuarantorUpdateService.GuarantorPair> guarantorPairs = new ArrayList<>();
+            for (com.minet.sacco.dto.LoanFieldUpdateDTO.GuarantorData g : fieldUpdate.getGuarantors()) {
+                guarantorPairs.add(new com.minet.sacco.service.LoanGuarantorUpdateService.GuarantorPair(
+                    g.getEmployeeId(), 
+                    g.getPledgeAmount()
+                ));
+            }
+            
+            // Use the guarantor update service to handle freeze/unfreeze mechanics
+            String guarantorChangeMsg = loanGuarantorUpdateService.updateGuarantors(loan, guarantorPairs, updatedBy);
+        }
+        
         // Save updated loan
         Loan updatedLoan = loanRepository.save(loan);
         
@@ -1787,6 +1889,9 @@ public class LoanService {
         if (fieldUpdate.getPurpose() != null) {
             auditDetails.append("Purpose changed to ").append(fieldUpdate.getPurpose()).append("; ");
         }
+        if (fieldUpdate.getGuarantors() != null) {
+            auditDetails.append("Guarantors updated (").append(fieldUpdate.getGuarantors().size()).append(" total); ");
+        }
         
         auditService.logAction(updatedBy, "UPDATE", "LOAN_FIELDS", updatedLoan.getId(),
             "Loan #" + updatedLoan.getLoanNumber() + " - Member: " + updatedLoan.getMember().getFirstName() + " " + 
@@ -1804,20 +1909,110 @@ public class LoanService {
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
-        // Prevent deletion of disbursed loans with repayments
-        if (loan.getStatus() == Loan.Status.DISBURSED) {
-            BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loanId);
-            if (totalRepaid != null && totalRepaid.compareTo(BigDecimal.ZERO) > 0) {
-                throw new RuntimeException("Cannot delete loan with existing repayments. Total repaid: KES " + totalRepaid);
-            }
+        // Build comprehensive loan details for audit trail
+        String loanDetails = String.format(
+            "Loan #%s - Member: %s %s\n" +
+            "Amount: KES %s\n" +
+            "Interest Rate: %s%%\n" +
+            "Term: %d months\n" +
+            "Total Interest: KES %s\n" +
+            "Total Repayable: KES %s\n" +
+            "Outstanding Balance: KES %s\n" +
+            "Status: %s\n" +
+            "Application Date: %s",
+            loan.getLoanNumber(),
+            loan.getMember().getFirstName(), loan.getMember().getLastName(),
+            loan.getAmount(),
+            loan.getInterestRate(),
+            loan.getTermMonths(),
+            loan.getTotalInterest(),
+            loan.getTotalRepayable(),
+            loan.getOutstandingBalance(),
+            loan.getStatus(),
+            loan.getApplicationDate()
+        );
+
+        // Check if loan has repayments - important for accuracy
+        BigDecimal totalRepaid = loanRepaymentRepository.getTotalRepaidAmount(loanId);
+        boolean hasRepayments = totalRepaid != null && totalRepaid.compareTo(BigDecimal.ZERO) > 0;
+
+        if (hasRepayments) {
+            loanDetails += String.format("\nTotal Repaid: KES %s", totalRepaid);
         }
 
-        String loanDetails = "Loan #" + loan.getLoanNumber() + " - Member: " + 
-                            loan.getMember().getFirstName() + " " + loan.getMember().getLastName() + 
-                            " - Amount: KES " + loan.getAmount() + " - Status: " + loan.getStatus();
+        // === STEP 1: Handle accounting reversals for 100% accuracy ===
+        Account memberAccount = accountRepository
+                .findByMemberIdAndAccountType(loan.getMember().getId(), Account.AccountType.SAVINGS)
+                .orElse(null);
 
-        // 1. Release all guarantor pledges (unfreeze savings)
+        if (loan.getStatus() == Loan.Status.DISBURSED && memberAccount != null) {
+            // Reverse disbursement from member's account
+            BigDecimal currentBalance = memberAccount.getBalance();
+            BigDecimal newBalance = currentBalance.subtract(loan.getAmount());
+            
+            if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException(String.format(
+                    "Cannot delete loan: Member account has insufficient balance to reverse disbursement.\n" +
+                    "Current balance: KES %s\n" +
+                    "Loan amount to reverse: KES %s\n" +
+                    "Required balance: KES %s",
+                    currentBalance, loan.getAmount(), loan.getAmount()
+                ));
+            }
+            
+            // Create reversal transaction for audit trail
+            Transaction reversalTransaction = new Transaction();
+            reversalTransaction.setAccount(memberAccount);
+            reversalTransaction.setTransactionType(Transaction.TransactionType.WITHDRAWAL);
+            reversalTransaction.setAmount(loan.getAmount());
+            reversalTransaction.setTransactionDate(LocalDateTime.now());
+            reversalTransaction.setDescription(String.format(
+                "REVERSAL: Loan %s deleted by Treasurer %s. Original disbursement reversed.",
+                loan.getLoanNumber(), deletedBy.getUsername()
+            ));
+            reversalTransaction.setCreatedBy(deletedBy);
+            
+            memberAccount.setBalance(newBalance);
+            accountRepository.save(memberAccount);
+            transactionRepository.save(reversalTransaction);
+            
+            loanDetails += String.format("\nDisbursement Reversed: KES %s deducted from account (Balance: KES %s → KES %s)",
+                loan.getAmount(), currentBalance, newBalance);
+        }
+
+        // === STEP 2: Handle repayments reversal for accuracy ===
+        List<LoanRepayment> repayments = loanRepaymentRepository.findByLoanIdOrderByPaymentDateDesc(loanId);
+        if (!repayments.isEmpty() && memberAccount != null) {
+            // Return all repayments to member's account
+            for (LoanRepayment repayment : repayments) {
+                Transaction repaymentReversal = new Transaction();
+                repaymentReversal.setAccount(memberAccount);
+                repaymentReversal.setTransactionType(Transaction.TransactionType.DEPOSIT);
+                repaymentReversal.setAmount(repayment.getAmount());
+                repaymentReversal.setTransactionDate(LocalDateTime.now());
+                repaymentReversal.setDescription(String.format(
+                    "REVERSAL: Repayment returned for deleted loan %s. Original payment date: %s",
+                    loan.getLoanNumber(), repayment.getPaymentDate()
+                ));
+                repaymentReversal.setCreatedBy(deletedBy);
+                
+                // Return repayment to member's account
+                BigDecimal currentBal = memberAccount.getBalance();
+                BigDecimal newBal = currentBal.add(repayment.getAmount());
+                memberAccount.setBalance(newBal);
+                
+                transactionRepository.save(repaymentReversal);
+            }
+            
+            accountRepository.save(memberAccount);
+            loanDetails += String.format("\nRepayments Reversed: KES %s returned to member's account", totalRepaid);
+        }
+
+        // === STEP 3: Release guarantor pledges with full tracking ===
         List<Guarantor> guarantors = guarantorRepository.findByLoanId(loanId);
+        int guarantorsReleased = 0;
+        BigDecimal totalPledgeReleased = BigDecimal.ZERO;
+        
         for (Guarantor guarantor : guarantors) {
             if (guarantor.getPledgeAmount() != null && guarantor.getPledgeAmount().compareTo(BigDecimal.ZERO) > 0) {
                 Account guarantorAccount = accountRepository
@@ -1829,91 +2024,107 @@ public class LoanService {
                     BigDecimal pledgeToRelease = guarantor.getPledgeAmount();
                     BigDecimal newFrozen = currentFrozen.subtract(pledgeToRelease);
                     
-                    // Ensure frozen savings don't go negative
                     if (newFrozen.compareTo(BigDecimal.ZERO) < 0) {
                         newFrozen = BigDecimal.ZERO;
                     }
                     
                     guarantorAccount.setFrozenSavings(newFrozen);
                     accountRepository.save(guarantorAccount);
+                    
+                    guarantorsReleased++;
+                    totalPledgeReleased = totalPledgeReleased.add(pledgeToRelease);
                 }
             }
             
-            // Notify guarantor about loan deletion
+            // Notify guarantor
             Optional<User> guarantorUserOpt = userService.getUserByMemberId(guarantor.getMember().getId());
             if (guarantorUserOpt.isPresent() && !guarantor.isSelfGuarantee()) {
                 notificationService.notifyUser(guarantorUserOpt.get().getId(),
-                    "Loan " + (loan.getLoanNumber() != null ? loan.getLoanNumber() : "#" + loan.getId()) + 
-                    " for " + loan.getMember().getFirstName() + " " + loan.getMember().getLastName() + 
-                    " has been deleted by Treasurer. Your pledged amount has been released.",
+                    String.format("Loan %s for %s %s has been deleted by Treasurer. Your pledged amount of KES %s has been released.",
+                        loan.getLoanNumber(),
+                        loan.getMember().getFirstName(), loan.getMember().getLastName(),
+                        guarantor.getPledgeAmount()),
                     "LOAN_DELETED", null, guarantor.getMember().getId(), "LOAN_DELETED");
             }
         }
-
-        // 2. Delete guarantors
-        guarantorRepository.deleteAll(guarantors);
-
-        // 3. Delete loan repayments
-        List<LoanRepayment> repayments = loanRepaymentRepository.findByLoanIdOrderByPaymentDateDesc(loanId);
-        loanRepaymentRepository.deleteAll(repayments);
-
-        // 4. Delete related transactions (loan disbursement and repayments)
-        if (loan.getStatus() == Loan.Status.DISBURSED) {
-            Account memberAccount = accountRepository
-                    .findByMemberIdAndAccountType(loan.getMember().getId(), Account.AccountType.SAVINGS)
-                    .orElse(null);
-            
-            if (memberAccount != null) {
-                // Find transactions related to this loan by account
-                List<Transaction> allTransactions = transactionRepository.findByAccountId(memberAccount.getId());
-                List<Transaction> loanTransactions = new java.util.ArrayList<>();
-                
-                // Filter transactions related to this loan by description
-                String loanRef = loan.getLoanNumber() != null ? loan.getLoanNumber() : String.valueOf(loan.getId());
-                for (Transaction transaction : allTransactions) {
-                    if (transaction.getDescription() != null && 
-                        (transaction.getDescription().contains(loanRef) ||
-                         (transaction.getTransactionType() == Transaction.TransactionType.LOAN_DISBURSEMENT && 
-                          transaction.getDescription().contains("Loan disbursement")))) {
-                        loanTransactions.add(transaction);
-                    }
-                }
-                
-                // Reverse the disbursement transaction
-                for (Transaction transaction : loanTransactions) {
-                    if (transaction.getTransactionType() == Transaction.TransactionType.LOAN_DISBURSEMENT) {
-                        BigDecimal currentBalance = memberAccount.getBalance();
-                        BigDecimal newBalance = currentBalance.subtract(loan.getAmount());
-                        
-                        // Check if member has sufficient balance for reversal
-                        if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
-                            throw new RuntimeException("Cannot delete loan: Member account has insufficient balance to reverse disbursement. " +
-                                    "Current balance: KES " + currentBalance + ", Loan amount: KES " + loan.getAmount());
-                        }
-                        
-                        memberAccount.setBalance(newBalance);
-                        accountRepository.save(memberAccount);
-                        break; // Only reverse once
-                    }
-                }
-                
-                transactionRepository.deleteAll(loanTransactions);
-            }
+        
+        if (guarantorsReleased > 0) {
+            loanDetails += String.format("\nGuarantors Released: %d guarantors, Total pledged amount released: KES %s",
+                guarantorsReleased, totalPledgeReleased);
         }
 
-        // 5. Notify member about loan deletion
+        // === STEP 4: Delete related data in proper order ===
+        // Delete guarantors
+        guarantorRepository.deleteAll(guarantors);
+        
+        // Delete bulk transaction items referencing loan repayments (must be before loan repayments)
+        if (!repayments.isEmpty()) {
+            for (LoanRepayment repayment : repayments) {
+                bulkTransactionItemRepository.deleteByLoanRepaymentId(repayment.getId());
+            }
+        }
+        
+        // Delete loan repayments
+        loanRepaymentRepository.deleteAll(repayments);
+        
+        // Delete original loan transactions (reversals are kept as new records)
+        if (memberAccount != null) {
+            List<Transaction> allTransactions = transactionRepository.findByAccountId(memberAccount.getId());
+            List<Transaction> loanTransactions = new java.util.ArrayList<>();
+            String loanRef = loan.getLoanNumber() != null ? loan.getLoanNumber() : String.valueOf(loan.getId());
+            
+            for (Transaction transaction : allTransactions) {
+                if (transaction.getDescription() != null && 
+                    transaction.getDescription().contains(loanRef) &&
+                    !transaction.getDescription().startsWith("REVERSAL:")) { // Keep our new reversals!
+                    loanTransactions.add(transaction);
+                }
+            }
+            
+            transactionRepository.deleteAll(loanTransactions);
+        }
+
+        // === STEP 5: Notify stakeholders ===
         Optional<User> memberUserOpt = userService.getUserByMemberId(loan.getMember().getId());
         if (memberUserOpt.isPresent()) {
+            String memberMessage = String.format(
+                "Your loan %s for KES %s has been deleted by Treasurer %s.\n" +
+                (hasRepayments ? "All your repayments (KES " + totalRepaid + ") have been reversed and returned to your account.\n" : "") +
+                (loan.getStatus() == Loan.Status.DISBURSED ? "The loan disbursement has been reversed from your account." : ""),
+                loan.getLoanNumber(),
+                loan.getAmount(),
+                deletedBy.getUsername()
+            );
+            
             notificationService.notifyUser(memberUserOpt.get().getId(),
-                "Your loan application " + (loan.getLoanNumber() != null ? loan.getLoanNumber() : "#" + loan.getId()) + 
-                " for KES " + loan.getAmount() + " has been deleted by Treasurer.",
+                memberMessage,
                 "LOAN_DELETED", null, loan.getMember().getId(), "LOAN_DELETED");
         }
 
-        // 6. Log audit event
-        auditService.logAction(deletedBy, "DELETE", "LOAN", loanId, loanDetails, "Loan deleted by Treasurer", "SUCCESS");
+        // Notify Admin and Loan Officers
+        String staffNotification = String.format(
+            "LOAN DELETED by Treasurer %s\n" +
+            "Loan: %s\n" +
+            "Member: %s %s\n" +
+            "Amount: KES %s\n" +
+            (hasRepayments ? "Repayments reversed: KES " + totalRepaid + "\n" : "") +
+            "All accounting entries have been properly reversed for system accuracy.",
+            deletedBy.getUsername(),
+            loan.getLoanNumber(),
+            loan.getMember().getFirstName(), loan.getMember().getLastName(),
+            loan.getAmount()
+        );
+        
+        notificationService.notifyUsersByRole("ADMIN", staffNotification, "LOAN_DELETED", 
+                                             loan.getId(), loan.getMember().getId(), "LOAN_DELETED");
+        notificationService.notifyUsersByRole("LOAN_OFFICER", staffNotification, "LOAN_DELETED", 
+                                             loan.getId(), loan.getMember().getId(), "LOAN_DELETED");
 
-        // 7. Delete the loan
+        // === STEP 6: Comprehensive audit log ===
+        auditService.logAction(deletedBy, "DELETE", "LOAN", loanId, loanDetails, 
+                              "Loan deleted by Treasurer with full accounting reversals for 100% accuracy", "SUCCESS");
+
+        // === STEP 7: Delete the loan record ===
         loanRepository.delete(loan);
     }
 
@@ -1922,40 +2133,149 @@ public class LoanService {
      * Recalculates all loan financials and logs the change
      */
     @Transactional
-    public Loan updateLoanFinancials(Long loanId, BigDecimal newPrincipal, BigDecimal newOutstandingBalance, String reason, User updatedBy) {
+    public Loan updateLoanFinancials(Long loanId, BigDecimal newPrincipal, BigDecimal newOutstandingBalance, 
+                                    BigDecimal newInterestRate, Integer newTermMonths, BigDecimal newTotalInterest,
+                                    BigDecimal newTotalRepayable, BigDecimal newMonthlyRepayment,
+                                    BigDecimal newInterestCollected, BigDecimal newPrincipalRepaid,
+                                    String reason, User updatedBy) {
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
-        // Validate inputs
-        if (newPrincipal == null || newPrincipal.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("Principal amount must be greater than zero");
-        }
-        if (newOutstandingBalance == null || newOutstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
-            throw new RuntimeException("Outstanding balance cannot be negative");
-        }
-
-        // Store old values for audit
+        // Store old values for audit trail
         BigDecimal oldPrincipal = loan.getAmount();
         BigDecimal oldOutstanding = loan.getOutstandingBalance();
+        BigDecimal oldInterestRate = loan.getInterestRate();
+        Integer oldTermMonths = loan.getTermMonths();
+        BigDecimal oldTotalInterest = loan.getTotalInterest();
+        BigDecimal oldTotalRepayable = loan.getTotalRepayable();
+        BigDecimal oldMonthlyRepayment = loan.getMonthlyRepayment();
+        BigDecimal oldInterestCollected = loan.getInterestCollected();
 
-        // Update principal
-        loan.setAmount(newPrincipal);
+        StringBuilder changes = new StringBuilder();
+        boolean hasChanges = false;
 
-        // Recalculate loan financials based on new principal
-        if (loan.getInterestRate() != null && loan.getTermMonths() != null) {
-            BigDecimal rate = loan.getInterestRate().divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
-            BigDecimal timeInYears = new BigDecimal(loan.getTermMonths()).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
-            BigDecimal totalInterest = newPrincipal.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
-            BigDecimal totalRepayable = newPrincipal.add(totalInterest);
-            BigDecimal monthlyRepayment = totalRepayable.divide(new BigDecimal(loan.getTermMonths()), 2, java.math.RoundingMode.HALF_UP);
-
-            loan.setTotalInterest(totalInterest);
-            loan.setTotalRepayable(totalRepayable);
-            loan.setMonthlyRepayment(monthlyRepayment);
+        // Update principal (allow 0 for reset)
+        if (newPrincipal != null) {
+            if (newPrincipal.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Principal amount cannot be negative");
+            }
+            loan.setAmount(newPrincipal);
+            changes.append("Principal: KES ").append(oldPrincipal).append(" → KES ").append(newPrincipal).append("\n");
+            hasChanges = true;
         }
 
-        // Update outstanding balance
-        loan.setOutstandingBalance(newOutstandingBalance);
+        // Update outstanding balance (allow 0 for reset)
+        if (newOutstandingBalance != null) {
+            if (newOutstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Outstanding balance cannot be negative");
+            }
+            loan.setOutstandingBalance(newOutstandingBalance);
+            changes.append("Outstanding Balance: KES ").append(oldOutstanding).append(" → KES ").append(newOutstandingBalance).append("\n");
+            hasChanges = true;
+        }
+
+        // Update interest rate (allow 0 for reset)
+        if (newInterestRate != null) {
+            if (newInterestRate.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Interest rate cannot be negative");
+            }
+            loan.setInterestRate(newInterestRate);
+            changes.append("Interest Rate: ").append(oldInterestRate).append("% → ").append(newInterestRate).append("%\n");
+            hasChanges = true;
+        }
+
+        // Update term months (allow 0 for reset)
+        if (newTermMonths != null) {
+            if (newTermMonths < 0) {
+                throw new RuntimeException("Term months cannot be negative");
+            }
+            loan.setTermMonths(newTermMonths);
+            changes.append("Term: ").append(oldTermMonths).append(" months → ").append(newTermMonths).append(" months\n");
+            hasChanges = true;
+        }
+
+        // Update interest collected (allow 0 for reset)
+        if (newInterestCollected != null) {
+            if (newInterestCollected.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Interest collected cannot be negative");
+            }
+            loan.setInterestCollected(newInterestCollected);
+            loan.setInterestCollectedManualOverride(true); // Mark as manually set
+            changes.append("Interest Collected: KES ").append(oldInterestCollected != null ? oldInterestCollected : "0").append(" → KES ").append(newInterestCollected).append(" (MANUAL OVERRIDE - will not auto-calculate)\n");
+            hasChanges = true;
+        }
+
+        // Update principal repaid (allow 0 for reset)
+        if (newPrincipalRepaid != null) {
+            if (newPrincipalRepaid.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Principal repaid cannot be negative");
+            }
+            loan.setPrincipalRepaid(newPrincipalRepaid);
+            loan.setPrincipalRepaidManualOverride(true); // Mark as manually set
+            changes.append("Principal Repaid: KES ").append(loan.getPrincipalRepaid() != null ? loan.getPrincipalRepaid() : "auto-calculated").append(" → KES ").append(newPrincipalRepaid).append(" (MANUAL OVERRIDE - ignores top-ups)\n");
+            hasChanges = true;
+        }
+
+        // If interest rate or term is being changed, recalculate loan financials
+        // Unless total interest/repayable/monthly is explicitly provided
+        if ((newInterestRate != null || newTermMonths != null || newPrincipal != null) && 
+            newTotalInterest == null && newTotalRepayable == null && newMonthlyRepayment == null) {
+            
+            BigDecimal principal = loan.getAmount();
+            BigDecimal rate = loan.getInterestRate();
+            Integer term = loan.getTermMonths();
+
+            if (principal != null && rate != null && term != null && term > 0 && principal.compareTo(BigDecimal.ZERO) > 0) {
+                // Recalculate based on simple interest formula
+                BigDecimal rateDecimal = rate.divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
+                BigDecimal timeInYears = new BigDecimal(term).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
+                BigDecimal totalInterest = principal.multiply(rateDecimal).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
+                BigDecimal totalRepayable = principal.add(totalInterest);
+                BigDecimal monthlyRepayment = totalRepayable.divide(new BigDecimal(term), 2, java.math.RoundingMode.HALF_UP);
+
+                loan.setTotalInterest(totalInterest);
+                loan.setTotalRepayable(totalRepayable);
+                loan.setMonthlyRepayment(monthlyRepayment);
+
+                changes.append("Total Interest: KES ").append(oldTotalInterest).append(" → KES ").append(totalInterest).append("\n");
+                changes.append("Total Repayable: KES ").append(oldTotalRepayable).append(" → KES ").append(totalRepayable).append("\n");
+                changes.append("Monthly Repayment: KES ").append(oldMonthlyRepayment).append(" → KES ").append(monthlyRepayment).append("\n");
+            }
+        }
+
+        // Update total interest manually if provided (allow 0 for reset)
+        if (newTotalInterest != null) {
+            if (newTotalInterest.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Total interest cannot be negative");
+            }
+            loan.setTotalInterest(newTotalInterest);
+            changes.append("Total Interest: KES ").append(oldTotalInterest).append(" → KES ").append(newTotalInterest).append("\n");
+            hasChanges = true;
+        }
+
+        // Update total repayable manually if provided (allow 0 for reset)
+        if (newTotalRepayable != null) {
+            if (newTotalRepayable.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Total repayable cannot be negative");
+            }
+            loan.setTotalRepayable(newTotalRepayable);
+            changes.append("Total Repayable: KES ").append(oldTotalRepayable).append(" → KES ").append(newTotalRepayable).append("\n");
+            hasChanges = true;
+        }
+
+        // Update monthly repayment manually if provided (allow 0 for reset)
+        if (newMonthlyRepayment != null) {
+            if (newMonthlyRepayment.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Monthly repayment cannot be negative");
+            }
+            loan.setMonthlyRepayment(newMonthlyRepayment);
+            changes.append("Monthly Repayment: KES ").append(oldMonthlyRepayment).append(" → KES ").append(newMonthlyRepayment).append("\n");
+            hasChanges = true;
+        }
+
+        if (!hasChanges) {
+            throw new RuntimeException("No changes provided");
+        }
 
         // Save loan
         loan = loanRepository.save(loan);
@@ -1963,24 +2283,19 @@ public class LoanService {
         // Prepare audit details
         String auditDetails = "Loan #" + loan.getLoanNumber() + " - Member: " + 
                              loan.getMember().getFirstName() + " " + loan.getMember().getLastName() + "\n" +
-                             "Principal: KES " + oldPrincipal + " → KES " + newPrincipal + "\n" +
-                             "Outstanding: KES " + oldOutstanding + " → KES " + newOutstandingBalance + "\n" +
-                             "New Total Repayable: KES " + loan.getTotalRepayable() + "\n" +
-                             "New Monthly Repayment: KES " + loan.getMonthlyRepayment() + "\n" +
-                             "Reason: " + (reason != null ? reason : "Not specified");
+                             changes.toString() +
+                             "Reason: " + (reason != null && !reason.trim().isEmpty() ? reason : "Not specified");
 
-        // Log audit event
+        // Log audit event with full change history
         auditService.logAction(updatedBy, "UPDATE_FINANCIALS", "LOAN", loanId, auditDetails, 
-                              "Loan financials updated by Treasurer", "SUCCESS");
+                              "Loan financials updated by Treasurer - Full edit capability", "SUCCESS");
 
         // Notify member about the change
         Optional<User> memberUserOpt = userService.getUserByMemberId(loan.getMember().getId());
         if (memberUserOpt.isPresent()) {
-            String changeMessage = "Your loan " + loan.getLoanNumber() + " has been updated:\n" +
-                                  "Principal: KES " + oldPrincipal + " → KES " + newPrincipal + "\n" +
-                                  "Outstanding Balance: KES " + oldOutstanding + " → KES " + newOutstandingBalance;
+            String changeMessage = "Your loan " + loan.getLoanNumber() + " has been updated by Treasurer:\n" + changes.toString();
             if (reason != null && !reason.trim().isEmpty()) {
-                changeMessage += "\nReason: " + reason;
+                changeMessage += "Reason: " + reason;
             }
             
             notificationService.notifyUser(memberUserOpt.get().getId(),
@@ -1988,14 +2303,283 @@ public class LoanService {
                 "LOAN_UPDATED", loan.getId(), loan.getMember().getId(), "LOAN_FINANCIALS_UPDATED");
         }
 
-        // Notify Loan Officer
+        // Notify Loan Officer and Admin
         String staffMessage = "Loan " + loan.getLoanNumber() + " for " + 
                              loan.getMember().getFirstName() + " " + loan.getMember().getLastName() + 
-                             " has been updated by Treasurer. Principal: KES " + oldPrincipal + " → KES " + newPrincipal + 
-                             ", Outstanding: KES " + oldOutstanding + " → KES " + newOutstandingBalance;
+                             " has been updated by Treasurer " + updatedBy.getUsername() + ":\n" + changes.toString();
         notificationService.notifyUsersByRole("LOAN_OFFICER", staffMessage, "LOAN_UPDATED", 
+                                             loan.getId(), loan.getMember().getId(), "LOAN_FINANCIALS_UPDATED");
+        notificationService.notifyUsersByRole("ADMIN", staffMessage, "LOAN_UPDATED", 
                                              loan.getId(), loan.getMember().getId(), "LOAN_FINANCIALS_UPDATED");
 
         return loan;
+    }
+
+    // ==================== LOAN TOP-UP METHODS ====================
+
+    @Autowired
+    private LoanTopUpHistoryRepository topUpHistoryRepository;
+
+    /**
+     * Preview loan top-up calculations before submission
+     */
+    @Transactional(readOnly = true)
+    public com.minet.sacco.dto.LoanTopUpPreviewResponse previewLoanTopUp(Long loanId, BigDecimal topupAmount) {
+        Loan loan = loanRepository.findById(loanId)
+            .orElseThrow(() -> new RuntimeException("Loan not found"));
+        
+        // Validate loan status
+        if (loan.getStatus() != Loan.Status.DISBURSED) {
+            throw new RuntimeException("Only disbursed loans can be topped up");
+        }
+        
+        if (loan.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Loan has no outstanding balance");
+        }
+        
+        // Calculate current values
+        BigDecimal currentOutstanding = loan.getOutstandingBalance();
+        BigDecimal principalPaid = loan.getOriginalPrincipal().subtract(currentOutstanding);
+        
+        // Calculate new values after top-up
+        BigDecimal newOutstanding = currentOutstanding.add(topupAmount);
+        
+        // Recalculate interest on new outstanding
+        BigDecimal rate = loan.getInterestRate().divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+        BigDecimal timeInYears = new BigDecimal(loan.getTermMonths()).divide(new BigDecimal("12"), 4, RoundingMode.HALF_UP);
+        BigDecimal newInterest = newOutstanding.multiply(rate).multiply(timeInYears).setScale(2, RoundingMode.HALF_UP);
+        
+        BigDecimal newTotalRepayable = newOutstanding.add(newInterest);
+        BigDecimal newMonthlyPayment = newTotalRepayable.divide(new BigDecimal(loan.getTermMonths()), 2, RoundingMode.HALF_UP);
+        
+        // Build response
+        com.minet.sacco.dto.LoanTopUpPreviewResponse response = new com.minet.sacco.dto.LoanTopUpPreviewResponse();
+        response.setLoanId(loan.getId());
+        response.setLoanNumber(loan.getLoanNumber());
+        response.setCurrentOutstanding(currentOutstanding);
+        response.setPrincipalAlreadyPaid(principalPaid);
+        response.setTopupAmount(topupAmount);
+        response.setNewOutstanding(newOutstanding);
+        response.setCurrentInterest(loan.getTotalInterest());
+        response.setNewInterest(newInterest);
+        response.setCurrentMonthlyPayment(loan.getMonthlyRepayment());
+        response.setNewMonthlyPayment(newMonthlyPayment);
+        response.setCurrentTotalRepayable(loan.getTotalRepayable());
+        response.setNewTotalRepayable(newTotalRepayable);
+        response.setTermMonths(loan.getTermMonths());
+        response.setInterestRate(loan.getInterestRate());
+        
+        // Check eligibility (simplified - enhance as needed)
+        com.minet.sacco.dto.LoanTopUpPreviewResponse.EligibilityCheck eligibility = 
+            new com.minet.sacco.dto.LoanTopUpPreviewResponse.EligibilityCheck();
+        eligibility.setEligible(true);
+        eligibility.setMaxTopupAllowed(new BigDecimal("1000000")); // Set based on business rules
+        eligibility.setMessage("Eligible for top-up");
+        response.setEligibilityCheck(eligibility);
+        
+        return response;
+    }
+
+    /**
+     * Process loan top-up - add funds to existing loan
+     */
+    @Transactional
+    public com.minet.sacco.dto.LoanTopUpResponse processLoanTopUp(
+            Long loanId, com.minet.sacco.dto.LoanTopUpRequest request, User currentUser) {
+        
+        Loan loan = loanRepository.findById(loanId)
+            .orElseThrow(() -> new RuntimeException("Loan not found"));
+        
+        // Validate
+        if (loan.getStatus() != Loan.Status.DISBURSED) {
+            throw new RuntimeException("Only disbursed loans can be topped up");
+        }
+        
+        // Store values before top-up
+        BigDecimal outstandingBefore = loan.getOutstandingBalance();
+        BigDecimal principalPaid = loan.getOriginalPrincipal().subtract(outstandingBefore);
+        
+        // Update loan
+        BigDecimal outstandingAfter = outstandingBefore.add(request.getTopupAmount());
+        loan.setOutstandingBalance(outstandingAfter);
+        loan.setAmount(outstandingAfter); // Update current principal
+        
+        // Update top-up tracking fields
+        BigDecimal currentTotal = loan.getTotalTopupAmount() != null ? 
+            loan.getTotalTopupAmount() : BigDecimal.ZERO;
+        loan.setTotalTopupAmount(currentTotal.add(request.getTopupAmount()));
+        
+        Integer currentCount = loan.getTopupCount() != null ? loan.getTopupCount() : 0;
+        loan.setTopupCount(currentCount + 1);
+        
+        loan.setLastTopupDate(LocalDateTime.now());
+        loan.setPrincipalBeforeTopup(outstandingBefore);
+        
+        // Recalculate loan terms
+        loan.calculateRepaymentDetails();
+        
+        // Save loan
+        loan = loanRepository.save(loan);
+        
+        // Add new guarantors if provided
+        int newGuarantorsCount = 0;
+        if (request.getNewGuarantors() != null) {
+            for (com.minet.sacco.dto.LoanTopUpRequest.GuarantorRequest guarantorReq : request.getNewGuarantors()) {
+                Member guarantorMember = memberRepository.findByMemberNumber(guarantorReq.getGuarantorMemberNumber())
+                    .orElseThrow(() -> new RuntimeException("Guarantor not found: " + guarantorReq.getGuarantorMemberNumber()));
+                
+                Guarantor guarantor = new Guarantor();
+                guarantor.setLoan(loan);
+                guarantor.setMember(guarantorMember);
+                guarantor.setGuaranteeAmount(guarantorReq.getGuaranteeAmount());
+                guarantor.setStatus(Guarantor.Status.PENDING);
+                guarantorRepository.save(guarantor);
+                
+                newGuarantorsCount++;
+            }
+        }
+        
+        // Record in history
+        LoanTopUpHistory history = new LoanTopUpHistory(
+            loan,
+            request.getTopupAmount(),
+            outstandingBefore,
+            outstandingAfter,
+            principalPaid,
+            newGuarantorsCount,
+            currentUser,
+            request.getPurpose()
+        );
+        topUpHistoryRepository.save(history);
+        
+        // Create audit log
+        auditService.logAction(
+            currentUser,
+            "LOAN_TOPUP",
+            "Loan",
+            loan.getId(),
+            String.format("Top-up of KES %s added to loan %s. Outstanding: %s → %s",
+                request.getTopupAmount(), loan.getLoanNumber(), outstandingBefore, outstandingAfter),
+            request.getPurpose(),
+            "SUCCESS"
+        );
+        
+        // Build response
+        com.minet.sacco.dto.LoanTopUpResponse response = new com.minet.sacco.dto.LoanTopUpResponse();
+        response.setLoanId(loan.getId());
+        response.setLoanNumber(loan.getLoanNumber());
+        response.setTopupAmount(request.getTopupAmount());
+        response.setOutstandingBefore(outstandingBefore);
+        response.setOutstandingAfter(outstandingAfter);
+        response.setPrincipalAlreadyPaid(principalPaid);
+        response.setTotalTopupAmount(loan.getTotalTopupAmount());
+        response.setTopupCount(loan.getTopupCount());
+        response.setNewMonthlyPayment(loan.getMonthlyRepayment());
+        response.setNewTotalRepayable(loan.getTotalRepayable());
+        response.setNewInterest(loan.getTotalInterest());
+        response.setTopupDate(LocalDateTime.now());
+        response.setStatus("SUCCESS");
+        
+        return response;
+    }
+
+    /**
+     * Get top-up history for a loan
+     */
+    @Transactional(readOnly = true)
+    public List<LoanTopUpHistory> getLoanTopUpHistory(Long loanId) {
+        return topUpHistoryRepository.findByLoanIdOrderByTopupDateDesc(loanId);
+    }
+
+    /**
+     * Update a loan top-up
+     */
+    @Transactional
+    public LoanTopUpHistory updateLoanTopUp(Long topupId, BigDecimal newAmount, String newPurpose) {
+        // Find the top-up
+        LoanTopUpHistory topup = topUpHistoryRepository.findById(topupId)
+                .orElseThrow(() -> new RuntimeException("Top-up not found"));
+        
+        Loan loan = topup.getLoan();
+        BigDecimal oldAmount = topup.getTopupAmount();
+        BigDecimal difference = newAmount.subtract(oldAmount);
+        
+        // Update the top-up record
+        topup.setTopupAmount(newAmount);
+        if (newPurpose != null) {
+            topup.setNotes(newPurpose);
+        }
+        topup = topUpHistoryRepository.save(topup);
+        
+        // Update loan totals
+        BigDecimal currentTotal = loan.getTotalTopupAmount() != null ? loan.getTotalTopupAmount() : BigDecimal.ZERO;
+        loan.setTotalTopupAmount(currentTotal.add(difference));
+        
+        // Recalculate loan financials
+        BigDecimal newPrincipal = loan.getOriginalPrincipal().add(loan.getTotalTopupAmount());
+        loan.setAmount(newPrincipal);
+        
+        // Recalculate total repayable and monthly payment
+        BigDecimal rate = loan.getInterestRate().divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
+        BigDecimal timeInYears = new BigDecimal(loan.getTermMonths()).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
+        BigDecimal totalInterest = newPrincipal.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal totalRepayable = newPrincipal.add(totalInterest);
+        BigDecimal monthlyRepayment = totalRepayable.divide(new BigDecimal(loan.getTermMonths()), 2, java.math.RoundingMode.HALF_UP);
+        
+        loan.setTotalInterest(totalInterest);
+        loan.setTotalRepayable(totalRepayable);
+        loan.setMonthlyRepayment(monthlyRepayment);
+        
+        // Update outstanding balance
+        BigDecimal currentOutstanding = loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO;
+        loan.setOutstandingBalance(currentOutstanding.add(difference));
+        
+        loanRepository.save(loan);
+        
+        return topup;
+    }
+
+    /**
+     * Delete a loan top-up
+     */
+    @Transactional
+    public void deleteLoanTopUp(Long topupId) {
+        // Find the top-up
+        LoanTopUpHistory topup = topUpHistoryRepository.findById(topupId)
+                .orElseThrow(() -> new RuntimeException("Top-up not found"));
+        
+        Loan loan = topup.getLoan();
+        BigDecimal topupAmount = topup.getTopupAmount();
+        
+        // Update loan totals
+        BigDecimal currentTotal = loan.getTotalTopupAmount() != null ? loan.getTotalTopupAmount() : BigDecimal.ZERO;
+        loan.setTotalTopupAmount(currentTotal.subtract(topupAmount));
+        if (loan.getTopupCount() != null && loan.getTopupCount() > 0) {
+            loan.setTopupCount(loan.getTopupCount() - 1);
+        }
+        
+        // Recalculate loan financials
+        BigDecimal newPrincipal = loan.getOriginalPrincipal().add(loan.getTotalTopupAmount());
+        loan.setAmount(newPrincipal);
+        
+        // Recalculate total repayable and monthly payment
+        BigDecimal rate = loan.getInterestRate().divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
+        BigDecimal timeInYears = new BigDecimal(loan.getTermMonths()).divide(new BigDecimal("12"), 4, java.math.RoundingMode.HALF_UP);
+        BigDecimal totalInterest = newPrincipal.multiply(rate).multiply(timeInYears).setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal totalRepayable = newPrincipal.add(totalInterest);
+        BigDecimal monthlyRepayment = totalRepayable.divide(new BigDecimal(loan.getTermMonths()), 2, java.math.RoundingMode.HALF_UP);
+        
+        loan.setTotalInterest(totalInterest);
+        loan.setTotalRepayable(totalRepayable);
+        loan.setMonthlyRepayment(monthlyRepayment);
+        
+        // Update outstanding balance
+        BigDecimal currentOutstanding = loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO;
+        loan.setOutstandingBalance(currentOutstanding.subtract(topupAmount));
+        
+        loanRepository.save(loan);
+        
+        // Delete the top-up
+        topUpHistoryRepository.delete(topup);
     }
 }

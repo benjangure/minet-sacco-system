@@ -44,9 +44,38 @@ public class MemberController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_TELLER', 'ROLE_CUSTOMER_SUPPORT', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<List<Member>>> getAllMembers() {
-        List<Member> members = memberService.getAllMembers();
-        return ResponseEntity.ok(ApiResponse.success("Members retrieved successfully", members));
+    public ResponseEntity<ApiResponse<Object>> getAllMembers(
+            @RequestParam(required = false, defaultValue = "false") boolean paginated,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "50") int size) {
+        
+        if (paginated) {
+            // Return paginated response
+            org.springframework.data.domain.Pageable pageable = 
+                org.springframework.data.domain.PageRequest.of(page, size, 
+                    org.springframework.data.domain.Sort.by("createdAt").descending());
+            org.springframework.data.domain.Page<Member> memberPage = memberService.getAllMembersPaginated(pageable);
+            
+            // Create pagination metadata
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("content", memberPage.getContent());
+            response.put("currentPage", memberPage.getNumber());
+            response.put("totalItems", memberPage.getTotalElements());
+            response.put("totalPages", memberPage.getTotalPages());
+            response.put("pageSize", memberPage.getSize());
+            response.put("hasNext", memberPage.hasNext());
+            response.put("hasPrevious", memberPage.hasPrevious());
+            
+            return ResponseEntity.ok()
+                    .cacheControl(org.springframework.http.CacheControl.noCache())
+                    .body(ApiResponse.success("Members retrieved successfully (paginated)", response));
+        } else {
+            // Return full list with 30-second cache for dashboard performance
+            List<Member> members = memberService.getAllMembers();
+            return ResponseEntity.ok()
+                    .cacheControl(org.springframework.http.CacheControl.maxAge(30, java.util.concurrent.TimeUnit.SECONDS))
+                    .body(ApiResponse.success("Members retrieved successfully", members));
+        }
     }
 
     @GetMapping("/{id}")
@@ -123,20 +152,7 @@ public class MemberController {
         return ResponseEntity.ok(ApiResponse.success("Member activated successfully", activatedMember));
     }
 
-    @PostMapping("/{id}/exit")
-    @PreAuthorize("hasRole('ROLE_ADMIN')")
-    public ResponseEntity<ApiResponse<Member>> exitMember(
-            @PathVariable Long id,
-            @RequestBody MemberApprovalRequest request,
-            Authentication authentication) {
-        
-        String username = authentication.getName();
-        User currentUser = userService.getUserByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        Member exitedMember = memberService.exitMember(id, request.getRejectionReason(), currentUser.getId());
-        return ResponseEntity.ok(ApiResponse.success("Member marked as exited successfully", exitedMember));
-    }
+
 
     @GetMapping("/exited")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_LOAN_OFFICER', 'ROLE_AUDITOR')")
@@ -346,6 +362,66 @@ public class MemberController {
                 "Transactions retrieved for member: " + member.getFirstName() + " " + member.getLastName(),
                 transactions
         ));
+    }
+
+    /**
+     * Analyze the impact of marking a member as exited
+     * Shows which loans they guarantee and if NOK backups exist
+     */
+    @GetMapping("/{memberId}/exit-impact")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<com.minet.sacco.dto.MemberExitImpactResponse>> analyzeExitImpact(@PathVariable Long memberId) {
+        try {
+            com.minet.sacco.dto.MemberExitImpactResponse impact = memberService.analyzeExitImpact(memberId);
+            return ResponseEntity.ok(ApiResponse.success("Exit impact analysis completed", impact));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Mark a member as exited from the SACCO
+     * Automatically replaces guarantors with NOK where available
+     * Only TREASURER or ADMIN can perform this action
+     */
+    @PostMapping("/{memberId}/exit")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Member>> exitMember(
+            @PathVariable Long memberId,
+            @RequestBody com.minet.sacco.dto.MemberExitRequest exitRequest,
+            Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            User currentUser = userService.getUserByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Member exitedMember = memberService.exitMember(memberId, exitRequest, currentUser.getId());
+            return ResponseEntity.ok(ApiResponse.success("Member marked as exited successfully", exitedMember));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * Reactivate an exited member
+     * Returns the member to ACTIVE status
+     * Only TREASURER or ADMIN can perform this action
+     */
+    @PostMapping("/{memberId}/reactivate")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Member>> reactivateMember(
+            @PathVariable Long memberId,
+            Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            User currentUser = userService.getUserByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Member reactivatedMember = memberService.reactivateMember(memberId, currentUser.getId());
+            return ResponseEntity.ok(ApiResponse.success("Member reactivated successfully", reactivatedMember));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
     }
 }
 

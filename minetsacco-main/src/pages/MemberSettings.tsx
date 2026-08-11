@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRefresh } from '@/contexts/RefreshContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle, Settings, Lock, Eye, EyeOff } from 'lucide-react';
 import { getBackendUrl, setBackendUrl } from '@/config/api';
 import MemberLayout from '@/components/MemberLayout';
+import NotificationSettings from '@/components/NotificationSettings';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -21,6 +23,7 @@ export default function MemberSettings() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
   
   // Profile state
   const [profileLoading, setProfileLoading] = useState(true);
@@ -48,7 +51,7 @@ export default function MemberSettings() {
     
     // Fetch user profile
     fetchProfile();
-  }, []);
+  }, [refreshKey]);
 
   const fetchProfile = async () => {
     setProfileLoading(true);
@@ -298,6 +301,7 @@ export default function MemberSettings() {
             {/* <TabsTrigger value="backend">Backend Configuration</TabsTrigger> */}
             <TabsTrigger value="profile">My Profile</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
           </TabsList>
 
           {/* Backend Configuration section commented out - not needed in production */}
@@ -327,7 +331,7 @@ export default function MemberSettings() {
                     type="text"
                     value={tempUrl}
                     onChange={(e) => setTempUrl(e.target.value)}
-                    placeholder="http://192.168.0.41:8080"
+                    placeholder="http://192.168.0.41:9090"
                     className="font-mono text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
@@ -340,10 +344,10 @@ export default function MemberSettings() {
                   <Label className="text-sm text-muted-foreground">Common Examples</Label>
                   <div className="space-y-2">
                     <div className="p-2 bg-muted rounded text-xs font-mono">
-                      http://192.168.0.50:8080
+                      http://192.168.0.50:9090
                     </div>
                     <div className="p-2 bg-muted rounded text-xs font-mono">
-                      http://192.168.1.1:8080
+                      http://192.168.1.1:9090
                     </div>
                     <div className="p-2 bg-muted rounded text-xs font-mono">
                       https://api.minetsacco.com
@@ -401,7 +405,7 @@ export default function MemberSettings() {
                   <strong>On your laptop:</strong> Run <code className="bg-white px-2 py-1 rounded">ipconfig</code> in PowerShell and look for "IPv4 Address" under your WiFi adapter.
                 </p>
                 <p>
-                  <strong>Example:</strong> If your laptop IP is 192.168.0.50, use <code className="bg-white px-2 py-1 rounded">http://192.168.0.50:8080</code>
+                  <strong>Example:</strong> If your laptop IP is 192.168.0.50, use <code className="bg-white px-2 py-1 rounded">http://192.168.0.50:9090</code>
                 </p>
                 <p>
                   <strong>Production:</strong> When deployed, use your production domain like <code className="bg-white px-2 py-1 rounded">https://api.minetsacco.com</code>
@@ -591,6 +595,10 @@ export default function MemberSettings() {
                 </ul>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="notifications" className="space-y-6">
+            <NotificationSettings />
           </TabsContent>
         </Tabs>
       </div>

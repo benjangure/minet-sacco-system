@@ -3,7 +3,7 @@
 ## Problem
 When trying to change password as a member, you get a **401 Unauthorized** error:
 ```
-PUT http://localhost:8080/api/member/change-password 401 (Unauthorized)
+PUT http://localhost:9090/api/member/change-password 401 (Unauthorized)
 ```
 
 Backend logs show:

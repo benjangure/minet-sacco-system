@@ -112,7 +112,7 @@ The 401 (Unauthorized) error you were seeing is **expected behavior**:
 
 ### The Error
 ```
-PUT http://localhost:8080/api/member/change-password 401 (Unauthorized)
+PUT http://localhost:9090/api/member/change-password 401 (Unauthorized)
 Session Expired
 Your session has expired. Please log out and log back in to continue.
 ```

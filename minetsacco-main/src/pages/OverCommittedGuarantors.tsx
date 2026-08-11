@@ -46,7 +46,8 @@ const OverCommittedGuarantors = () => {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [exitedLoanData, setExitedLoanData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const { session } = useAuth();
   const { toast } = useToast();
@@ -110,9 +111,14 @@ const OverCommittedGuarantors = () => {
     }
   };
 
-  const handleExportExcel = async () => {
+  // Export handlers with proper event handling (v2)
+  const handleExportExcel = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (exportingExcel || exportingPdf) return; // Prevent concurrent exports
+    
     try {
-      setExporting(true);
+      setExportingExcel(true);
       const response = await fetch(`${API_BASE_URL}/reports/over-committed-guarantors/export/excel`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
@@ -132,13 +138,17 @@ const OverCommittedGuarantors = () => {
     } catch (error) {
       toast({ title: "Error", description: "Export failed", variant: "destructive" });
     } finally {
-      setExporting(false);
+      setExportingExcel(false);
     }
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (exportingExcel || exportingPdf) return; // Prevent concurrent exports
+    
     try {
-      setExporting(true);
+      setExportingPdf(true);
       const response = await fetch(`${API_BASE_URL}/reports/over-committed-guarantors/export/pdf`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
@@ -158,13 +168,17 @@ const OverCommittedGuarantors = () => {
     } catch (error) {
       toast({ title: "Error", description: "Export failed", variant: "destructive" });
     } finally {
-      setExporting(false);
+      setExportingPdf(false);
     }
   };
 
-  const handleExitedLoansExportExcel = async () => {
+  const handleExitedLoansExportExcel = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (exportingExcel || exportingPdf) return; // Prevent concurrent exports
+    
     try {
-      setExporting(true);
+      setExportingExcel(true);
       const response = await fetch(`${API_BASE_URL}/reports/exited-members-outstanding-loans/export/excel`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
@@ -184,13 +198,17 @@ const OverCommittedGuarantors = () => {
     } catch (error) {
       toast({ title: "Error", description: "Export failed", variant: "destructive" });
     } finally {
-      setExporting(false);
+      setExportingExcel(false);
     }
   };
 
-  const handleExitedLoansExportPdf = async () => {
+  const handleExitedLoansExportPdf = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (exportingExcel || exportingPdf) return; // Prevent concurrent exports
+    
     try {
-      setExporting(true);
+      setExportingPdf(true);
       const response = await fetch(`${API_BASE_URL}/reports/exited-members-outstanding-loans/export/pdf`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
@@ -210,7 +228,7 @@ const OverCommittedGuarantors = () => {
     } catch (error) {
       toast({ title: "Error", description: "Export failed", variant: "destructive" });
     } finally {
-      setExporting(false);
+      setExportingPdf(false);
     }
   };
 
@@ -434,16 +452,36 @@ const OverCommittedGuarantors = () => {
 
       {/* Export Buttons */}
       <div className="flex gap-3">
-        <Button onClick={handleExportExcel} disabled={exporting} className="gap-2">
-          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Export to Excel
+        <Button 
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("Excel button clicked");
+            handleExportExcel(e);
+          }} 
+          disabled={exportingExcel || exportingPdf} 
+          className="gap-2"
+          data-export-type="excel"
+        >
+          {exportingExcel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          <span>Export to Excel</span>
         </Button>
-        <Button onClick={handleExportPdf} disabled={exporting} variant="outline" className="gap-2">
-          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Export to PDF
-        </Button>
-        <Button onClick={fetchReport} variant="outline">
-          Refresh
+        <Button 
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("PDF button clicked");
+            handleExportPdf(e);
+          }} 
+          disabled={exportingExcel || exportingPdf} 
+          variant="outline" 
+          className="gap-2"
+          data-export-type="pdf"
+        >
+          {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          <span>Export to PDF</span>
         </Button>
       </div>
 
@@ -537,12 +575,31 @@ const OverCommittedGuarantors = () => {
                 </table>
               </div>
               <div className="flex gap-2 pt-4">
-                <Button onClick={handleExitedLoansExportExcel} disabled={exporting} className="gap-2">
-                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <Button 
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleExitedLoansExportExcel(e);
+                  }} 
+                  disabled={exportingExcel || exportingPdf} 
+                  className="gap-2"
+                >
+                  {exportingExcel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   Export to Excel
                 </Button>
-                <Button onClick={handleExitedLoansExportPdf} disabled={exporting} variant="outline" className="gap-2">
-                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <Button 
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleExitedLoansExportPdf(e);
+                  }} 
+                  disabled={exportingExcel || exportingPdf} 
+                  variant="outline" 
+                  className="gap-2"
+                >
+                  {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   Export to PDF
                 </Button>
               </div>

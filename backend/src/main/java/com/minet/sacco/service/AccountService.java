@@ -32,6 +32,9 @@ public class AccountService {
 
     @Autowired
     private MemberSuspensionService memberSuspensionService;
+    
+    @Autowired
+    private RealtimeNotificationService realtimeNotificationService;
 
     public List<Account> getAllAccounts() {
         return accountRepository.findAll();
@@ -85,8 +88,20 @@ public class AccountService {
         transaction.setAmount(request.getAmount());
         transaction.setDescription(request.getDescription());
         transaction.setCreatedBy(createdBy);
+        
+        Transaction savedTransaction = transactionRepository.save(transaction);
+        
+        // Real-time notification
+        realtimeNotificationService.notifyTransaction(
+            account.getMember().getId(),
+            savedTransaction.getId(),
+            "DEPOSIT",
+            request.getAmount().doubleValue(),
+            account.getBalance().doubleValue(),
+            accountType.name()
+        );
 
-        return transactionRepository.save(transaction);
+        return savedTransaction;
     }
 
     @Transactional
@@ -135,7 +150,19 @@ public class AccountService {
         transaction.setDescription(request.getDescription());
         transaction.setCreatedBy(createdBy);
 
-        return transactionRepository.save(transaction);
+        Transaction savedTransaction = transactionRepository.save(transaction);
+        
+        // Real-time notification
+        realtimeNotificationService.notifyTransaction(
+            account.getMember().getId(),
+            savedTransaction.getId(),
+            "WITHDRAWAL",
+            request.getAmount().doubleValue(),
+            account.getBalance().doubleValue(),
+            accountType.name()
+        );
+
+        return savedTransaction;
     }
 
     public BigDecimal getBalance(Long memberId, Account.AccountType accountType) {

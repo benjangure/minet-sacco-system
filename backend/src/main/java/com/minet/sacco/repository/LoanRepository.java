@@ -14,6 +14,25 @@ import java.util.Optional;
 @Repository
 public interface LoanRepository extends JpaRepository<Loan, Long> {
 
+    // Optimized queries with JOIN FETCH to prevent N+1 queries
+    @Query("SELECT DISTINCT l FROM Loan l " +
+           "LEFT JOIN FETCH l.member " +
+           "LEFT JOIN FETCH l.loanProduct " +
+           "WHERE l.member.id = :memberId")
+    List<Loan> findByMemberIdWithDetails(@Param("memberId") Long memberId);
+
+    @Query("SELECT DISTINCT l FROM Loan l " +
+           "LEFT JOIN FETCH l.member " +
+           "LEFT JOIN FETCH l.loanProduct " +
+           "WHERE l.status = :status")
+    List<Loan> findByStatusWithDetails(@Param("status") Loan.Status status);
+
+    @Query("SELECT DISTINCT l FROM Loan l " +
+           "LEFT JOIN FETCH l.member " +
+           "LEFT JOIN FETCH l.loanProduct " +
+           "ORDER BY l.applicationDate DESC")
+    List<Loan> findAllWithDetails();
+
     List<Loan> findByMemberId(Long memberId);
 
     List<Loan> findByStatus(Loan.Status status);

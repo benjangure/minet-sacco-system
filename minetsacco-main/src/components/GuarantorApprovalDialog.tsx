@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import GuarantorApprovalModal from './GuarantorApprovalModal';
+import TopUpGuarantorApprovalModal from './TopUpGuarantorApprovalModal';
 
 interface GuarantorRequest {
   id: number;
@@ -41,10 +42,24 @@ export default function GuarantorApprovalDialog({
   const fetchPendingRequests = async () => {
     setLoading(true);
     try {
-      const response = await api.get(
-        '/loans/member/guarantor-requests'
-      );
-      setRequests(response.data.data || []);
+      // Fetch both loan guarantor requests and top-up guarantor requests
+      const [loanResponse, topUpResponse] = await Promise.all([
+        api.get('/loans/member/guarantor-requests'),
+        api.get('/member/pending-topup-guarantees')
+      ]);
+      
+      const loanRequests = (loanResponse.data.data || []).map((req: any) => ({
+        ...req,
+        type: 'LOAN'
+      }));
+      
+      const topUpRequests = (topUpResponse.data.data || []).map((req: any) => ({
+        ...req,
+        type: 'TOPUP'
+      }));
+      
+      // Combine both types of requests
+      setRequests([...loanRequests, ...topUpRequests]);
     } catch (err: any) {
       console.error('Error fetching guarantor requests:', err);
       // Only show error if it's a real error, not a 401/403
@@ -106,22 +121,49 @@ export default function GuarantorApprovalDialog({
               <div className="space-y-3">
                 {requests.map((request) => (
                   <Card
-                    key={request.id}
+                    key={`${request.type}-${request.id}`}
                     className="cursor-pointer hover:shadow-md transition-shadow"
                     onClick={() => handleRequestClick(request)}
                   >
                     <CardContent className="pt-6">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          <p className="font-semibold">
-                            Loan #{request.loan?.loanNumber || 'N/A'}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Member: {request.loan?.member?.memberNumber} - {request.loan?.member?.firstName} {request.loan?.member?.lastName}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Amount: KES {request.loan?.amount?.toLocaleString()}
-                          </p>
+                          {request.type === 'TOPUP' ? (
+                            <>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full font-medium">
+                                  TOP-UP REQUEST
+                                </span>
+                              </div>
+                              <p className="font-semibold">
+                                Loan #{request.topUpRequest?.loanNumber || 'N/A'}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Member: {request.topUpRequest?.requestingMember?.memberNumber} - {request.topUpRequest?.requestingMember?.firstName} {request.topUpRequest?.requestingMember?.lastName}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Top-Up Amount: KES {request.topUpRequest?.requestedAmount?.toLocaleString()}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Your Guarantee: KES {request.guaranteeAmount?.toLocaleString()}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Purpose: {request.topUpRequest?.purpose}
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="font-semibold">
+                                Loan #{request.loan?.loanNumber || 'N/A'}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Member: {request.loan?.member?.memberNumber} - {request.loan?.member?.firstName} {request.loan?.member?.lastName}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Amount: KES {request.loan?.amount?.toLocaleString()}
+                              </p>
+                            </>
+                          )}
                         </div>
                         <div className="text-right">
                           <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm font-medium">
@@ -147,12 +189,23 @@ export default function GuarantorApprovalDialog({
         </DialogContent>
       </Dialog>
 
-      {selectedRequest && (
+      {selectedRequest && selectedRequest.type === 'LOAN' && (
         <GuarantorApprovalModal
           open={approvalModalOpen}
           onOpenChange={setApprovalModalOpen}
           guarantor={selectedRequest}
           loan={selectedRequest.loan}
+          onSuccess={handleApprovalSuccess}
+        />
+      )}
+
+      {selectedRequest && selectedRequest.type === 'TOPUP' && (
+        <TopUpGuarantorApprovalModal
+          open={approvalModalOpen}
+          onOpenChange={setApprovalModalOpen}
+          topUpRequest={selectedRequest.topUpRequest}
+          guaranteeAmount={selectedRequest.guaranteeAmount || 0}
+          topUpRequestId={selectedRequest.topUpRequest?.id || 0}
           onSuccess={handleApprovalSuccess}
         />
       )}

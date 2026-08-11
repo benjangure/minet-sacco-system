@@ -29,7 +29,7 @@ public class BulkLoanDataUpdateItem {
     @JoinColumn(name = "batch_id", nullable = false)
     private BulkBatch batch;
     
-    @Column(name = "row_number")
+    @Column(name = "item_row_number")
     private Integer rowNumber;
     
     // Input fields

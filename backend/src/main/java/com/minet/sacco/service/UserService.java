@@ -47,6 +47,15 @@ public class UserService {
         return userRepository.findByMemberId(memberId);
     }
 
+    public List<User> getUsersByRole(String roleName) {
+        try {
+            User.Role role = User.Role.valueOf(roleName);
+            return userRepository.findByRole(role);
+        } catch (IllegalArgumentException e) {
+            return new java.util.ArrayList<>();
+        }
+    }
+
     public User createUser(User user) {
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setCreatedAt(LocalDateTime.now());

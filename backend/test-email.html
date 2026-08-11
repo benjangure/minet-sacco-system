@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Test - Minet SACCO</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            color: #dc2626;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #6b7280;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #374151;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #dc2626;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(220, 38, 38, 0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 8px;
+            display: none;
+        }
+        .result.success {
+            background: #d1fae5;
+            border: 2px solid #10b981;
+            color: #065f46;
+            display: block;
+        }
+        .result.error {
+            background: #fee2e2;
+            border: 2px solid #ef4444;
+            color: #991b1b;
+            display: block;
+        }
+        .quick-test {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e5e7eb;
+        }
+        .quick-test button {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        }
+        .info {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #78350f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📧 Email Test Panel</h1>
+        <p class="subtitle">Test the Minet SACCO email notification system</p>
+
+        <div class="info">
+            <strong>⚠️ Important:</strong> Make sure the backend is running on http://localhost:9090
+        </div>
+
+        <!-- Quick Test Section -->
+        <div class="quick-test">
+            <h3 style="margin-bottom: 15px; color: #374151;">Quick Test</h3>
+            <button onclick="sendQuickTest()">
+                Send Test Email to victorgathecha@gmail.com
+            </button>
+        </div>
+
+        <!-- Custom Email Section -->
+        <div style="margin-top: 30px;">
+            <h3 style="margin-bottom: 15px; color: #374151;">Custom Email</h3>
+            <form id="emailForm" onsubmit="sendCustomEmail(event)">
+                <div class="form-group">
+                    <label for="email">Recipient Email *</label>
+                    <input type="email" id="email" required placeholder="user@example.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="subject">Subject *</label>
+                    <input type="text" id="subject" required placeholder="Test Notification">
+                </div>
+
+                <div class="form-group">
+                    <label for="type">Notification Type</label>
+                    <select id="type">
+                        <option value="INFO">General Info</option>
+                        <option value="LOAN_APPROVAL">Loan Approval</option>
+                        <option value="DEPOSIT">Deposit</option>
+                        <option value="GUARANTOR_REQUEST">Guarantor Request</option>
+                        <option value="LOAN_DISBURSED">Loan Disbursed</option>
+                        <option value="REPAYMENT">Repayment</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="message">Message *</label>
+                    <textarea id="message" required placeholder="Enter your message here...">Your loan application has been approved! Please check your dashboard for more details.</textarea>
+                </div>
+
+                <button type="submit">Send Custom Email</button>
+            </form>
+        </div>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:9090/api/email';
+
+        async function sendQuickTest() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            
+            try {
+                const response = await fetch(`${API_URL}/test`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'victorgathecha@gmail.com'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('success', `✅ ${data.message}\n\nEmail sent to: ${data.email}\n\nCheck your inbox!`);
+                } else {
+                    showResult('error', `❌ ${data.error || 'Failed to send email'}`);
+                }
+            } catch (error) {
+                showResult('error', `❌ Error: ${error.message}\n\nMake sure the backend is running on http://localhost:9090`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send Test Email to victorgathecha@gmail.com';
+            }
+        }
+
+        async function sendCustomEmail(event) {
+            event.preventDefault();
+            
+            const btn = event.target.querySelector('button');
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+
+            const email = document.getElementById('email').value;
+            const subject = document.getElementById('subject').value;
+            const message = document.getElementById('message').value;
+            const type = document.getElementById('type').value;
+
+            try {
+                const response = await fetch(`${API_URL}/notify`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email,
+                        subject,
+                        message,
+                        type
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('success', `✅ ${data.message}\n\nEmail sent to: ${data.email}`);
+                    document.getElementById('emailForm').reset();
+                } else {
+                    showResult('error', `❌ ${data.error || 'Failed to send email'}`);
+                }
+            } catch (error) {
+                showResult('error', `❌ Error: ${error.message}\n\nMake sure the backend is running on http://localhost:9090`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send Custom Email';
+            }
+        }
+
+        function showResult(type, message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+            resultDiv.style.display = 'block';
+            
+            // Auto-hide after 10 seconds
+            setTimeout(() => {
+                resultDiv.style.display = 'none';
+            }, 10000);
+        }
+    </script>
+</body>
+</html>

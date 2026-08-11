@@ -77,11 +77,16 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <div className="flex items-center gap-2">
-          <img src={logo} alt="Minet SACCO" className="h-8 w-auto shrink-0" />
+      <SidebarHeader className={`border-b border-sidebar-border transition-all duration-300 ${collapsed ? 'h-14 px-2 py-0' : 'h-14 px-4 py-0'}`}>
+        <div className="flex items-center justify-center gap-2 h-full w-full">
+          <img 
+            src={collapsed ? "/Minet-Logo1.png" : logo} 
+            alt="Minet SACCO" 
+            style={{ height: collapsed ? 'calc(100% - 8px)' : '32px' }}
+            className={collapsed ? "w-auto object-contain transition-all duration-300" : "w-auto object-contain transition-all duration-300"}
+          />
           {!collapsed && (
-            <span className="text-lg font-bold tracking-tight text-foreground">
+            <span className="text-lg font-bold tracking-tight text-foreground transition-opacity duration-300">
               Minet <span className="text-primary">SACCO</span>
             </span>
           )}
@@ -95,9 +100,9 @@ export function AppSidebar() {
             <SidebarMenu>
               {mainItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton asChild tooltip={collapsed ? item.title : undefined}>
                     <NavLink to={item.url} end={item.url === "/"} className="hover:bg-accent" activeClassName="bg-accent text-accent-foreground font-medium">
-                      <item.icon className="mr-2 h-4 w-4" />
+                      <item.icon className={collapsed ? "h-4 w-4" : "mr-2 h-4 w-4"} />
                       {!collapsed && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
@@ -114,9 +119,9 @@ export function AppSidebar() {
               <SidebarMenu>
                 {glItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
+                    <SidebarMenuButton asChild tooltip={collapsed ? item.title : undefined}>
                       <NavLink to={item.url} className="hover:bg-accent" activeClassName="bg-accent text-accent-foreground font-medium">
-                        <item.icon className="mr-2 h-4 w-4" />
+                        <item.icon className={collapsed ? "h-4 w-4" : "mr-2 h-4 w-4"} />
                         {!collapsed && <span>{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
@@ -134,9 +139,9 @@ export function AppSidebar() {
               <SidebarMenu>
                 {adminItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
+                    <SidebarMenuButton asChild tooltip={collapsed ? item.title : undefined}>
                       <NavLink to={item.url} className="hover:bg-accent" activeClassName="bg-accent text-accent-foreground font-medium">
-                        <item.icon className="mr-2 h-4 w-4" />
+                        <item.icon className={collapsed ? "h-4 w-4" : "mr-2 h-4 w-4"} />
                         {!collapsed && <span>{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
@@ -154,9 +159,9 @@ export function AppSidebar() {
               <SidebarMenu>
                 {kycItemsFiltered.map((item) => (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
+                    <SidebarMenuButton asChild tooltip={collapsed ? item.title : undefined}>
                       <NavLink to={item.url} className="hover:bg-accent" activeClassName="bg-accent text-accent-foreground font-medium">
-                        <item.icon className="mr-2 h-4 w-4" />
+                        <item.icon className={collapsed ? "h-4 w-4" : "mr-2 h-4 w-4"} />
                         {!collapsed && <span>{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>

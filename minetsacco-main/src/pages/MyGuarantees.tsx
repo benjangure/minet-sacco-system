@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useRefresh } from '@/contexts/RefreshContext';
 import api from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +8,7 @@ import { ArrowLeft, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import GuarantorDetailsModal from '@/components/GuarantorDetailsModal';
+import MemberLayout from '@/components/MemberLayout';
 
 interface Guarantee {
   guarantorId: number;
@@ -28,12 +30,32 @@ export default function MyGuarantees() {
   const [selectedLoanId, setSelectedLoanId] = useState<number | null>(null);
   const [selectedLoanGuarantors, setSelectedLoanGuarantors] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [memberFirstName, setMemberFirstName] = useState<string>('Member');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('session');
+    navigate('/member/login');
+  };
 
   useEffect(() => {
+    fetchMemberInfo();
     fetchGuarantees();
-  }, []);
+  }, [refreshKey]);
+
+  const fetchMemberInfo = async () => {
+    try {
+      const response = await api.get('/member/dashboard');
+      if (response.data && response.data.firstName) {
+        setMemberFirstName(response.data.firstName);
+      }
+    } catch (err) {
+      console.error('Error fetching member info:', err);
+    }
+  };
 
   const fetchGuarantees = async () => {
     try {
@@ -107,11 +129,12 @@ export default function MyGuarantees() {
   };
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
-      <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
-        <ArrowLeft className="h-4 w-4" />
-        Back
-      </Button>
+    <MemberLayout memberName={memberFirstName} onLogout={handleLogout}>
+      <div className="space-y-4 max-w-7xl mx-auto px-4 lg:px-0">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
 
       <Card>
         <CardHeader>
@@ -233,6 +256,7 @@ export default function MyGuarantees() {
           loanAmount={guarantees.find(g => g.loanId === selectedLoanId)?.loanAmount || 0}
         />
       )}
-    </div>
+      </div>
+    </MemberLayout>
   );
 }

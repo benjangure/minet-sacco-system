@@ -1,20 +1,22 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Eye, UserCheck, UserX, Upload, AlertCircle, FileText } from "lucide-react";
+import { Plus, Search, Eye, UserCheck, UserX, Upload, AlertCircle, FileText, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DocumentUpload } from "@/components/DocumentUpload";
 import { CredentialDisplayModal } from "@/components/CredentialDisplayModal";
+import { NextOfKinManager } from "@/components/NextOfKinManager";
 
 import { getApiBaseUrl } from "../config/api";
 const API_BASE_URL = getApiBaseUrl();
@@ -86,8 +88,18 @@ const Members = () => {
   const [rejectionReason, setRejectionReason] = useState("");
   const [credentialModalOpen, setCredentialModalOpen] = useState(false);
   const [memberCredential, setMemberCredential] = useState<MemberCreationResponseDTO | null>(null);
+  
+  // Exit member state
+  const [exitDialog, setExitDialog] = useState<Member | null>(null);
+  const [exitReason, setExitReason] = useState("");
+  const [exitNotes, setExitNotes] = useState("");
+  const [exitDate, setExitDate] = useState(new Date().toISOString().split('T')[0]);
+  const [exitImpact, setExitImpact] = useState<any>(null);
+  const [exitLoading, setExitLoading] = useState(false);
+  
   const { toast } = useToast();
   const { session, role } = useAuth();
+  const { refreshKey } = useRefresh();
 
   // Check if user can create members (TELLER or CUSTOMER_SUPPORT only)
   const canCreateMembers = role === "TELLER" || role === "CUSTOMER_SUPPORT";
@@ -102,6 +114,9 @@ const Members = () => {
       if (statusFilter !== "all") {
         url = `${API_BASE_URL}/members/status/${statusFilter}`;
       }
+      
+      // Add cache-busting timestamp
+      url += `?_t=${Date.now()}`;
 
       const response = await fetch(url, {
         headers: {
@@ -113,26 +128,12 @@ const Members = () => {
         const data = await response.json();
         let membersList = data.data || [];
 
-        // Fetch member status for each member
-        let membersWithStatus = await Promise.all(
-          membersList.map(async (member: Member) => {
-            try {
-              const statusResponse = await fetch(`${API_BASE_URL}/members/${member.employeeId || member.memberNumber}/status`, {
-                headers: {
-                  "Authorization": `Bearer ${session?.token}`,
-                },
-              });
-              if (statusResponse.ok) {
-                const statusData = await statusResponse.json();
-                return { ...member, memberStatus: statusData.data?.status || "ACTIVE" };
-              }
-            } catch (err) {
-              // If status fetch fails, default to ACTIVE
-              return { ...member, memberStatus: "ACTIVE" };
-            }
-            return { ...member, memberStatus: "ACTIVE" };
-          })
-        );
+        // Use member.status directly instead of fetching status for each member
+        // The backend already returns status in the member object
+        let membersWithStatus = membersList.map((member: Member) => ({
+          ...member,
+          memberStatus: member.status || "ACTIVE"
+        }));
 
         // Client-side search filter
         if (search) {
@@ -148,9 +149,22 @@ const Members = () => {
         }
         
         setMembers(membersWithStatus);
+      } else {
+        const error = await response.json();
+        console.error("Error fetching members:", error);
+        toast({ 
+          title: "Error", 
+          description: error.message || "Failed to fetch members", 
+          variant: "destructive" 
+        });
       }
     } catch (error) {
       console.error("Error fetching members:", error);
+      toast({ 
+        title: "Error", 
+        description: "Failed to fetch members. Please try again.", 
+        variant: "destructive" 
+        });
     }
     setLoading(false);
   };
@@ -159,18 +173,16 @@ const Members = () => {
     if (session) {
       fetchMembers();
     }
-  }, [session]);
+  }, [session, statusFilter, refreshKey]); // Added refreshKey to trigger refresh from header button
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (session) fetchMembers();
-    }, 300);
+      if (session) {
+        fetchMembers();
+      }
+    }, 300); // Debounce search by 300ms
     return () => clearTimeout(timer);
   }, [search]);
-
-  const handleApplyStatusFilter = () => {
-    fetchMembers();
-  };
 
   const handleClearFilters = () => {
     setStatusFilter("all");
@@ -417,6 +429,27 @@ const Members = () => {
     }
   };
 
+  const handleReactivateMember = async (memberId: number) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/members/${memberId}/reactivate`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session?.token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Member reactivated successfully. They can now use the system again." });
+        fetchMembers();
+      } else {
+        const error = await response.json();
+        toast({ title: "Error", description: error.message || "Failed to reactivate member", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to reactivate member", variant: "destructive" });
+    }
+  };
+
   const handleUpdateMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMember) return;
@@ -465,6 +498,9 @@ const Members = () => {
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Register New Member Application</DialogTitle>
+                <DialogDescription>
+                  Fill in the member's details across the three tabs to complete the registration.
+                </DialogDescription>
               </DialogHeader>
               <Alert>
                 <AlertCircle className="h-4 w-4" />
@@ -657,8 +693,9 @@ const Members = () => {
                 <SelectItem value="EXITED">Exited</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleApplyStatusFilter} size="sm">Apply Filter</Button>
-            <Button onClick={handleClearFilters} variant="outline" size="sm">Clear</Button>
+            {(statusFilter !== "all" || search !== "") && (
+              <Button onClick={handleClearFilters} variant="outline" size="sm">Clear Filters</Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -668,6 +705,9 @@ const Members = () => {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Review & Approve Member Application</DialogTitle>
+            <DialogDescription>
+              Review the applicant's information and documents before approving or rejecting the application.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
             {/* Member Information */}
@@ -798,6 +838,173 @@ const Members = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Exit Member Dialog */}
+      <Dialog open={!!exitDialog} onOpenChange={() => { setExitDialog(null); setExitReason(""); setExitNotes(""); setExitImpact(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Mark Member as Exited</DialogTitle>
+          </DialogHeader>
+          {exitDialog && (
+            <div className="space-y-4">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  You are about to mark <strong>{exitDialog.firstName} {exitDialog.lastName}</strong> ({exitDialog.employeeId}) as EXITED from the SACCO.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Exit Reason *</Label>
+                  <Select value={exitReason} onValueChange={setExitReason}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select exit reason" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="RESIGNED">Resigned</SelectItem>
+                      <SelectItem value="RETIRED">Retired</SelectItem>
+                      <SelectItem value="TERMINATED">Terminated</SelectItem>
+                      <SelectItem value="DECEASED">Deceased</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Exit Date *</Label>
+                  <Input
+                    type="date"
+                    value={exitDate}
+                    onChange={(e) => setExitDate(e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Additional Notes</Label>
+                  <Textarea
+                    value={exitNotes}
+                    onChange={(e) => setExitNotes(e.target.value)}
+                    placeholder="Any additional notes about the exit..."
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {exitImpact && exitImpact.totalLoansAsGuarantor > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-3">
+                  <div className="font-semibold text-yellow-900">⚠️ Impact Analysis</div>
+                  <p className="text-sm text-yellow-800">
+                    This member is currently a PRIMARY guarantor for <strong>{exitImpact.totalLoansAsGuarantor} loan(s)</strong> totaling <strong>KES {exitImpact.totalGuaranteeAmount?.toLocaleString()}</strong>
+                  </p>
+                  
+                  {exitImpact.loansAsGuarantor && exitImpact.loansAsGuarantor.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-yellow-900">Affected Loans:</p>
+                      {exitImpact.loansAsGuarantor.map((loan: any, idx: number) => (
+                        <div key={idx} className="bg-white rounded p-2 text-sm">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-medium">Loan #{loan.loanNumber} - {loan.borrowerName}</p>
+                              <p className="text-xs text-gray-600">Guarantee Amount: KES {loan.guaranteeAmount?.toLocaleString()}</p>
+                            </div>
+                            <div className="text-right">
+                              {loan.hasNok ? (
+                                <div className="text-green-600 text-xs">
+                                  ✓ NOK Available<br/>
+                                  <span className="text-gray-600">{loan.nokName}</span>
+                                </div>
+                              ) : (
+                                <div className="text-red-600 text-xs font-semibold">
+                                  ⚠️ NO NOK
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {exitImpact.allLoansHaveNok ? (
+                    <Alert className="bg-green-50 border-green-200">
+                      <AlertDescription className="text-green-800">
+                        ✓ All loans have Next of Kin guarantors. They will automatically be promoted to primary guarantors.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        ⚠️ {exitImpact.loansWithoutNok} loan(s) do NOT have backup guarantors. Borrowers will need to find replacement guarantors.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    if (!exitReason) {
+                      toast({ title: "Error", description: "Exit reason is required", variant: "destructive" });
+                      return;
+                    }
+                    if (!exitDate) {
+                      toast({ title: "Error", description: "Exit date is required", variant: "destructive" });
+                      return;
+                    }
+
+                    setExitLoading(true);
+                    try {
+                      const response = await fetch(`${API_BASE_URL}/members/${exitDialog.id}/exit`, {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Authorization": `Bearer ${session?.token}`
+                        },
+                        body: JSON.stringify({
+                          exitReason,
+                          exitDate: new Date(exitDate).toISOString(),
+                          exitNotes
+                        })
+                      });
+
+                      if (response.ok) {
+                        toast({ title: "Success", description: "Member marked as exited and guarantors replaced" });
+                        setExitDialog(null);
+                        setExitReason("");
+                        setExitNotes("");
+                        setExitImpact(null);
+                        // Clear any filters and refresh
+                        setStatusFilter("all");
+                        setSearch("");
+                        fetchMembers();
+                      } else {
+                        const error = await response.json();
+                        toast({ title: "Error", description: error.message || "Failed to exit member", variant: "destructive" });
+                      }
+                    } catch (error) {
+                      toast({ title: "Error", description: "Failed to exit member", variant: "destructive" });
+                    } finally {
+                      setExitLoading(false);
+                    }
+                  }}
+                  disabled={exitLoading}
+                  className="flex-1"
+                >
+                  {exitLoading ? "Processing..." : "Confirm Exit & Replace Guarantors"}
+                </Button>
+                <Button variant="outline" onClick={() => { setExitDialog(null); setExitReason(""); setExitNotes(""); setExitImpact(null); }} className="flex-1">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Member Details Dialog */}
       <Dialog open={!!viewMember} onOpenChange={() => setViewMember(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -911,6 +1118,50 @@ const Members = () => {
                             <UserX className="h-4 w-4" />
                           </Button>
                         </>
+                      )}
+                      {member.status === "ACTIVE" && canApproveMembers && (
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={async () => {
+                            setExitDialog(member);
+                            setExitDate(new Date().toISOString().split('T')[0]);
+                            setExitReason("");
+                            setExitNotes("");
+                            setExitImpact(null);
+                            // Fetch impact analysis
+                            try {
+                              const response = await fetch(`${API_BASE_URL}/members/${member.id}/exit-impact`, {
+                                headers: { "Authorization": `Bearer ${session?.token}` }
+                              });
+                              if (response.ok) {
+                                const data = await response.json();
+                                setExitImpact(data.data);
+                              }
+                            } catch (err) {
+                              console.error("Failed to fetch exit impact", err);
+                            }
+                          }} 
+                          className="text-orange-600" 
+                          title="Mark as Exited"
+                        >
+                          <UserX className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {member.status === "EXITED" && canApproveMembers && (
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to reactivate ${member.firstName} ${member.lastName}? They will regain access to the system.`)) {
+                              handleReactivateMember(member.id);
+                            }
+                          }} 
+                          className="text-green-600" 
+                          title="Reactivate Member"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
                       )}
                     </div>
                   </TableCell>
@@ -1027,48 +1278,39 @@ const Members = () => {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="other" className="space-y-4 pt-4">
-                  <h3 className="font-semibold">Bank Details</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Bank Name</Label>
-                      <Input 
-                        value={editingMember.bankName || ""} 
-                        onChange={e => setEditingMember({...editingMember, bankName: e.target.value})} 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Account Number</Label>
-                      <Input 
-                        value={editingMember.bankAccountNumber || ""} 
-                        onChange={e => setEditingMember({...editingMember, bankAccountNumber: e.target.value})} 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Branch</Label>
-                      <Input 
-                        value={editingMember.nextOfKinName || ""} 
-                        onChange={e => setEditingMember({...editingMember, nextOfKinName: e.target.value})} 
-                      />
+                <TabsContent value="other" className="space-y-6 pt-4">
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-lg">Bank Details</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Bank Name</Label>
+                        <Input 
+                          value={editingMember.bankName || ""} 
+                          onChange={e => setEditingMember({...editingMember, bankName: e.target.value})} 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Account Number</Label>
+                        <Input 
+                          value={editingMember.bankAccountNumber || ""} 
+                          onChange={e => setEditingMember({...editingMember, bankAccountNumber: e.target.value})} 
+                        />
+                      </div>
                     </div>
                   </div>
                   
-                  <h3 className="font-semibold mt-4">Next of Kin</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Name</Label>
-                      <Input 
-                        value={editingMember.nextOfKinName || ""} 
-                        onChange={e => setEditingMember({...editingMember, nextOfKinName: e.target.value})} 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Phone</Label>
-                      <Input 
-                        value={editingMember.nextOfKinPhone || ""} 
-                        onChange={e => setEditingMember({...editingMember, nextOfKinPhone: e.target.value})} 
-                      />
-                    </div>
+                  <div className="border-t pt-6">
+                    <NextOfKinManager 
+                      key={editingMember.id}
+                      memberId={editingMember.id}
+                      onSave={() => {
+                        toast({
+                          title: "Success",
+                          description: "Next of kin information updated"
+                        });
+                        fetchMembers();
+                      }}
+                    />
                   </div>
                 </TabsContent>
               </Tabs>

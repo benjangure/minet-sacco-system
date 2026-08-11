@@ -333,7 +333,7 @@ export const BackendConnectionManager: React.FC<BackendConnectionManagerProps> =
               className="w-full"
             />
             <p className="text-xs text-muted-foreground">
-              Enter IP address or full URL. Port 8080 will be used if not specified.
+              Enter IP address or full URL. Port 9090 will be used if not specified.
             </p>
           </div>
 

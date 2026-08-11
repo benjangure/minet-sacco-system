@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRefresh } from '@/contexts/RefreshContext';
 import api from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { API_BASE_URL } from '@/config/api';
+import MemberLayout from '@/components/MemberLayout';
 
 interface Transaction {
   id: number;
@@ -19,12 +21,32 @@ interface Transaction {
 export default function MemberAccountStatement() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [memberFirstName, setMemberFirstName] = useState<string>('Member');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('session');
+    navigate('/member/login');
+  };
 
   useEffect(() => {
+    fetchMemberInfo();
     fetchTransactions();
-  }, []);
+  }, [refreshKey]);
+
+  const fetchMemberInfo = async () => {
+    try {
+      const response = await api.get('/member/dashboard');
+      if (response.data && response.data.firstName) {
+        setMemberFirstName(response.data.firstName);
+      }
+    } catch (err) {
+      console.error('Error fetching member info:', err);
+    }
+  };
 
   const fetchTransactions = async () => {
     try {
@@ -78,23 +100,26 @@ export default function MemberAccountStatement() {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </Button>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading transactions...</p>
-          </CardContent>
-        </Card>
-      </div>
+      <MemberLayout memberName={memberFirstName} onLogout={handleLogout}>
+        <div className="space-y-4 max-w-7xl mx-auto px-4 lg:px-0">
+          <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+          <Card>
+            <CardContent className="pt-6 text-center">
+              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+              <p className="text-muted-foreground">Loading transactions...</p>
+            </CardContent>
+          </Card>
+        </div>
+      </MemberLayout>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <MemberLayout memberName={memberFirstName} onLogout={handleLogout}>
+      <div className="space-y-4 max-w-7xl mx-auto px-4 lg:px-0">
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
@@ -145,5 +170,6 @@ export default function MemberAccountStatement() {
         </CardContent>
       </Card>
     </div>
+    </MemberLayout>
   );
 }

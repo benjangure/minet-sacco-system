@@ -77,75 +77,71 @@ public class GuarantorReportService {
         return new GuarantorReportDTO(memberDetail);
     }
 
-    /**
-     * Generate Over-Committed Guarantor Report - OPTIMIZED VERSION
-     * Uses native SQL query to calculate everything in one database call
-     * Much faster than the N+1 query approach
-     */
     public OverCommittedGuarantorDTO generateOverCommittedGuarantorReport() {
-        log.info("Generating over-committed guarantor report...");
-        
-        // Get all members with their calculated values in ONE query
-        List<Object[]> results = memberRepository.findOverCommittedGuarantors();
-        
-        List<OverCommittedGuarantorDTO.OverCommittedGuarantorDetail> overCommittedList = new ArrayList<>();
-        
-        for (Object[] row : results) {
-            Long memberId = ((Number) row[0]).longValue();
-            String memberNumber = (String) row[1];
-            String memberName = (String) row[2];
-            String memberStatus = (String) row[3];
-            BigDecimal totalSavings = (BigDecimal) row[4];
-            BigDecimal frozenSelfGuarantee = (BigDecimal) row[5];
-            BigDecimal frozenPledges = (BigDecimal) row[6];
-            BigDecimal availableSavings = (BigDecimal) row[7];
-            BigDecimal amountOverCommitted = (BigDecimal) row[8];
-            
-            // Only include if actually over-committed
-            if (amountOverCommitted.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
-            }
-            
-            OverCommittedGuarantorDTO.OverCommittedGuarantorDetail detail = new OverCommittedGuarantorDTO.OverCommittedGuarantorDetail();
-            detail.setMemberId(memberId);
-            detail.setMemberNumber(memberNumber);
-            detail.setMemberName(memberName);
-            detail.setMemberStatus(memberStatus);
-            detail.setTotalSavings(totalSavings);
-            detail.setFrozenSelfGuarantee(frozenSelfGuarantee);
-            detail.setFrozenPledges(frozenPledges);
-            detail.setTotalFrozen(frozenSelfGuarantee.add(frozenPledges));
-            detail.setAvailableSavings(availableSavings);
-            detail.setAmountOverCommitted(amountOverCommitted);
-            
-            // Get risky guarantees for this member
-            List<Guarantor> activePledges = guarantorRepository.findByMemberIdAndSelfGuaranteeIsFalseAndStatus(
-                    memberId,
-                    Guarantor.Status.ACTIVE
-            );
-            detail.setNumberOfLoansGuaranteeing(activePledges.size());
-            detail.setRiskyGuarantees(activePledges.stream()
-                    .map(guarantor -> {
-                        Loan loan = guarantor.getLoan();
-                        OverCommittedGuarantorDTO.RiskyGuaranteeDetail riskyDetail = new OverCommittedGuarantorDTO.RiskyGuaranteeDetail();
-                        riskyDetail.setLoanId(loan.getId());
-                        riskyDetail.setLoanNumber(loan.getLoanNumber());
-                        riskyDetail.setBorrowerName(loan.getMember().getFirstName() + " " + loan.getMember().getLastName());
-                        riskyDetail.setLoanAmount(loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : loan.getAmount());
-                        riskyDetail.setOutstandingBalance(loan.getOutstandingBalance());
-                        riskyDetail.setGuarantorPledgeAmount(guarantor.getGuaranteeAmount());
-                        riskyDetail.setCurrentFrozenPledge(guarantor.getPledgeAmount());
-                        riskyDetail.setGuarantorStatus(guarantor.getStatus().toString());
-                        return riskyDetail;
-                    })
-                    .collect(Collectors.toList()));
-            
-            overCommittedList.add(detail);
-        }
-        
-        // Sort by risk (highest first)
-        overCommittedList.sort((a, b) -> b.getAmountOverCommitted().compareTo(a.getAmountOverCommitted()));
-        
+        log.info("Generating over-committed guarantor report (non-optimized version)...");
+        List<Member> allMembers = memberRepository.findAll();
+
+        List<OverCommittedGuarantorDTO.OverCommittedGuarantorDetail> overCommittedList = allMembers.stream()
+                .map(member -> {
+                    // Calculate savings
+                    BigDecimal totalSavings = calculateTotalSavings(member.getId());
+                    BigDecimal frozenSelfGuarantee = calculateFrozenSelfGuarantee(member.getId());
+                    BigDecimal availableSavings = totalSavings.subtract(frozenSelfGuarantee);
+                    if (availableSavings.compareTo(BigDecimal.ZERO) < 0) {
+                        availableSavings = BigDecimal.ZERO;
+                    }
+
+                    // Calculate frozen pledges (as guarantor on OTHER loans)
+                    BigDecimal frozenPledges = calculateTotalPledgeAmount(member.getId());
+                    BigDecimal totalFrozen = frozenSelfGuarantee.add(frozenPledges);
+
+                    // Check if over-committed
+                    BigDecimal amountOverCommitted = frozenPledges.subtract(availableSavings);
+                    
+                    if (amountOverCommitted.compareTo(BigDecimal.ZERO) <= 0) {
+                        return null; // Not over-committed, skip
+                    }
+
+                    OverCommittedGuarantorDTO.OverCommittedGuarantorDetail detail = new OverCommittedGuarantorDTO.OverCommittedGuarantorDetail();
+                    detail.setMemberId(member.getId());
+                    detail.setMemberNumber(member.getMemberNumber());
+                    detail.setMemberName(member.getFullName());
+                    detail.setMemberStatus(member.getStatus().toString());
+                    detail.setTotalSavings(totalSavings);
+                    detail.setFrozenSelfGuarantee(frozenSelfGuarantee);
+                    detail.setFrozenPledges(frozenPledges);
+                    detail.setTotalFrozen(totalFrozen);
+                    detail.setAvailableSavings(availableSavings);
+                    detail.setAmountOverCommitted(amountOverCommitted);
+
+                    // Get details of risky guarantees
+                    List<Guarantor> activePledges = guarantorRepository.findByMemberIdAndSelfGuaranteeIsFalseAndStatus(
+                            member.getId(),
+                            Guarantor.Status.ACTIVE
+                    );
+                    detail.setNumberOfLoansGuaranteeing(activePledges.size());
+                    detail.setRiskyGuarantees(activePledges.stream()
+                            .map(guarantor -> {
+                                Loan loan = guarantor.getLoan();
+                                OverCommittedGuarantorDTO.RiskyGuaranteeDetail riskyDetail = new OverCommittedGuarantorDTO.RiskyGuaranteeDetail();
+                                riskyDetail.setLoanId(loan.getId());
+                                riskyDetail.setLoanNumber(loan.getLoanNumber());
+                                riskyDetail.setBorrowerName(loan.getMember().getFullName());
+                                riskyDetail.setLoanAmount(loan.getOriginalPrincipal() != null ? loan.getOriginalPrincipal() : loan.getAmount());
+                                riskyDetail.setOutstandingBalance(loan.getOutstandingBalance());
+                                riskyDetail.setGuarantorPledgeAmount(guarantor.getGuaranteeAmount());
+                                riskyDetail.setCurrentFrozenPledge(guarantor.getPledgeAmount());
+                                riskyDetail.setGuarantorStatus(guarantor.getStatus().toString());
+                                return riskyDetail;
+                            })
+                            .collect(Collectors.toList()));
+
+                    return detail;
+                })
+                .filter(Objects::nonNull)
+                .sorted((a, b) -> b.getAmountOverCommitted().compareTo(a.getAmountOverCommitted())) // Sort by risk (highest first)
+                .collect(Collectors.toList());
+
         log.info("Found {} over-committed guarantors", overCommittedList.size());
         return new OverCommittedGuarantorDTO(overCommittedList);
     }

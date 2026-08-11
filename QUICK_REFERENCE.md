@@ -1,95 +1,169 @@
-# Quick Reference - Repayment Display Bug
+# Financial Data Reset - Quick Reference Card
 
-## The Problem in One Sentence
-Frontend shows **-80,000 KES and -40%** instead of **0 KES and 0%** for loans with no repayments.
+## ⚡ Quick Command Reference
 
-## The Clue
-The -80,000 is **exactly the interest amount** (80,000).
-
-## What We Know
-- ✓ Database is correct
-- ✓ Backend API is correct
-- ✓ Frontend code is mathematically correct
-- ✗ Frontend is displaying wrong values
-
-## What We Need
-1. Console output showing [DEBUG] messages
-2. Network response showing the JSON from the API
-
-## Where the Bug Is
-Either:
-1. Backend is sending wrong data
-2. API response is being intercepted and modified
-3. Frontend is receiving different data than expected
-
-## The Fix
-1. Identify root cause using debug data
-2. Fix the root cause
-3. Add `Math.max(0, ...)` safety guard
-4. Test and verify
-
-## Key Files
-- Frontend: `minetsacco-main/src/pages/MemberDashboard.tsx` (Lines 1117-1128)
-- Backend: `backend/src/main/java/com/minet/sacco/controller/MemberPortalController.java` (Line 254)
-- API Config: `minetsacco-main/src/config/api.ts`
-
-## Console.log Already in Place
-Line 1117 in MemberDashboard.tsx already has debug logging. Just need to capture the output.
-
-## Expected Console Output
-```
-[DEBUG] Loan 13 (LN-2026-00004) - Raw API Data: {
-  id: 13,
-  loanNumber: "LN-2026-00004",
-  status: "DISBURSED",
-  amount: 200000,
-  totalInterest: 80000,
-  totalRepayable: 280000,
-  outstandingBalance: 280000,
-  calculatedRepaid: 0,
-  calculatedPercentage: 0
-}
+### 1. Backup (REQUIRED!)
+```powershell
+.\1_BACKUP_DATABASE.ps1
 ```
 
-## Expected Network Response
-```json
-{
-  "id": 13,
-  "loanNumber": "LN-2026-00004",
-  "status": "DISBURSED",
-  "amount": 200000,
-  "totalInterest": 80000,
-  "totalRepayable": 280000,
-  "outstandingBalance": 280000,
-  "monthlyRepayment": 23333.33,
-  "repayments": []
-}
+### 2. Document Current State
+```powershell
+mysql -u root -p sacco_db < 2_VERIFY_CURRENT_DATA.sql > current_snapshot.txt
 ```
 
-## If Console Shows Negative Values
-The frontend is receiving wrong data from the API.
-
-## If Network Response Shows Wrong Values
-The backend is sending wrong data.
-
-## If Both Show Correct Values But Display is Wrong
-The frontend calculation is wrong.
-
-## Safety Guard to Add
-```typescript
-const repaidAmount = Math.max(0, loan.totalRepayable - loan.outstandingBalance);
-const repaidPercentage = loan.totalRepayable > 0
-  ? Math.max(0, Math.round((repaidAmount / loan.totalRepayable) * 100))
-  : 0;
+### 3. Delete Financial Data
+```powershell
+mysql -u root -p
+source 3_DELETE_FINANCIAL_DATA.sql
 ```
 
-## Documentation Files
-1. `COMPLETE_ISSUE_SUMMARY.md` - Full overview
-2. `TECHNICAL_ANALYSIS_FOR_CLAUDE.md` - Technical details
-3. `USER_ACTION_SUMMARY.md` - User instructions
-4. `DEBUG_STEPS_FOR_USER.md` - Detailed debug steps
-5. `CLAUDE_NEXT_ACTIONS.md` - Action plan
-6. `QUICK_REFERENCE.md` - This file
+### 4. Import from Excel
+```powershell
+.\4_IMPORT_FROM_EXCEL.ps1
+```
 
-## Next Step
-Wait for user to provide debug data, then identify and fix the root cause.
+### 5. Verify Import
+```powershell
+mysql -u root -p sacco_db < 5_VERIFY_IMPORTED_DATA.sql > import_verification.txt
+```
+
+---
+
+## 🚨 Emergency Rollback
+```powershell
+# Quick rollback command (update timestamp!)
+$BACKUP = ".\database_backups\backup_before_financial_reset_YYYYMMDD_HHMMSS.sql"
+mysql -u root -e "DROP DATABASE sacco_db; CREATE DATABASE sacco_db;"
+mysql -u root sacco_db < $BACKUP
+```
+
+---
+
+## 📋 Execution Order
+
+1. ✅ **BACKUP** - Must succeed before continuing
+2. ✅ **VERIFY** - Document current state
+3. ⚠️ **DELETE** - Point of no return
+4. ✅ **IMPORT** - Load correct data
+5. ✅ **VERIFY** - Confirm success
+
+---
+
+## ⚠️ Critical Warnings
+
+- **NEVER skip backup**
+- **NEVER proceed if backup fails**
+- **STOP users from accessing system**
+- **SAVE all output for comparison**
+- **TEST before declaring success**
+
+---
+
+## 📁 Files Location
+
+All files are in: `C:\Users\Lenovo\Desktop\minet-sacco\minet-sacco-system\`
+
+**Scripts:**
+- `1_BACKUP_DATABASE.ps1`
+- `2_VERIFY_CURRENT_DATA.sql`
+- `3_DELETE_FINANCIAL_DATA.sql`
+- `4_IMPORT_FROM_EXCEL.ps1`
+- `5_VERIFY_IMPORTED_DATA.sql`
+
+**Docs:**
+- `FINANCIAL_DATA_RESET_EXECUTION_GUIDE.md` (Full guide)
+- `FINANCIAL_DATA_RESET_ANALYSIS.md` (Technical details)
+- `ROLLBACK_IF_NEEDED.sql` (Emergency recovery)
+- `QUICK_REFERENCE.md` (This file)
+
+---
+
+## ✅ Success Checklist
+
+- [ ] Backup completed
+- [ ] Current data documented
+- [ ] Excel file ready
+- [ ] Users logged out
+- [ ] Deletion completed
+- [ ] Import completed
+- [ ] Verification passed
+- [ ] Application tested
+- [ ] Reports accurate
+
+---
+
+## 🔢 What Gets Deleted
+
+✅ **DELETED:**
+- All loan repayments
+- All transactions
+- All loan top-up history
+- All loan financial values (reset to 0)
+- All account balances (reset to 0)
+
+✅ **PRESERVED:**
+- Member records
+- User accounts
+- Loan product definitions
+- Guarantor relationships (structure)
+- Loan application records (status)
+
+---
+
+## 📊 Excel Requirements
+
+**Minimum columns needed for LOANS:**
+- `id` - Loan ID
+- `member_id` - Member ID
+- `amount` - Principal
+- `interest_rate` - Rate %
+- `term_months` - Term
+- `outstanding_balance` - Balance
+
+**All amounts must be numbers (no currency symbols)**
+
+---
+
+## 🎯 Time Estimates
+
+- Backup: **2-5 minutes**
+- Verification: **5-10 minutes**
+- Deletion: **1-2 minutes**
+- Import: **10-20 minutes** (depends on data volume)
+- Testing: **15-30 minutes**
+
+**Total: 30-60 minutes**
+
+---
+
+## 💡 Tips
+
+1. **Run during off-hours** (evening/weekend)
+2. **Have Excel file ready** before starting
+3. **Save all command output**
+4. **Compare before/after numbers**
+5. **Test thoroughly** before announcing success
+6. **Keep backup for 30 days**
+
+---
+
+## 🆘 If Something Goes Wrong
+
+1. **Stay calm**
+2. **Don't run more scripts**
+3. **Use the rollback procedure**
+4. **You have a backup!**
+5. **Contact support if needed**
+
+---
+
+## 📞 Emergency Contacts
+
+- Database Admin: [Add contact]
+- System Admin: [Add contact]
+- Developer: [Add contact]
+
+---
+
+**Remember: The backup is your safety net. Never skip it!** 🛡️

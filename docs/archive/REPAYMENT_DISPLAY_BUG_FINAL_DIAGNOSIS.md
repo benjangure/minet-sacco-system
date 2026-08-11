@@ -15,7 +15,7 @@ The user is experiencing **two separate issues**:
 
 When the user tries to view loans, they get:
 ```
-GET http://localhost:8080/api/member/loans 401 (Unauthorized)
+GET http://localhost:9090/api/member/loans 401 (Unauthorized)
 SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input
 ```
 
@@ -206,7 +206,7 @@ Copy the entire console output and share it. It will show:
 
 1. In Developer Tools, click on the **Network** tab
 2. Refresh the page
-3. Look for the request to `http://localhost:8080/api/member/loans`
+3. Look for the request to `http://localhost:9090/api/member/loans`
 4. Click on it and check the **Response** tab
 5. Share the JSON response
 

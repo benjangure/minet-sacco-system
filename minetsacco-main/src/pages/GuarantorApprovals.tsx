@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { useUserNotifications } from '@/hooks/useWebSocket';
 import { CheckCircle, XCircle, AlertCircle, Clock } from 'lucide-react';
 
 import { getApiBaseUrl } from "../config/api";
@@ -63,6 +64,19 @@ export default function GuarantorApprovals() {
   useEffect(() => {
     fetchPendingRequests();
   }, []);
+
+  // Handle real-time guarantor notifications
+  const handleUserNotification = useCallback((message: any) => {
+    console.log('Real-time guarantor notification received:', message);
+    
+    // Refresh guarantor requests if relevant
+    if (message.type === 'GUARANTOR_REQUEST' || message.type === 'TOPUP_GUARANTOR_REQUEST') {
+      fetchPendingRequests();
+    }
+  }, []);
+
+  // Subscribe to WebSocket notifications for the current user
+  useUserNotifications(String(session?.user?.id || ''), handleUserNotification);
 
   const fetchPendingRequests = async () => {
     setLoading(true);

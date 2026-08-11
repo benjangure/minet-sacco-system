@@ -3,6 +3,7 @@
 Spring Boot REST API for the Minet SACCO Management System.
 
 ## Technology Stack
+15:26:12 Export of C:\Users\WakaeA\Documents\dumps\Dump20260805 has finished
 
 - **Java 21**
 - **Spring Boot 3.2.0**
@@ -10,8 +11,14 @@ Spring Boot REST API for the Minet SACCO Management System.
 - **Spring Security + JWT**
 - **Flyway** (Database Migrations)
 - **Maven** (Build Tool)
-
+./mvnw.cmd spring-boot:run
 ## Prerequisites
+
+Your Loan Eligibility Card
+    ↓
+    Tab Navigation
+    ↓
+Loan Application Form
 
 1. Java JDK 21 or higher
 2. Maven 3.9+
@@ -44,13 +51,13 @@ mvn clean install
 mvn spring-boot:run
 ```
 
-The API will be available at `http://localhost:8080`
+The API will be available at `http://localhost:9090`
 
 ### 4. API Documentation
 
 Once running, access Swagger UI at:
 ```
-http://localhost:8080/swagger-ui/index.html
+http://localhost:9090/swagger-ui/index.html
 ```
 
 ## Project Structure
@@ -174,7 +181,7 @@ curl -X GET http://localhost:9090/api/members \
 
 ## Troubleshooting
 
-### Port 8080 already in use
+### Port 9090 already in use
 Change the port in `application.properties`:
 ```properties
 server.port=8081
@@ -207,3 +214,19 @@ For production deployment:
 ## Support
 
 For issues or questions, contact the Minet Technology Team.
+PS C:\Users\Lenovo\Desktop\minet-sacco> npx web-push generate-vapid-keys
+Need to install the following packages:
+web-push@3.6.7
+Ok to proceed? (y) y
+
+=======================================
+
+Public Key:
+BN21Dp26FQFRhUYw11RNHgQ1d1tibAFWBVA8Eh-mBuwkvdzxzq_27IXLahyAmXyBHcvWx5tXpMIOpE-RrJSywcE
+
+Private Key:
+OjKrwYCDGAluvQ_Bet1h1zFc8U3D8aZiTcf5kCIlLYI
+
+=======================================
+
+PS C:\Users\Lenovo\Desktop\minet-sacco> 

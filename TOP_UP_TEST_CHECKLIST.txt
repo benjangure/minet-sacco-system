@@ -1,0 +1,375 @@
+================================================================================
+           LOAN TOP-UP FUNCTIONALITY - COMPLETE TEST CHECKLIST
+================================================================================
+
+TEST DATE: _____________
+TESTER NAME: _____________
+BACKEND VERSION: _____________
+FRONTEND VERSION: _____________
+
+================================================================================
+PART 1: MEMBER PORTAL - REQUEST TOP-UP
+================================================================================
+
+TEST 1.1: Access Top-Up Form
+-----------------------------
+Location: http://localhost:3000/member/apply-loan
+
+[ ] Login as member with active loan
+[ ] Navigate to "Apply for Loan" page
+[ ] Verify "Apply for Loan" and "Request Top-Up" tabs visible
+[ ] Click "Request Top-Up" tab
+[ ] EXPECTED: Tab switches to top-up form
+
+TEST 1.2: Loan Selection
+-----------------------------
+[ ] Check if eligible loans appear in dropdown
+[ ] EXPECTED: Only ACTIVE/DISBURSED loans with outstanding balance shown
+[ ] Select a loan from dropdown
+[ ] EXPECTED: Current outstanding balance displays below dropdown
+
+Loan Selected:
+  - Loan Number: _____________
+  - Current Outstanding: KES _____________
+
+TEST 1.3: Top-Up Amount Entry
+-----------------------------
+[ ] Enter top-up amount: KES _____________
+[ ] EXPECTED: "New outstanding will be:" shows correctly
+[ ] Calculated New Outstanding: KES _____________
+[ ] Manual calculation: Current + TopUp = _____________
+[ ] Match? [ ] YES [ ] NO
+
+TEST 1.4: Purpose Entry
+-----------------------------
+[ ] Enter purpose: _____________________________________________
+[ ] EXPECTED: Textarea accepts text, minimum 10 characters
+
+TEST 1.5: Guarantor Search
+-----------------------------
+Test Case 1: Valid Employee ID
+[ ] Enter valid employee ID: _____________
+[ ] Click "Search" button
+[ ] EXPECTED: Guarantor details appear in green box
+  - Name: _____________
+  - Employee ID: _____________
+
+Test Case 2: Invalid Employee ID
+[ ] Enter invalid employee ID: 99999999
+[ ] Click "Search" button
+[ ] EXPECTED: Error toast "Guarantor not found"
+
+Test Case 3: Empty Search
+[ ] Leave field empty, click "Search"
+[ ] EXPECTED: Error toast "Please enter an employee ID"
+
+TEST 1.6: Add Guarantors
+-----------------------------
+Guarantor 1:
+[ ] Search for guarantor (Employee ID: _____________)
+[ ] Enter guarantee amount: KES _____________
+[ ] Click "Add" button
+[ ] EXPECTED: Guarantor appears in "Added Guarantors" list
+
+Guarantor 2:
+[ ] Search for guarantor (Employee ID: _____________)
+[ ] Enter guarantee amount: KES _____________
+[ ] Click "Add" button
+[ ] EXPECTED: Guarantor appears in list
+
+TEST 1.7: Remove Guarantors
+-----------------------------
+[ ] Click "X" button on first guarantor
+[ ] EXPECTED: Guarantor removed from list
+
+TEST 1.8: Guarantee Summary Validation
+-----------------------------
+[ ] Add guarantors until total matches top-up amount
+[ ] Total Guaranteed: KES _____________
+[ ] Top-Up Amount: KES _____________
+[ ] EXPECTED: Amounts match, button enabled
+
+Test Case: Mismatch
+[ ] Make total NOT match (add less)
+[ ] EXPECTED: Red warning "Total guarantee must equal top-up amount"
+[ ] EXPECTED: Submit button disabled
+
+TEST 1.9: Submit Top-Up Request
+-----------------------------
+[ ] Ensure all fields valid and totals match
+[ ] Click "Submit Top-Up Request" button
+[ ] EXPECTED: Success toast "Top-up request submitted successfully"
+[ ] EXPECTED: Redirects to member dashboard or loans page
+[ ] EXPECTED: Form cleared
+
+Top-Up Request ID: _____________ (note this for tracking)
+
+================================================================================
+PART 2: GUARANTOR APPROVAL - MY GUARANTEES
+================================================================================
+
+TEST 2.1: View Pending Top-Up Guarantees
+-----------------------------
+Login as Guarantor: _____________
+Location: http://localhost:3000/member/dashboard → My Guarantees tab
+
+[ ] Navigate to "My Guarantees" tab
+[ ] EXPECTED: Pending top-up request appears with PURPLE badge
+[ ] Verify details:
+  - Member Name: _____________
+  - Loan Type: Top-Up Request
+  - Amount to Guarantee: KES _____________
+  - Badge Color: Purple (not orange/green)
+
+TEST 2.2: Approve Top-Up Guarantee
+-----------------------------
+[ ] Click "View Details" on pending top-up request
+[ ] EXPECTED: Dialog shows:
+  - Request Type: "Loan Top-Up Request"
+  - Original Loan: _____________
+  - Current Outstanding: KES _____________
+  - Top-Up Amount: KES _____________
+  - New Outstanding: KES _____________
+  - Purpose: _____________
+  - Amount to Guarantee: KES _____________
+
+[ ] Click "Approve" button
+[ ] EXPECTED: Success toast "Guarantee approved"
+[ ] EXPECTED: Badge changes or request moves to approved section
+
+TEST 2.3: Reject Top-Up Guarantee (Optional Test)
+-----------------------------
+Login as another guarantor: _____________
+
+[ ] View pending top-up request
+[ ] Click "Reject" button
+[ ] Enter rejection reason: _____________
+[ ] EXPECTED: Success toast "Guarantee rejected"
+[ ] EXPECTED: Request status updates
+
+================================================================================
+PART 3: ADMIN PORTAL - TREASURER REVIEW
+================================================================================
+
+TEST 3.1: View Pending Top-Up Requests
+-----------------------------
+Login as Treasurer: _____________
+Location: http://localhost:3000/loans
+
+[ ] Navigate to Loans page
+[ ] EXPECTED: "Pending Top-Up Requests" section at top of page
+[ ] Verify request appears:
+  - Member Name: _____________
+  - Loan Number: _____________
+  - Top-Up Amount: KES _____________
+  - Guarantor Status: ___ / ___ approved
+
+TEST 3.2: Review Top-Up Details
+-----------------------------
+[ ] Click "Review" button on pending top-up
+[ ] EXPECTED: Dialog shows complete details:
+  - Member information
+  - Original loan details
+  - Top-up amount
+  - New outstanding balance
+  - Purpose
+  - All guarantors with approval status
+  - Green checkmarks for approved guarantors
+
+TEST 3.3: Approve Top-Up Request
+-----------------------------
+[ ] Verify all guarantors approved (all green checkmarks)
+[ ] Click "Approve" button
+[ ] EXPECTED: Confirmation dialog appears
+[ ] Click "Confirm"
+[ ] EXPECTED: Success toast "Top-up approved and disbursed"
+[ ] EXPECTED: Request disappears from pending list
+
+TEST 3.4: Verify Loan Update
+-----------------------------
+[ ] Search for the original loan in loans table
+[ ] Click "View Details" (eye icon)
+[ ] EXPECTED: Loan details show:
+  - Original Amount: KES _____________
+  - Top-Up History section visible
+  - Top-up entry shows:
+    * Amount: KES _____________
+    * Date: _____________
+    * Status: APPROVED
+    * Added By: Treasurer name
+  - New Outstanding Balance: KES _____________
+
+================================================================================
+PART 4: ADMIN PORTAL - TOP-UP MANAGEMENT
+================================================================================
+
+TEST 4.1: View Top-Up History
+-----------------------------
+[ ] In loan details, scroll to "Loan Top-Up" section
+[ ] EXPECTED: All approved top-ups listed
+[ ] Verify each entry shows:
+  - Amount
+  - Date
+  - Purpose
+  - Added by
+  - Edit and Delete buttons
+
+TEST 4.2: Edit Top-Up
+-----------------------------
+[ ] Click "Edit" button (pencil icon) on a top-up
+[ ] EXPECTED: Edit dialog opens
+[ ] Modify:
+  - Amount: KES _____________
+  - Purpose: _____________
+[ ] Click "Save Changes"
+[ ] EXPECTED: Success toast "Top-up updated"
+[ ] EXPECTED: Changes reflected immediately
+
+TEST 4.3: Delete Top-Up
+-----------------------------
+[ ] Click "Delete" button (trash icon) on a top-up
+[ ] EXPECTED: Confirmation dialog appears
+[ ] Click "Delete"
+[ ] EXPECTED: Success toast "Top-up deleted"
+[ ] EXPECTED: Top-up removed from list
+[ ] EXPECTED: Outstanding balance recalculated
+
+================================================================================
+PART 5: MEMBER PORTAL - VIEW TOP-UP STATUS
+================================================================================
+
+TEST 5.1: View Top-Up Request Status
+-----------------------------
+Login back as Member: _____________
+Location: http://localhost:3000/member/dashboard → Loans tab
+
+[ ] Navigate to Loans tab
+[ ] Expand the loan that was topped up
+[ ] EXPECTED: Top-up history visible
+[ ] Verify:
+  - Top-up amount shown
+  - Status: APPROVED
+  - New outstanding balance updated
+
+TEST 5.2: Request Second Top-Up
+-----------------------------
+[ ] Navigate to Apply for Loan → Request Top-Up
+[ ] Select same loan again
+[ ] EXPECTED: Outstanding balance reflects previous top-up
+[ ] Enter new top-up amount: KES _____________
+[ ] Complete flow (add guarantors, submit)
+[ ] EXPECTED: Second top-up request created successfully
+
+================================================================================
+PART 6: EDGE CASES & ERROR HANDLING
+================================================================================
+
+TEST 6.1: Insufficient Guarantor Coverage
+-----------------------------
+[ ] Start new top-up request
+[ ] Top-up amount: KES 50,000
+[ ] Add guarantors totaling only: KES 40,000
+[ ] EXPECTED: Warning shown, submit disabled
+
+TEST 6.2: Loan Without Outstanding Balance
+-----------------------------
+[ ] Select a fully paid loan
+[ ] EXPECTED: Loan does NOT appear in dropdown
+
+TEST 6.3: Non-Active Loan Status
+-----------------------------
+[ ] Try to top-up a PENDING loan
+[ ] EXPECTED: Loan does NOT appear in dropdown
+
+TEST 6.4: Duplicate Guarantor
+-----------------------------
+[ ] Search and add guarantor (Employee ID: _____________)
+[ ] Try to add same guarantor again
+[ ] EXPECTED: Error "This guarantor is already added"
+
+TEST 6.5: Backend Offline
+-----------------------------
+[ ] Stop backend server
+[ ] Try to search for guarantor
+[ ] EXPECTED: Error toast with connection error
+[ ] EXPECTED: Graceful error handling, no crash
+
+TEST 6.6: Invalid Token
+-----------------------------
+[ ] Clear localStorage
+[ ] Try to access top-up form
+[ ] EXPECTED: Redirects to login page
+
+================================================================================
+PART 7: DATABASE VERIFICATION
+================================================================================
+
+TEST 7.1: Check Database Tables
+-----------------------------
+[ ] Connect to database
+[ ] Query: SELECT * FROM loan_top_up_requests WHERE id = _______
+[ ] Verify record exists with correct data:
+  - loan_id: _____________
+  - member_id: _____________
+  - requested_amount: _____________
+  - purpose: _____________
+  - status: _____________
+
+[ ] Query: SELECT * FROM top_up_guarantors WHERE top_up_request_id = _______
+[ ] Verify all guarantors recorded
+
+[ ] Query: SELECT * FROM loans WHERE id = _______
+[ ] Verify loan outstanding_balance updated
+
+================================================================================
+PART 8: NOTIFICATIONS
+================================================================================
+
+TEST 8.1: Guarantor Notifications
+-----------------------------
+[ ] Check notifications for each guarantor
+[ ] EXPECTED: "New top-up guarantee request" notification
+
+TEST 8.2: Member Notifications
+-----------------------------
+[ ] Check member notifications after approval
+[ ] EXPECTED: "Top-up request approved" notification
+
+TEST 8.3: Admin Notifications
+-----------------------------
+[ ] Check treasurer notifications
+[ ] EXPECTED: "New top-up request awaiting approval" notification
+
+================================================================================
+TESTING SUMMARY
+================================================================================
+
+Total Tests: 50+
+Passed: _____________
+Failed: _____________
+Skipped: _____________
+
+CRITICAL ISSUES FOUND:
+1. _____________________________________________________________
+2. _____________________________________________________________
+3. _____________________________________________________________
+
+MINOR ISSUES FOUND:
+1. _____________________________________________________________
+2. _____________________________________________________________
+3. _____________________________________________________________
+
+OVERALL STATUS: [ ] PASS [ ] FAIL [ ] NEEDS FIXES
+
+NOTES:
+________________________________________________________________________________
+________________________________________________________________________________
+________________________________________________________________________________
+________________________________________________________________________________
+
+TESTER SIGNATURE: _____________     DATE: _____________
+REVIEWER SIGNATURE: _____________   DATE: _____________
+
+================================================================================
+                              END OF TEST CHECKLIST
+================================================================================

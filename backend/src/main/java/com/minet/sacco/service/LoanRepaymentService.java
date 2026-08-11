@@ -196,6 +196,19 @@ public class LoanRepaymentService {
     }
 
     /**
+     * PERFORMANCE OPTIMIZATION: Get ALL repayments grouped by loan ID
+     * Used by dashboard to avoid N+1 query problem (100+ individual calls)
+     * Returns Map<LoanId, List<Repayments>> for O(1) lookup
+     */
+    public java.util.Map<Long, List<LoanRepayment>> getAllRepaymentsByLoanId() {
+        List<LoanRepayment> allRepayments = loanRepaymentRepository.findAll();
+        return allRepayments.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        repayment -> repayment.getLoan().getId()
+                ));
+    }
+
+    /**
      * Calculate amortization schedule for a loan
      */
     public LoanAmortizationSchedule calculateAmortizationSchedule(Long loanId) {

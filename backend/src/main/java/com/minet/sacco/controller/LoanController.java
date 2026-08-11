@@ -14,12 +14,15 @@ import com.minet.sacco.entity.Guarantor;
 import com.minet.sacco.entity.LoanProduct;
 import com.minet.sacco.entity.Member;
 import com.minet.sacco.entity.Account;
+import com.minet.sacco.entity.LoanTopUpHistory;
 import com.minet.sacco.repository.LoanRepository;
 import com.minet.sacco.repository.LoanRepaymentRepository;
 import com.minet.sacco.repository.GuarantorRepository;
 import com.minet.sacco.repository.LoanProductRepository;
 import com.minet.sacco.repository.MemberRepository;
 import com.minet.sacco.repository.AccountRepository;
+import com.minet.sacco.repository.UserRepository;
+import com.minet.sacco.repository.LoanTopUpHistoryRepository;
 import com.minet.sacco.service.LoanService;
 import com.minet.sacco.service.UserService;
 import com.minet.sacco.service.GuarantorValidationService;
@@ -33,6 +36,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -85,18 +89,50 @@ public class LoanController {
     @Autowired
     private AccountRepository accountRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private LoanTopUpHistoryRepository loanTopUpHistoryRepository;
+
     @GetMapping
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAllLoans() {
-        List<Loan> loans = loanService.getAllLoans();
-        List<Map<String, Object>> loansWithGuarantors = new ArrayList<>();
+    public ResponseEntity<ApiResponse<Object>> getAllLoans(
+            @RequestParam(required = false, defaultValue = "false") boolean paginated,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "50") int size) {
         
-        for (Loan loan : loans) {
-            Map<String, Object> loanMap = buildLoanMap(loan);
-            loansWithGuarantors.add(loanMap);
+        if (paginated) {
+            // Return paginated response
+            org.springframework.data.domain.Pageable pageable = 
+                org.springframework.data.domain.PageRequest.of(page, size, 
+                    org.springframework.data.domain.Sort.by("createdAt").descending());
+            org.springframework.data.domain.Page<Loan> loanPage = loanService.getAllLoansPaginated(pageable);
+            
+            // Build loan maps with guarantors for the current page
+            List<Map<String, Object>> loansWithGuarantors = buildLoanMapsWithBatch(loanPage.getContent());
+            
+            // Create pagination metadata
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("content", loansWithGuarantors);
+            response.put("currentPage", loanPage.getNumber());
+            response.put("totalItems", loanPage.getTotalElements());
+            response.put("totalPages", loanPage.getTotalPages());
+            response.put("pageSize", loanPage.getSize());
+            response.put("hasNext", loanPage.hasNext());
+            response.put("hasPrevious", loanPage.hasPrevious());
+            
+            return ResponseEntity.ok()
+                    .cacheControl(org.springframework.http.CacheControl.maxAge(2, java.util.concurrent.TimeUnit.MINUTES))
+                    .body(ApiResponse.success("Loans retrieved successfully (paginated)", response));
+        } else {
+            // Return full list (cached for 3 minutes)
+            List<Loan> loans = loanService.getAllLoans();
+            List<Map<String, Object>> loansWithGuarantors = buildLoanMapsWithBatch(loans);
+            return ResponseEntity.ok()
+                    .cacheControl(org.springframework.http.CacheControl.maxAge(3, java.util.concurrent.TimeUnit.MINUTES))
+                    .body(ApiResponse.success("Loans retrieved successfully", loansWithGuarantors));
         }
-        
-        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loansWithGuarantors));
     }
 
     @GetMapping("/{id}")
@@ -113,32 +149,53 @@ public class LoanController {
         return ResponseEntity.ok(ApiResponse.success("Loan found", loanMap));
     }
 
+    /**
+     * Get top-up history for a specific loan
+     */
+    @GetMapping("/{id}/topup-history")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getLoanTopUpHistory(@PathVariable Long id) {
+        List<LoanTopUpHistory> history = loanTopUpHistoryRepository.findByLoanIdOrderByTopupDateDesc(id);
+        
+        List<Map<String, Object>> historyList = new ArrayList<>();
+        for (LoanTopUpHistory topUp : history) {
+            Map<String, Object> topUpMap = new HashMap<>();
+            topUpMap.put("id", topUp.getId());
+            topUpMap.put("amount", topUp.getTopupAmount());
+            topUpMap.put("topupDate", topUp.getTopupDate());
+            topUpMap.put("outstandingBeforeTopup", topUp.getOutstandingBeforeTopup());
+            topUpMap.put("outstandingAfterTopup", topUp.getOutstandingAfterTopup());
+            topUpMap.put("principalPaidBeforeTopup", topUp.getPrincipalPaidBeforeTopup());
+            topUpMap.put("newGuarantorsAdded", topUp.getNewGuarantorsAdded());
+            topUpMap.put("purpose", topUp.getNotes());
+            
+            if (topUp.getProcessedBy() != null) {
+                topUpMap.put("processedBy", topUp.getProcessedBy().getUsername());
+            }
+            
+            historyList.add(topUpMap);
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success("Top-up history retrieved", historyList));
+    }
+
     @GetMapping("/member/{memberId}")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getLoansByMemberId(@PathVariable Long memberId) {
         List<Loan> loans = loanService.getLoansByMemberId(memberId);
-        List<Map<String, Object>> loansWithDynamicInterest = new ArrayList<>();
-        
-        for (Loan loan : loans) {
-            Map<String, Object> loanMap = buildLoanMap(loan);
-            loansWithDynamicInterest.add(loanMap);
-        }
-        
+        List<Map<String, Object>> loansWithDynamicInterest = buildLoanMapsWithBatch(loans);
         return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loansWithDynamicInterest));
     }
 
     @GetMapping("/status/{status}")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
+    @org.springframework.cache.annotation.Cacheable(value = "loansByStatusList", key = "#status", unless = "#result == null")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getLoansByStatus(@PathVariable String status) {
         List<Loan> loans = loanService.getLoansByStatus(Loan.Status.valueOf(status));
-        List<Map<String, Object>> loansWithDynamicInterest = new ArrayList<>();
-        
-        for (Loan loan : loans) {
-            Map<String, Object> loanMap = buildLoanMap(loan);
-            loansWithDynamicInterest.add(loanMap);
-        }
-        
-        return ResponseEntity.ok(ApiResponse.success("Loans retrieved successfully", loansWithDynamicInterest));
+        List<Map<String, Object>> loansWithDynamicInterest = buildLoanMapsWithBatch(loans);
+        return ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.maxAge(3, java.util.concurrent.TimeUnit.MINUTES))
+                .body(ApiResponse.success("Loans retrieved successfully", loansWithDynamicInterest));
     }
 
     /**
@@ -852,10 +909,53 @@ public class LoanController {
     }
 
     /**
+     * BATCH version — fetches all guarantors and interest totals in 2 queries
+     * for the entire list, instead of 2 queries per loan (N+1 fix).
+     */
+    private List<Map<String, Object>> buildLoanMapsWithBatch(List<Loan> loans) {
+        if (loans == null || loans.isEmpty()) return new ArrayList<>();
+
+        List<Long> loanIds = loans.stream().map(Loan::getId).collect(java.util.stream.Collectors.toList());
+
+        // 1 query: fetch all guarantors for all loans at once
+        List<Guarantor> allGuarantors = guarantorRepository.findByLoanIdIn(loanIds);
+        Map<Long, List<Guarantor>> guarantorsByLoanId = allGuarantors.stream()
+            .collect(java.util.stream.Collectors.groupingBy(g -> g.getLoan().getId()));
+
+        // 1 query: fetch interest collected totals for all loans at once
+        List<Object[]> interestRows = loanRepaymentRepository.getTotalInterestCollectedForLoans(loanIds);
+        Map<Long, BigDecimal> interestByLoanId = new HashMap<>();
+        for (Object[] row : interestRows) {
+            Long loanId = ((Number) row[0]).longValue();
+            BigDecimal total = (BigDecimal) row[1];
+            interestByLoanId.put(loanId, total != null ? total : BigDecimal.ZERO);
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Loan loan : loans) {
+            Map<String, Object> loanMap = buildLoanMapCore(loan,
+                guarantorsByLoanId.getOrDefault(loan.getId(), new ArrayList<>()),
+                interestByLoanId.getOrDefault(loan.getId(), BigDecimal.ZERO));
+            result.add(loanMap);
+        }
+        return result;
+    }
+
+    /**
      * Helper method to build a standardized loan map with all fields including dynamic calculations.
      * Used across all loan endpoints to ensure consistent data.
      */
     private Map<String, Object> buildLoanMap(Loan loan) {
+        // Single-loan fallback: fetch per-loan (used for individual loan endpoints)
+        BigDecimal postMigrationInterest = loanRepaymentRepository.getTotalInterestCollected(loan.getId());
+        List<Guarantor> guarantors = guarantorRepository.findByLoanId(loan.getId());
+        return buildLoanMapCore(loan, guarantors, postMigrationInterest);
+    }
+
+    /**
+     * Core build — accepts pre-fetched guarantors and interest to avoid N+1 in batch calls.
+     */
+    private Map<String, Object> buildLoanMapCore(Loan loan, List<Guarantor> guarantors, BigDecimal postMigrationInterest) {
         Map<String, Object> loanMap = new HashMap<>();
         loanMap.put("id", loan.getId());
         loanMap.put("loanNumber", loan.getLoanNumber());
@@ -868,10 +968,17 @@ public class LoanController {
         loanMap.put("monthlyRepayment", loan.getMonthlyRepayment());
         loanMap.put("totalInterest", loan.getTotalInterest());
         
-        // Calculate dynamic interest collected (migration snapshot + post-migration repayments)
-        BigDecimal migrationInterest = loan.getInterestCollected() != null ? loan.getInterestCollected() : BigDecimal.ZERO;
-        BigDecimal postMigrationInterest = loanRepaymentRepository.getTotalInterestCollected(loan.getId());
-        BigDecimal totalInterestCollected = migrationInterest.add(postMigrationInterest);
+        // Calculate dynamic interest collected based on override flag
+        BigDecimal totalInterestCollected;
+        if (Boolean.TRUE.equals(loan.getInterestCollectedManualOverride())) {
+            // Treasurer manually set this value - use it EXACTLY as-is
+            totalInterestCollected = loan.getInterestCollected() != null ? loan.getInterestCollected() : BigDecimal.ZERO;
+        } else {
+            // Automatic calculation: migration snapshot + post-migration repayments
+            // postMigrationInterest is passed in (pre-fetched in batch) — no extra DB call
+            BigDecimal migrationInterest = loan.getInterestCollected() != null ? loan.getInterestCollected() : BigDecimal.ZERO;
+            totalInterestCollected = migrationInterest.add(postMigrationInterest);
+        }
         loanMap.put("interestCollected", totalInterestCollected);
         
         loanMap.put("interestRemaining", loan.getInterestRemaining());
@@ -890,15 +997,29 @@ public class LoanController {
         loanMap.put("approvedBy", loan.getApprovedBy());
         loanMap.put("disbursedBy", loan.getDisbursedBy());
         
-        // Principal repaid — derived from outstanding balance, not summed from loan_repayments.
-        // This works uniformly for migrated loans (no repayment history) and live loans,
-        // because outstandingBalance is authoritatively decremented by principal on every
-        // correctly-processed repayment (see LoanService.makeRepayment()).
-        BigDecimal principal = loan.getAmount() != null ? loan.getAmount() : BigDecimal.ZERO;
-        BigDecimal outstanding = loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO;
-        BigDecimal principalRepaid = principal.subtract(outstanding);
+        // Top-up fields
+        loanMap.put("totalTopupAmount", loan.getTotalTopupAmount() != null ? loan.getTotalTopupAmount() : BigDecimal.ZERO);
+        loanMap.put("topupCount", loan.getTopupCount() != null ? loan.getTopupCount() : 0);
+        loanMap.put("lastTopupDate", loan.getLastTopupDate());
+        loanMap.put("principalBeforeTopup", loan.getPrincipalBeforeTopup());
         
-        // Calculate repayment percentage: (Principal Repaid / Principal Amount) * 100
+        // Principal repaid — Check for manual override first
+        BigDecimal principalRepaid;
+        if (Boolean.TRUE.equals(loan.getPrincipalRepaidManualOverride()) && loan.getPrincipalRepaid() != null) {
+            // Treasurer manually set this value - use it EXACTLY as-is
+            principalRepaid = loan.getPrincipalRepaid();
+        } else {
+            // Automatic calculation: (Principal + Top-Ups) - Outstanding Balance
+            BigDecimal principal = loan.getAmount() != null ? loan.getAmount() : BigDecimal.ZERO;
+            BigDecimal outstanding = loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO;
+            BigDecimal totalTopups = loan.getTotalTopupAmount() != null ? loan.getTotalTopupAmount() : BigDecimal.ZERO;
+            BigDecimal totalLoanAmount = principal.add(totalTopups);
+            principalRepaid = totalLoanAmount.subtract(outstanding);
+        }
+        
+        // Calculate repayment percentage: (Principal Repaid / Original Principal) * 100
+        // Percentage is based on ORIGINAL principal, not including top-ups
+        BigDecimal principal = loan.getAmount() != null ? loan.getAmount() : BigDecimal.ZERO;
         BigDecimal repaymentPercentage = BigDecimal.ZERO;
         if (principal.compareTo(BigDecimal.ZERO) > 0) {
             repaymentPercentage = principalRepaid
@@ -910,8 +1031,11 @@ public class LoanController {
         loanMap.put("principalRepaid", principalRepaid);
         loanMap.put("repaymentPercentage", repaymentPercentage);
         
-        // Fetch and add guarantors
-        List<Guarantor> guarantors = loanService.getGuarantorsForLoan(loan.getId());
+        // Total Repaid = Principal Repaid + Interest Collected
+        BigDecimal totalRepaid = principalRepaid.add(totalInterestCollected);
+        loanMap.put("totalRepaid", totalRepaid);
+        
+        // Use pre-fetched guarantors (passed in from batch or single-loan fetch)
         List<Map<String, Object>> guarantorsList = new ArrayList<>();
         for (Guarantor g : guarantors) {
             Map<String, Object> gMap = new HashMap<>();
@@ -958,18 +1082,105 @@ public class LoanController {
     @PreAuthorize("hasRole('ROLE_TREASURER')")
     public ResponseEntity<ApiResponse<Loan>> updateLoanFinancials(
             @PathVariable Long loanId,
-            @RequestParam BigDecimal principal,
-            @RequestParam BigDecimal outstandingBalance,
+            @RequestParam(required = false) BigDecimal principal,
+            @RequestParam(required = false) BigDecimal outstandingBalance,
+            @RequestParam(required = false) BigDecimal interestRate,
+            @RequestParam(required = false) Integer termMonths,
+            @RequestParam(required = false) BigDecimal totalInterest,
+            @RequestParam(required = false) BigDecimal totalRepayable,
+            @RequestParam(required = false) BigDecimal monthlyRepayment,
+            @RequestParam(required = false) BigDecimal interestCollected,
+            @RequestParam(required = false) BigDecimal principalRepaid,
             @RequestParam(required = false) String reason,
             Authentication authentication) {
         try {
             User user = userService.getUserByUsername(authentication.getName())
                     .orElseThrow(() -> new RuntimeException("User not found"));
             
-            Loan updatedLoan = loanService.updateLoanFinancials(loanId, principal, outstandingBalance, reason, user);
+            Loan updatedLoan = loanService.updateLoanFinancials(
+                loanId, principal, outstandingBalance, interestRate, termMonths, 
+                totalInterest, totalRepayable, monthlyRepayment, interestCollected, principalRepaid, reason, user
+            );
             return ResponseEntity.ok(ApiResponse.success("Loan financials updated successfully", updatedLoan));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    // ==================== LOAN TOP-UP ENDPOINTS ====================
+
+    /**
+     * Preview loan top-up calculation
+     */
+    @GetMapping("/{loanId}/topup-preview")
+    @PreAuthorize("hasAnyRole('LOAN_OFFICER', 'TREASURER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<com.minet.sacco.dto.LoanTopUpPreviewResponse>> previewLoanTopUp(
+            @PathVariable Long loanId,
+            @RequestParam BigDecimal amount) {
+        try {
+            com.minet.sacco.dto.LoanTopUpPreviewResponse preview = loanService.previewLoanTopUp(loanId, amount);
+            return ResponseEntity.ok(ApiResponse.success("Top-up preview calculated", preview));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to preview top-up: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Process loan top-up
+     */
+    @PostMapping("/{loanId}/add-topup")
+    @PreAuthorize("hasAnyRole('TREASURER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<com.minet.sacco.dto.LoanTopUpResponse>> addLoanTopUp(
+            @PathVariable Long loanId,
+            @Valid @RequestBody com.minet.sacco.dto.LoanTopUpRequest request) {
+        try {
+            // Get current user
+            String username = SecurityContextHolder.getContext().getAuthentication().getName();
+            User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            com.minet.sacco.dto.LoanTopUpResponse response = loanService.processLoanTopUp(loanId, request, currentUser);
+            return ResponseEntity.ok(ApiResponse.success("Loan top-up processed successfully", response));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to process top-up: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get loan top-up history
+     */
+    /**
+     * Update a loan top-up (Treasurer only)
+     */
+    @PutMapping("/topup/{topupId}")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<LoanTopUpHistory>> updateLoanTopUp(
+            @PathVariable Long topupId,
+            @RequestParam BigDecimal topupAmount,
+            @RequestParam(required = false) String purpose) {
+        try {
+            LoanTopUpHistory topup = loanService.updateLoanTopUp(topupId, topupAmount, purpose);
+            return ResponseEntity.ok(ApiResponse.success("Top-up updated successfully", topup));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to update top-up: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete a loan top-up (Treasurer only)
+     */
+    @DeleteMapping("/topup/{topupId}")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Void>> deleteLoanTopUp(@PathVariable Long topupId) {
+        try {
+            loanService.deleteLoanTopUp(topupId);
+            return ResponseEntity.ok(ApiResponse.success("Top-up deleted successfully", null));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to delete top-up: " + e.getMessage()));
         }
     }
 }

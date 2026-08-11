@@ -3,6 +3,7 @@ package com.minet.sacco.service;
 import com.minet.sacco.entity.*;
 import com.minet.sacco.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -31,7 +32,9 @@ public class ReportsService {
 
     /**
      * Generate Cashbook - Daily transaction log with filters
+     * Cached for 5 minutes to improve dashboard performance
      */
+    @Cacheable(value = "cashbookReport", key = "#startDate + '-' + #endDate + '-' + #memberNumber + '-' + #transactionType + '-' + #accountType", unless = "#result == null")
     public CashbookReport generateCashbook(LocalDate startDate, LocalDate endDate, 
                                           String memberNumber, String transactionType, String accountType) {
         return generateCashbook(startDate, endDate, memberNumber, transactionType, accountType, BigDecimal.ZERO);
@@ -134,12 +137,15 @@ public class ReportsService {
 
     /**
      * Generate Trial Balance - All accounts with debit/credit balances
+     * Cached for 5 minutes
      */
+    @Cacheable(value = "trialBalanceReport", key = "#memberNumber + '-' + #accountType", unless = "#result == null")
     public TrialBalanceReport generateTrialBalance(String memberNumber, String accountType) {
         TrialBalanceReport report = new TrialBalanceReport();
         report.setGeneratedAt(LocalDateTime.now());
 
-        List<Account> accounts = accountRepository.findAll().stream()
+        // Optimized query with JOIN FETCH
+        List<Account> accounts = accountRepository.findAllWithDetails().stream()
                 .filter(a -> memberNumber == null || memberNumber.isEmpty() || 
                            a.getMember().getMemberNumber().equals(memberNumber))
                 .filter(a -> accountType == null || accountType.isEmpty() || 
@@ -194,7 +200,9 @@ public class ReportsService {
 
     /**
      * Generate Balance Sheet - Assets, Liabilities, Equity
+     * Cached for 10 minutes as it's expensive
      */
+    @Cacheable(value = "balanceSheetReport", unless = "#result == null")
     public BalanceSheetReport generateBalanceSheet() {
         BalanceSheetReport report = new BalanceSheetReport();
         report.setGeneratedAt(LocalDateTime.now());
@@ -210,8 +218,8 @@ public class ReportsService {
 
         report.setTotalAssets(totalLoansOutstanding);
 
-        // LIABILITIES: Member savings and shares
-        List<Account> accounts = accountRepository.findAll();
+        // LIABILITIES: Member savings and shares (optimized query)
+        List<Account> accounts = accountRepository.findAllWithDetails();
         BigDecimal totalSavings = BigDecimal.ZERO;
         BigDecimal totalShares = BigDecimal.ZERO;
 
@@ -245,7 +253,7 @@ public class ReportsService {
         MemberStatementReport report = new MemberStatementReport();
         report.setMemberId(memberId);
         report.setMemberNumber(member.getMemberNumber());
-        report.setMemberName(member.getFirstName() + " " + member.getLastName());
+        report.setMemberName(member.getFullName());
         report.setStartDate(startDate);
         report.setEndDate(endDate);
         report.setGeneratedAt(LocalDateTime.now());
@@ -253,8 +261,8 @@ public class ReportsService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
 
-        // Get all accounts for member
-        List<Account> memberAccounts = accountRepository.findByMemberId(memberId);
+        // Get all accounts for member with optimized query
+        List<Account> memberAccounts = accountRepository.findByMemberIdWithDetails(memberId);
 
         List<MemberStatementEntry> entries = new ArrayList<>();
         BigDecimal totalDeposits = BigDecimal.ZERO;
@@ -304,7 +312,9 @@ public class ReportsService {
 
     /**
      * Generate Loan Register - All loans with status and repayment schedule
+     * Cached for 5 minutes
      */
+    @Cacheable(value = "loanRegisterReport", key = "#memberNumber + '-' + #loanStatus + '-' + #loanProduct", unless = "#result == null")
     public LoanRegisterReport generateLoanRegister(String memberNumber, String loanStatus, String loanProduct) {
         LoanRegisterReport report = new LoanRegisterReport();
         report.setGeneratedAt(LocalDateTime.now());
@@ -327,7 +337,7 @@ public class ReportsService {
             LoanRegisterEntry entry = new LoanRegisterEntry();
             entry.setLoanNumber(loan.getLoanNumber());
             entry.setMemberNumber(loan.getMember().getMemberNumber());
-            entry.setMemberName(loan.getMember().getFirstName() + " " + loan.getMember().getLastName());
+            entry.setMemberName(loan.getMember().getFullName());
             entry.setLoanProduct(loan.getLoanProduct().getName());
             entry.setAmount(loan.getAmount());
             entry.setInterestRate(loan.getInterestRate());

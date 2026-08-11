@@ -67,6 +67,7 @@ public class ReportsController {
     // ===== CASHBOOK ENDPOINTS =====
     @GetMapping("/cashbook")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    @org.springframework.cache.annotation.Cacheable(value = "cashbookReportAPI", key = "#startDate + '-' + #endDate + '-' + #memberNumber + '-' + #transactionType + '-' + #accountType", unless = "#result == null")
     public ResponseEntity<ApiResponse<ReportsService.CashbookReport>> getCashbook(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -80,7 +81,9 @@ public class ReportsController {
         }
         
         ReportsService.CashbookReport report = reportsService.generateCashbook(startDate, endDate, memberNumber, transactionType, accountType, openingBalance);
-        return ResponseEntity.ok(ApiResponse.success("Cashbook report generated successfully", report));
+        return ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.maxAge(5, java.util.concurrent.TimeUnit.MINUTES))
+                .body(ApiResponse.success("Cashbook report generated successfully", report));
     }
 
     @GetMapping("/cashbook/export/excel")
@@ -132,12 +135,15 @@ public class ReportsController {
     // ===== TRIAL BALANCE ENDPOINTS =====
     @GetMapping("/trial-balance")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    @org.springframework.cache.annotation.Cacheable(value = "trialBalanceReportAPI", key = "#memberNumber + '-' + #accountType", unless = "#result == null")
     public ResponseEntity<ApiResponse<ReportsService.TrialBalanceReport>> getTrialBalance(
             @RequestParam(required = false) String memberNumber,
             @RequestParam(required = false) String accountType) {
         
         ReportsService.TrialBalanceReport report = reportsService.generateTrialBalance(memberNumber, accountType);
-        return ResponseEntity.ok(ApiResponse.success("Trial balance report generated successfully", report));
+        return ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.maxAge(5, java.util.concurrent.TimeUnit.MINUTES))
+                .body(ApiResponse.success("Trial balance report generated successfully", report));
     }
 
     @GetMapping("/trial-balance/export/excel")

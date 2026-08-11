@@ -31,6 +31,9 @@ public class DepositRequestService {
 
     @Autowired
     private NotificationService notificationService;
+    
+    @Autowired
+    private RealtimeNotificationService realtimeNotificationService;
 
     @Autowired
     private UserService userService;
@@ -55,6 +58,14 @@ public class DepositRequestService {
         request.setCreatedAt(LocalDateTime.now());
 
         DepositRequest saved = depositRequestRepository.save(request);
+
+        // Real-time notification: Deposit request created
+        realtimeNotificationService.notifyDepositRequestCreated(
+            saved.getId(),
+            member.getId(),
+            claimedAmount.doubleValue(),
+            account.getAccountType().name()
+        );
 
         // Notify tellers
         notificationService.notifyUsersByRole("TELLER", 
@@ -118,6 +129,15 @@ public class DepositRequestService {
         try {
             System.out.println("DEBUG: postApprovalNotificationsAndAudit called for request ID=" + request.getId());
             
+            // Real-time notification: Deposit request approved
+            realtimeNotificationService.notifyDepositStatusChanged(
+                request.getId(),
+                request.getMember().getId(),
+                "PENDING",
+                "APPROVED",
+                confirmedAmount.doubleValue()
+            );
+            
             // Notify ONLY the member who submitted the request
             String notificationMessage = "Your deposit request of KES " + request.getClaimedAmount() + " has been approved. " +
                 "Confirmed amount: KES " + confirmedAmount;
@@ -177,6 +197,15 @@ public class DepositRequestService {
                                                     String tellerMessage, String rejectionReason) {
         try {
             System.out.println("DEBUG: postRejectionNotificationsAndAudit called for request ID=" + request.getId());
+            
+            // Real-time notification: Deposit request rejected
+            realtimeNotificationService.notifyDepositStatusChanged(
+                request.getId(),
+                request.getMember().getId(),
+                "PENDING",
+                "REJECTED",
+                request.getClaimedAmount().doubleValue()
+            );
             
             // Notify member with teller message if provided
             String notificationMessage = "Your deposit request of KES " + request.getClaimedAmount() + " has been rejected. " +

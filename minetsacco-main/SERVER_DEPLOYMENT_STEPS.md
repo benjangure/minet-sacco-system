@@ -97,7 +97,7 @@ spring.datasource.password=your_secure_password
 spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 
 # Server Port
-server.port=8080
+server.port=9090
 
 # Flyway (auto-migration)
 spring.flyway.enabled=true
@@ -129,12 +129,12 @@ java -jar sacco-0.0.1-SNAPSHOT.jar
 # "Started SaccoApplication in X seconds"
 ```
 
-**Keep this terminal open** - the backend is now running on port 8080
+**Keep this terminal open** - the backend is now running on port 9090
 
 ### Step 2.7: Verify Backend is Running
 Open a new SSH terminal and test:
 ```bash
-curl http://localhost:8080/api/auth/health
+curl http://localhost:9090/api/auth/health
 # Should return: {"status":"UP"}
 ```
 
@@ -184,7 +184,7 @@ nano src/config/api.ts
 Update the backend URL to point to your server:
 ```typescript
 // Change from localhost to your server IP
-const API_BASE_URL = 'http://your_server_ip:8080/api';
+const API_BASE_URL = 'http://your_server_ip:9090/api';
 // OR if you have a domain
 const API_BASE_URL = 'https://api.yourdomain.com/api';
 ```
@@ -232,7 +232,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://localhost:8080/api/;
+        proxy_pass http://localhost:9090/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -261,7 +261,7 @@ sudo systemctl reload nginx
 ### Step 4.1: Verify All Services Running
 ```bash
 # Check if backend is running
-curl http://localhost:8080/api/auth/health
+curl http://localhost:9090/api/auth/health
 
 # Check if Nginx is running
 sudo systemctl status nginx
@@ -349,7 +349,7 @@ tail -f ~/backend/target/logs/spring.log
 
 # Common issues:
 # - Database not running: sudo systemctl start mysql
-# - Port 8080 in use: sudo lsof -i :8080
+# - Port 9090 in use: sudo lsof -i :9090
 # - Wrong database credentials: Check application.properties
 ```
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,6 +13,7 @@ import { BackendConnectionManager } from '@/components/BackendConnectionManager'
 import { getBackendUrl, setBackendUrl } from '@/config/api';
 
 export default function MemberLogin() {
+  const hasCheckedSession = useRef(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,6 +31,10 @@ export default function MemberLogin() {
   const { memberSignIn } = useAuth();
 
   useEffect(() => {
+    // Prevent infinite loop - only check session once on mount
+    if (hasCheckedSession.current) return;
+    hasCheckedSession.current = true;
+
     // If already logged in with valid token, redirect to dashboard
     const sessionStr = localStorage.getItem('session');
     if (sessionStr) {
@@ -48,13 +53,14 @@ export default function MemberLogin() {
                 if (currentTime < expirationTime) {
                   // Token is valid and not expired
                   console.log('DEBUG: Valid session exists in localStorage, redirecting to dashboard');
-                  navigate('/member/dashboard', { replace: true });
+                  // Use window.location to avoid React Router infinite loop
+                  window.location.href = '/member/dashboard';
                   return;
                 }
               } else {
                 // No expiration claim, assume token is valid
                 console.log('DEBUG: Session exists (no expiry), redirecting to dashboard');
-                navigate('/member/dashboard', { replace: true });
+                window.location.href = '/member/dashboard';
                 return;
               }
             }
@@ -62,6 +68,7 @@ export default function MemberLogin() {
             console.error('Failed to validate token:', tokenErr);
             // Token is invalid, clear it and continue to login
             localStorage.removeItem('session');
+            localStorage.removeItem('token');
           }
         }
       } catch (e) {
@@ -259,7 +266,7 @@ export default function MemberLogin() {
                       type="text"
                       value={tempUrl}
                       onChange={(e) => setTempUrl(e.target.value)}
-                      placeholder="http://192.168.0.41:8080"
+                      placeholder="http://192.168.0.41:9090"
                       className="text-xs font-mono"
                     />
                     <p className="text-xs text-muted-foreground">

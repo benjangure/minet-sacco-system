@@ -2,7 +2,7 @@
 
 ## Pre-Testing Checklist
 
-- [ ] Backend server is running on `http://localhost:8080`
+- [ ] Backend server is running on `http://localhost:9090`
 - [ ] Frontend is running on `http://localhost:5173` (or configured URL)
 - [ ] Database is accessible and migrations are applied
 - [ ] Email service is configured (for confirmation emails)

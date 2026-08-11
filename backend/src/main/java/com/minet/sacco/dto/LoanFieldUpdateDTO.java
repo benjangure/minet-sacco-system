@@ -2,12 +2,13 @@ package com.minet.sacco.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Phase A: Low-risk field editing (individual loans only)
- * CRITICAL: This DTO must NEVER contain guarantor data
- * Editable fields only: loanStatus, disbursementDate, interestRate, outstandingBalance, interestCollected, purpose
+ * Now includes guarantor management for treasurer workflow
+ * Editable fields: loanStatus, disbursementDate, interestRate, outstandingBalance, interestCollected, purpose, guarantors
  */
 public class LoanFieldUpdateDTO {
     
@@ -29,18 +30,41 @@ public class LoanFieldUpdateDTO {
     @JsonProperty("purpose")
     private String purpose;
     
+    @JsonProperty("guarantorshipType")
+    private String guarantorshipType;
+    
+    @JsonProperty("guarantors")
+    private List<GuarantorData> guarantors;
+    
+    public static class GuarantorData {
+        @JsonProperty("employeeId")
+        private String employeeId;
+        
+        @JsonProperty("pledgeAmount")
+        private BigDecimal pledgeAmount;
+        
+        public String getEmployeeId() { return employeeId; }
+        public void setEmployeeId(String employeeId) { this.employeeId = employeeId; }
+        
+        public BigDecimal getPledgeAmount() { return pledgeAmount; }
+        public void setPledgeAmount(BigDecimal pledgeAmount) { this.pledgeAmount = pledgeAmount; }
+    }
+    
     // Constructors
     public LoanFieldUpdateDTO() {}
     
     public LoanFieldUpdateDTO(String loanStatus, LocalDate disbursementDate,
                               BigDecimal interestRate, BigDecimal outstandingBalance,
-                              BigDecimal interestCollected, String purpose) {
+                              BigDecimal interestCollected, String purpose,
+                              String guarantorshipType, List<GuarantorData> guarantors) {
         this.loanStatus = loanStatus;
         this.disbursementDate = disbursementDate;
         this.interestRate = interestRate;
         this.outstandingBalance = outstandingBalance;
         this.interestCollected = interestCollected;
         this.purpose = purpose;
+        this.guarantorshipType = guarantorshipType;
+        this.guarantors = guarantors;
     }
     
     // Getters and Setters
@@ -62,6 +86,12 @@ public class LoanFieldUpdateDTO {
     public String getPurpose() { return purpose; }
     public void setPurpose(String purpose) { this.purpose = purpose; }
     
+    public String getGuarantorshipType() { return guarantorshipType; }
+    public void setGuarantorshipType(String guarantorshipType) { this.guarantorshipType = guarantorshipType; }
+    
+    public List<GuarantorData> getGuarantors() { return guarantors; }
+    public void setGuarantors(List<GuarantorData> guarantors) { this.guarantors = guarantors; }
+    
     /**
      * Validation helper: check if at least one field is provided
      */
@@ -71,6 +101,7 @@ public class LoanFieldUpdateDTO {
                interestRate != null ||
                outstandingBalance != null ||
                interestCollected != null ||
-               (purpose != null && !purpose.trim().isEmpty());
+               (purpose != null && !purpose.trim().isEmpty()) ||
+               (guarantors != null && !guarantors.isEmpty());
     }
 }

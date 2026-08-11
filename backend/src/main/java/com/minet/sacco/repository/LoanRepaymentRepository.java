@@ -24,6 +24,14 @@ public interface LoanRepaymentRepository extends JpaRepository<LoanRepayment, Lo
     @Query("SELECT COALESCE(SUM(lr.interestAmount), 0) FROM LoanRepayment lr WHERE lr.loan.id = :loanId")
     BigDecimal getTotalInterestCollected(@Param("loanId") Long loanId);
 
+    // Batch version: get interest collected for ALL loans in one query
+    @Query("SELECT lr.loan.id, COALESCE(SUM(lr.interestAmount), 0) FROM LoanRepayment lr GROUP BY lr.loan.id")
+    List<Object[]> getTotalInterestCollectedAllLoans();
+
+    // Batch version: get interest collected for a specific set of loan IDs
+    @Query("SELECT lr.loan.id, COALESCE(SUM(lr.interestAmount), 0) FROM LoanRepayment lr WHERE lr.loan.id IN :loanIds GROUP BY lr.loan.id")
+    List<Object[]> getTotalInterestCollectedForLoans(@Param("loanIds") List<Long> loanIds);
+
     @Query("SELECT lr FROM LoanRepayment lr WHERE lr.loan.id = :loanId AND lr.paymentDate >= :startDate AND lr.paymentDate <= :endDate ORDER BY lr.paymentDate DESC")
     List<LoanRepayment> findByLoanIdAndDateRange(@Param("loanId") Long loanId, @Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 

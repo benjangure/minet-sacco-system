@@ -145,7 +145,7 @@ if (!request.getNewPassword().equals(request.getConfirmPassword())) {
 ## Testing Instructions
 
 ### Prerequisites
-1. Backend running on `http://localhost:8080`
+1. Backend running on `http://localhost:9090`
 2. Member logged in with valid JWT token
 3. Token must not be expired (default 24 hours)
 

@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -127,6 +128,7 @@ interface Fund {
 export default function BulkProcessing() {
   const { session, user } = useAuth();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
   const [batches, setBatches] = useState<BulkBatch[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<BulkBatch | null>(null);
   const [batchItems, setBatchItems] = useState<BulkTransactionItem[]>([]);
@@ -240,7 +242,7 @@ export default function BulkProcessing() {
     if (user?.role === "TREASURER") {
       fetchApprovedLoans();
     }
-  }, []);
+  }, [refreshKey]);
 
   const fetchEnabledFunds = async () => {
     try {
@@ -1366,9 +1368,9 @@ export default function BulkProcessing() {
             <TabsContent value="MEMBER_REGISTRATION" className="mt-2">
               <div className="grid md:grid-cols-2 gap-2">
                 <div>
-                  <p className="font-semibold text-blue-900 mb-1">Columns (18 total):</p>
+                  <p className="font-semibold text-blue-900 mb-1">Columns (17 total):</p>
                   <ul className="space-y-0.5 text-blue-800">
-                    <li>• First Name, Last Name, Email</li>
+                    <li>• Full Name, Email</li>
                     <li>• Phone (10 digits)</li>
                     <li>• National ID (8 digits) — used as initial password</li>
                     <li>• Date of Birth (YYYY-MM-DD or DD/MM/YYYY)</li>
@@ -1437,6 +1439,9 @@ export default function BulkProcessing() {
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Upload Bulk Transaction File</DialogTitle>
+              <DialogDescription>
+                Upload Excel or CSV file with transaction data
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <Alert>
@@ -2025,6 +2030,9 @@ export default function BulkProcessing() {
         <DialogContent className="max-w-7xl max-h-[85vh] overflow-y-auto p-4">
           <DialogHeader className="pb-2">
             <DialogTitle className="text-lg">Batch Details: {selectedBatch?.batchNumber}</DialogTitle>
+            <DialogDescription>
+              View transaction items and processing status
+            </DialogDescription>
           </DialogHeader>
           {selectedBatch && (
             <div className="space-y-3">
@@ -2280,6 +2288,9 @@ export default function BulkProcessing() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-red-600">Delete Batch — This cannot be undone</DialogTitle>
+            <DialogDescription>
+              Permanently delete this batch and all its transaction items
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {selectedBatch && (
@@ -2349,6 +2360,9 @@ export default function BulkProcessing() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reject Loan Item</DialogTitle>
+            <DialogDescription>
+              Provide a reason for rejecting this loan application
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -2387,6 +2401,9 @@ export default function BulkProcessing() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Loan Application Review - Member & Guarantor Eligibility</DialogTitle>
+            <DialogDescription>
+              Review member eligibility and guarantor validation details
+            </DialogDescription>
           </DialogHeader>
           {guarantorValidationResult && (
             <div className="space-y-6">

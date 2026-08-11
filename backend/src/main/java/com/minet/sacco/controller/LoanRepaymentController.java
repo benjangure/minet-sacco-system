@@ -88,6 +88,18 @@ public class LoanRepaymentController {
         return ResponseEntity.ok(ApiResponse.success("Repayments for date range retrieved", repayments));
     }
 
+    /**
+     * PERFORMANCE OPTIMIZATION: Bulk endpoint for dashboard
+     * Returns ALL repayments for ALL disbursed loans in ONE query
+     * Replaces 100+ individual /loans/{id}/repayments calls with 1 bulk call
+     */
+    @GetMapping("/bulk/repayments")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_AUDITOR')")
+    public ResponseEntity<ApiResponse<java.util.Map<Long, List<LoanRepayment>>>> getBulkRepayments() {
+        java.util.Map<Long, List<LoanRepayment>> repaymentsByLoanId = loanRepaymentService.getAllRepaymentsByLoanId();
+        return ResponseEntity.ok(ApiResponse.success("Bulk repayments retrieved", repaymentsByLoanId));
+    }
+
     // DTO for recording repayment
     public static class RecordRepaymentRequest {
         private BigDecimal amount;

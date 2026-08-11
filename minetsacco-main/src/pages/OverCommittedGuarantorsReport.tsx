@@ -52,7 +52,7 @@ const OverCommittedGuarantorsReport: React.FC = () => {
       setLoading(true);
       setError(null);
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/reports/over-committed-guarantors`,
+        `${process.env.REACT_APP_API_URL || 'http://localhost:9090'}/api/reports/over-committed-guarantors`,
         {
           headers: {
             Authorization: `Bearer ${authToken}`,
@@ -72,7 +72,7 @@ const OverCommittedGuarantorsReport: React.FC = () => {
   const exportToExcel = async () => {
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/reports/over-committed-guarantors/export/excel`,
+        `${process.env.REACT_APP_API_URL || 'http://localhost:9090'}/api/reports/over-committed-guarantors/export/excel`,
         {
           headers: { Authorization: `Bearer ${authToken}` },
           responseType: 'blob',
@@ -94,7 +94,7 @@ const OverCommittedGuarantorsReport: React.FC = () => {
   const exportToPdf = async () => {
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/reports/over-committed-guarantors/export/pdf`,
+        `${process.env.REACT_APP_API_URL || 'http://localhost:9090'}/api/reports/over-committed-guarantors/export/pdf`,
         {
           headers: { Authorization: `Bearer ${authToken}` },
           responseType: 'blob',

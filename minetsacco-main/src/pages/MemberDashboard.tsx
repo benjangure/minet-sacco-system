@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useRefresh } from '@/contexts/RefreshContext';
 import api from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Wallet, TrendingUp, DollarSign, Plus, HandshakeIcon, FileText, Send, Upload, Eye } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, Plus, HandshakeIcon, FileText, Send, Upload, Eye, ArrowUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import MemberLayout from '@/components/MemberLayout';
 import GuarantorApprovalDialog from '@/components/GuarantorApprovalDialog';
@@ -15,9 +16,13 @@ import DepositRequestForm from '@/components/DepositRequestForm';
 import MpesaTransaction from '@/components/MpesaTransaction';
 import MemberNotificationsView from '@/components/MemberNotificationsView';
 import MemberReportsView from '@/components/MemberReportsView';
+import NotificationPrompt from '@/components/NotificationPrompt';
 import { API_BASE_URL } from '@/config/api';
 import { downloadAndOpenFile } from '@/utils/downloadHelper';
 import LoanStatusTimeline from '@/components/LoanStatusTimeline';
+import TopUpStatusTimeline from '@/components/TopUpStatusTimeline';
+import LoanTopUpRequestDialog from '@/components/LoanTopUpRequestDialog';
+import TopUpGuarantorApprovalModal from '@/components/TopUpGuarantorApprovalModal';
 
 interface Dashboard {
   memberNumber: string;
@@ -98,6 +103,7 @@ function MemberDepositsView() {
   const [deposits, setDeposits] = useState<DepositRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
 
   useEffect(() => {
     fetchDeposits();
@@ -237,6 +243,10 @@ export default function MemberDashboard() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('home');
   const [guarantorDialogOpen, setGuarantorDialogOpen] = useState(false);
+  const [selectedGuarantee, setSelectedGuarantee] = useState<any>(null);
+  const [topUpGuarantorDialogOpen, setTopUpGuarantorDialogOpen] = useState(false);
+  const [selectedTopUpGuarantee, setSelectedTopUpGuarantee] = useState<any>(null);
+  const [pendingGuarantees, setPendingGuarantees] = useState<any[]>([]);
   const [repaymentFormOpen, setRepaymentFormOpen] = useState(false);
   const [depositRequestOpen, setDepositRequestOpen] = useState(false);
   // // const [mpesaDepositOpen, setMpesaDepositOpen] = useState(false); // TODO: MPesa deposit not implemented
@@ -260,9 +270,18 @@ export default function MemberDashboard() {
   const [reassignmentDialogOpen, setReassignmentDialogOpen] = useState(false);
   const [reassignmentLoan, setReassignmentLoan] = useState<LoanWithRepayments | null>(null);
   const [reassignmentGuarantors, setReassignmentGuarantors] = useState<Guarantor[]>([]);
+  const [topUpDialogOpen, setTopUpDialogOpen] = useState(false);
+  const [topUpLoan, setTopUpLoan] = useState<LoanWithRepayments | null>(null);
+  const [loanTopUpHistory, setLoanTopUpHistory] = useState<Map<number, any[]>>(new Map());
+  const [loadingTopUpHistory, setLoadingTopUpHistory] = useState<Set<number>>(new Set());
+  const [loanRepayments, setLoanRepayments] = useState<Map<number, any[]>>(new Map());
+  const [loadingRepayments, setLoadingRepayments] = useState<Set<number>>(new Set());
+  const [topUpRequests, setTopUpRequests] = useState<any[]>([]);
+  const [topUpRequestsLoading, setTopUpRequestsLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const { refreshKey } = useRefresh();
 
   useEffect(() => {
     // Check if tab is specified in URL
@@ -276,11 +295,16 @@ export default function MemberDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    fetchDashboard();
-    fetchUnreadNotifications();
-    fetchEligibility();
-    fetchActiveLoans();
-  }, []);
+    // Run all independent fetches in parallel — no reason to wait for each other
+    Promise.all([
+      fetchDashboard(),
+      fetchUnreadNotifications(),
+      fetchEligibility(),
+      fetchActiveLoans(),
+      fetchPendingGuarantees(),
+      fetchTopUpRequests(),
+    ]);
+  }, [refreshKey]);
 
   const fetchDashboard = async () => {
     try {
@@ -337,6 +361,9 @@ export default function MemberDashboard() {
         newSet.delete(loanId);
       } else {
         newSet.add(loanId);
+        // Fetch repayments + top-up history on first expand only
+        fetchLoanTopUpHistory(loanId);
+        fetchLoanRepayments(loanId);
       }
       return newSet;
     });
@@ -487,13 +514,6 @@ export default function MemberDashboard() {
       if (response.data && Array.isArray(response.data)) {
         const allLoans = response.data || [];
         
-        // Debug: Log all loan data to identify the issue
-        console.log('=== ALL LOANS FROM BACKEND API ===');
-        allLoans.forEach(l => {
-        });
-        console.log('=== END LOANS ===');
-        
-        // Show all loans including repaid ones for complete loan history
         // Sort by disbursement date (most recent first), then by application date
         const loans = allLoans.sort((a: any, b: any) => {
           const dateA = a.disbursementDate || a.applicationDate;
@@ -501,31 +521,12 @@ export default function MemberDashboard() {
           return new Date(dateB).getTime() - new Date(dateA).getTime();
         });
         
-        console.log('Filtered loans (should exclude fully repaid):', loans.map(l => ({
-          id: l.id,
-          loanNumber: l.loanNumber,
-          status: l.status,
-          outstandingBalance: l.outstandingBalance
-        })));
-        
-        // Fetch repayment history for each loan
-        const loansWithRepayments = await Promise.all(
-          loans.map(async (loan: any) => {
-            try {
-              const repaymentRes = await api.get(`/member/loans/${loan.id}/repayments`);
-              return {
-                ...loan,
-                repayments: Array.isArray(repaymentRes.data) ? repaymentRes.data : (repaymentRes.data?.data || [])
-              };
-            } catch (err) {
-              console.error(`Error fetching repayments for loan ${loan.id}:`, err);
-              return {
-                ...loan,
-                repayments: []
-              };
-            }
-          })
-        );
+        // repayments are fetched lazily only when a loan card is expanded
+        // to avoid making N API calls on page load
+        const loansWithRepayments = loans.map((loan: any) => ({
+          ...loan,
+          repayments: loan.repayments || []
+        }));
         
         setActiveLoans(loansWithRepayments);
         
@@ -537,6 +538,84 @@ export default function MemberDashboard() {
       setActiveLoans([]);
     } finally {
       setLoansLoading(false);
+    }
+  };
+
+  const fetchLoanTopUpHistory = async (loanId: number) => {
+    setLoadingTopUpHistory(prev => new Set(prev).add(loanId));
+    try {
+      const response = await api.get(`/loans/${loanId}/topup-history`);
+      const history = response.data?.data || response.data || [];
+      setLoanTopUpHistory(prev => new Map(prev).set(loanId, history));
+    } catch (error) {
+      console.error(`Error fetching top-up history for loan ${loanId}:`, error);
+      setLoanTopUpHistory(prev => new Map(prev).set(loanId, []));
+    } finally {
+      setLoadingTopUpHistory(prev => {
+        const next = new Set(prev);
+        next.delete(loanId);
+        return next;
+      });
+    }
+  };
+
+  const fetchLoanRepayments = async (loanId: number) => {
+    // Skip if already loaded
+    if (loanRepayments.has(loanId)) return;
+    setLoadingRepayments(prev => new Set(prev).add(loanId));
+    try {
+      const response = await api.get(`/member/loans/${loanId}/repayments`);
+      const repayments = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setLoanRepayments(prev => new Map(prev).set(loanId, repayments));
+    } catch (error) {
+      console.error(`Error fetching repayments for loan ${loanId}:`, error);
+      setLoanRepayments(prev => new Map(prev).set(loanId, []));
+    } finally {
+      setLoadingRepayments(prev => {
+        const next = new Set(prev);
+        next.delete(loanId);
+        return next;
+      });
+    }
+  };
+
+  const fetchTopUpRequests = async () => {    setTopUpRequestsLoading(true);
+    try {
+      const response = await api.get('/member/topup-requests');
+      const requests = response.data?.data || response.data || [];
+      setTopUpRequests(requests);
+    } catch (error) {
+      console.error('Error fetching top-up requests:', error);
+      setTopUpRequests([]);
+    } finally {
+      setTopUpRequestsLoading(false);
+    }
+  };
+
+  const fetchPendingGuarantees = async () => {
+    try {
+      const [loanResponse, topUpResponse] = await Promise.all([
+        api.get('/loans/member/guarantor-requests'),
+        api.get('/member/pending-topup-guarantees')
+      ]);
+      
+      // Handle response data safely - backend might return { data: [...] } or just [...]
+      const loanData = Array.isArray(loanResponse.data) 
+        ? loanResponse.data 
+        : (loanResponse.data?.data || []);
+      
+      const topUpData = Array.isArray(topUpResponse.data) 
+        ? topUpResponse.data 
+        : (topUpResponse.data?.data || []);
+      
+      // Combine both loan and top-up guarantees
+      const loanGuarantees = loanData.map((g: any) => ({ ...g, type: 'loan' }));
+      const topUpGuarantees = topUpData.map((g: any) => ({ ...g, type: 'topup' }));
+      
+      setPendingGuarantees([...loanGuarantees, ...topUpGuarantees]);
+    } catch (error) {
+      console.error('Error fetching pending guarantees:', error);
+      setPendingGuarantees([]);
     }
   };
 
@@ -557,14 +636,42 @@ export default function MemberDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6 text-center">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading your dashboard...</p>
-          </CardContent>
-        </Card>
-      </div>
+      <MemberLayout memberName="Member" onLogout={handleLogout} unreadNotifications={0}>
+        <div className="space-y-4 w-full max-w-7xl mx-auto">
+          {/* Header Skeleton */}
+          <div className="space-y-2">
+            <div className="h-10 bg-gray-200 rounded animate-pulse w-64"></div>
+            <div className="h-5 bg-gray-200 rounded animate-pulse w-32"></div>
+          </div>
+
+          {/* Stats Cards Skeleton */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="border rounded-lg p-6 space-y-3 bg-white">
+                <div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div>
+                <div className="h-8 bg-gray-200 rounded animate-pulse w-32"></div>
+                <div className="h-3 bg-gray-200 rounded animate-pulse w-20"></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Recent Transactions Skeleton */}
+          <div className="border rounded-lg p-6 space-y-4 bg-white">
+            <div className="h-6 bg-gray-200 rounded animate-pulse w-48"></div>
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center justify-between border-b pb-3">
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div>
+                    <div className="h-3 bg-gray-200 rounded animate-pulse w-24"></div>
+                  </div>
+                  <div className="h-5 bg-gray-200 rounded animate-pulse w-20"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </MemberLayout>
     );
   }
 
@@ -599,10 +706,13 @@ export default function MemberDashboard() {
 
   return (
     <MemberLayout memberName={dashboard?.firstName || 'Member'} onLogout={handleLogout} unreadNotifications={unreadNotifications}>
-      <div className="space-y-4 max-w-7xl mx-auto px-4 lg:px-0">
+      {/* Desktop Notification Prompt - shows once per session */}
+      <NotificationPrompt />
+      
+      <div className="space-y-4 w-full max-w-7xl mx-auto">
         <div className="space-y-2">
-          <h1 className="text-3xl lg:text-4xl font-bold text-foreground">Welcome, {dashboard?.firstName}!</h1>
-          <p className="text-muted-foreground">Member #{dashboard?.memberNumber}</p>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground">Welcome, {dashboard?.firstName}!</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Member #{dashboard?.memberNumber}</p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -617,7 +727,80 @@ export default function MemberDashboard() {
           </TabsList>
 
           {/* HOME TAB */}
-          <TabsContent value="home" className="space-y-4 md:space-y-6">
+          <TabsContent value="home" className="space-y-4 sm:space-y-6">
+            {/* Pending Guarantor Requests Section */}
+            {pendingGuarantees.length > 0 && (
+              <Card className="border-purple-200 bg-purple-50">
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="flex items-center gap-2 text-purple-900 text-base sm:text-lg">
+                    <HandshakeIcon className="h-5 w-5 flex-shrink-0" />
+                    <span>Pending Guarantor Requests ({pendingGuarantees.length})</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
+                  <p className="text-xs sm:text-sm text-purple-800 mb-4">
+                    You have been asked to guarantee the following loan applications. Click on each request to review and approve/reject.
+                  </p>
+                  <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-2">
+                    {pendingGuarantees.map((guarantee: any) => (
+                      <Card 
+                        key={guarantee.id} 
+                        className="border-purple-300 cursor-pointer hover:shadow-md transition-shadow bg-white"
+                        onClick={() => {
+                          if (guarantee.type === 'topup') {
+                            setSelectedTopUpGuarantee(guarantee);
+                            setTopUpGuarantorDialogOpen(true);
+                          } else {
+                            setSelectedGuarantee(guarantee);
+                            setGuarantorDialogOpen(true);
+                          }
+                        }}
+                      >
+                        <CardContent className="p-3 sm:p-4">
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-sm truncate">
+                                  {guarantee.loan?.member?.firstName} {guarantee.loan?.member?.lastName}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Member: {guarantee.loan?.member?.memberNumber}
+                                </p>
+                              </div>
+                              <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded font-medium whitespace-nowrap flex-shrink-0">
+                                {guarantee.type === 'topup' ? 'Top-Up' : 'New Loan'}
+                              </span>
+                            </div>
+                            <div className="bg-gray-50 rounded p-2 space-y-1 text-xs">
+                              <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">
+                                  {guarantee.type === 'topup' ? 'Top-Up Amount:' : 'Loan Amount:'}
+                                </span>
+                                <span className="font-medium">
+                                  {formatCurrency(guarantee.type === 'topup' ? guarantee.topUpRequest?.requestedAmount : guarantee.loan?.amount)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">Your Guarantee:</span>
+                                <span className="font-semibold text-purple-700">
+                                  {formatCurrency(guarantee.guaranteeAmount)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="pt-2 border-t">
+                              <p className="text-xs text-purple-700 font-medium">
+                                Click to Review →
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Action Required Alert */}
             {activeLoans.some(l => l.status === 'PENDING_GUARANTOR_REPLACEMENT' || l.status === 'PENDING_GUARANTOR_REASSIGNMENT') && (
               <Card className="border-red-200 bg-red-50">
@@ -1088,6 +1271,17 @@ export default function MemberDashboard() {
                             </div>
                           </div>
 
+                          {/* Top-Up Information - Show details when expanded */}
+                          {(loan.status === 'ACTIVE' || loan.status === 'DISBURSED' || loan.status === 'APPROVED') && loan.outstandingBalance > 0 && (
+                            <div className="border-t pt-4">
+                              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                <p className="text-xs text-purple-700">
+                                  💡 <strong>Top-Up Info:</strong> You can request additional funds on this loan. The same guarantee approval process applies.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Loan Status Timeline */}
                           <div className="border-t pt-4">
                             <LoanStatusTimeline
@@ -1133,12 +1327,28 @@ export default function MemberDashboard() {
                         onClick={() => toggleLoanExpansion(loan.id)}
                       >
                         <div className="flex items-center justify-between">
-                          <div>
+                          <div className="flex-1">
                             <CardTitle className="text-base">Loan #{loan.loanNumber}</CardTitle>
                             <p className="text-sm text-muted-foreground">Amount: {formatCurrency(loan.amount)}</p>
+                            
+                            {/* Top-Up Quick Action - Visible even when collapsed */}
+                            {(loan.status === 'ACTIVE' || loan.status === 'DISBURSED' || loan.status === 'APPROVED') && loan.outstandingBalance > 0 && (
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTopUpLoan(loan);
+                                  setTopUpDialogOpen(true);
+                                }}
+                                className="bg-purple-600 hover:bg-purple-700 gap-2 mt-2"
+                                size="sm"
+                              >
+                                <ArrowUp className="h-4 w-4" />
+                                Request Top-Up
+                              </Button>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            <span className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal sm:whitespace-nowrap text-center leading-tight ${
                               loan.status === 'REPAID'
                                 ? 'bg-gray-200 text-gray-800'
                                 : loan.status === 'DEFAULTED'
@@ -1149,17 +1359,34 @@ export default function MemberDashboard() {
                                 ? 'bg-red-50 text-red-700'
                                 : 'bg-yellow-50 text-yellow-700'
                             }`}>
-                              {loan.status === 'DISBURSED' ? 'Disbursed' :
-                              loan.status === 'ACTIVE' ? 'Active' :
-                              loan.status === 'REPAID' ? 'Fully Repaid' :
-                              loan.status === 'DEFAULTED' ? 'Defaulted' :
-                              loan.status === 'PENDING' ? 'Pending' :
-                              loan.status === 'PENDING_GUARANTOR_APPROVAL' ? 'Pending Guarantor Approval' :
-                              loan.status === 'PENDING_LOAN_OFFICER_REVIEW' ? 'Pending Loan Officer Review' :
-                              loan.status === 'PENDING_CREDIT_COMMITTEE' ? 'Pending Credit Committee' :
-                              loan.status === 'PENDING_TREASURER' ? 'Pending Treasurer' :
-                              loan.status === 'APPROVED' ? 'Approved' :
-                              loan.status}
+                              <span className="hidden sm:inline">
+                                {/* Desktop: Full labels */}
+                                {loan.status === 'DISBURSED' ? 'Disbursed' :
+                                loan.status === 'ACTIVE' ? 'Active' :
+                                loan.status === 'REPAID' ? 'Fully Repaid' :
+                                loan.status === 'DEFAULTED' ? 'Defaulted' :
+                                loan.status === 'PENDING' ? 'Pending' :
+                                loan.status === 'PENDING_GUARANTOR_APPROVAL' ? 'Pending Guarantor Approval' :
+                                loan.status === 'PENDING_LOAN_OFFICER_REVIEW' ? 'Pending Loan Officer Review' :
+                                loan.status === 'PENDING_CREDIT_COMMITTEE' ? 'Pending Credit Committee' :
+                                loan.status === 'PENDING_TREASURER' ? 'Pending Treasurer' :
+                                loan.status === 'APPROVED' ? 'Approved' :
+                                loan.status}
+                              </span>
+                              <span className="inline sm:hidden">
+                                {/* Mobile: Shorter labels */}
+                                {loan.status === 'DISBURSED' ? 'Disbursed' :
+                                loan.status === 'ACTIVE' ? 'Active' :
+                                loan.status === 'REPAID' ? 'Repaid' :
+                                loan.status === 'DEFAULTED' ? 'Defaulted' :
+                                loan.status === 'PENDING' ? 'Pending' :
+                                loan.status === 'PENDING_GUARANTOR_APPROVAL' ? 'Guarantor' :
+                                loan.status === 'PENDING_LOAN_OFFICER_REVIEW' ? 'Officer Review' :
+                                loan.status === 'PENDING_CREDIT_COMMITTEE' ? 'Committee' :
+                                loan.status === 'PENDING_TREASURER' ? 'Treasurer' :
+                                loan.status === 'APPROVED' ? 'Approved' :
+                                loan.status}
+                              </span>
                             </span>
                             <div className={`transform transition-transform duration-200 ${
                               expandedLoans.has(loan.id) ? 'rotate-180' : ''
@@ -1246,12 +1473,59 @@ export default function MemberDashboard() {
                             )}
                           </div>
 
+                          {/* Top-Up History */}
+                          {(loan.status === 'ACTIVE' || loan.status === 'DISBURSED' || loan.status === 'APPROVED') && (
+                            <div className="border-t pt-4">
+                              <p className="text-sm font-semibold mb-3 text-purple-900">💰 Top-Up History</p>
+                              {loadingTopUpHistory.has(loan.id) ? (
+                                <p className="text-xs text-muted-foreground">Loading top-up history...</p>
+                              ) : loanTopUpHistory.get(loan.id) && loanTopUpHistory.get(loan.id)!.length > 0 ? (
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                  {loanTopUpHistory.get(loan.id)!.map((topup: any) => (
+                                    <div key={topup.id} className="p-3 bg-purple-50 border border-purple-200 rounded text-xs">
+                                      <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                          <p className="font-semibold text-purple-900">KES {topup.topupAmount?.toLocaleString()}</p>
+                                          <p className="text-gray-600">{new Date(topup.topupDate).toLocaleDateString('en-KE')}</p>
+                                        </div>
+                                        <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-medium">
+                                          Top-Up #{topup.id}
+                                        </span>
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                                        <div>
+                                          <span className="text-gray-600">Before:</span>
+                                          <span className="font-medium ml-1">KES {topup.outstandingBeforeTopup?.toLocaleString()}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-600">After:</span>
+                                          <span className="font-medium ml-1">KES {topup.outstandingAfterTopup?.toLocaleString()}</span>
+                                        </div>
+                                      </div>
+                                      {topup.purpose && (
+                                        <p className="text-gray-700 mt-1">
+                                          <span className="font-medium">Purpose:</span> {topup.purpose}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">No top-ups for this loan yet</p>
+                              )}
+                            </div>
+                          )}
+
                           {/* Repayment History */}
-                          {loan.repayments && loan.repayments.length > 0 ? (
+                          {loadingRepayments.has(loan.id) ? (
+                            <div className="border-t pt-4">
+                              <p className="text-sm text-muted-foreground">Loading repayments...</p>
+                            </div>
+                          ) : loanRepayments.get(loan.id) && loanRepayments.get(loan.id)!.length > 0 ? (
                             <div className="border-t pt-4">
                               <p className="text-sm font-semibold mb-3">Repayment History</p>
                               <div className="space-y-2 max-h-48 overflow-y-auto">
-                                {loan.repayments.map((repayment) => (
+                                {loanRepayments.get(loan.id)!.map((repayment: any) => (
                                   <div key={repayment.id} className="flex items-center justify-between p-2 bg-muted/50 rounded text-sm">
                                     <div>
                                       <p className="font-medium">{formatCurrency(repayment.amount)}</p>
@@ -1286,6 +1560,171 @@ export default function MemberDashboard() {
                   ))}
               </div>
             )}
+
+            {/* Your Top-Ups Section */}
+            <div className="space-y-3 mt-6">
+              <h3 className="text-lg font-semibold text-foreground text-purple-900">💰 Your Top-Up Requests</h3>
+              {topUpRequestsLoading ? (
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+                    <p className="text-muted-foreground">Loading your top-up requests...</p>
+                  </CardContent>
+                </Card>
+              ) : topUpRequests.length === 0 ? (
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-muted-foreground">No top-up requests yet</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                topUpRequests.map((topup: any) => (
+                  <Card key={topup.id} className="border-purple-200 bg-purple-50/30">
+                    <CardHeader className="cursor-pointer hover:bg-purple-50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-base text-purple-900">
+                            Top-Up Request #{topup.id}
+                          </CardTitle>
+                          <p className="text-sm text-muted-foreground">
+                            Loan: {topup.loan?.loanNumber} | Amount: {formatCurrency(topup.requestedAmount)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Requested: {new Date(topup.requestedDate).toLocaleDateString('en-KE')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal sm:whitespace-nowrap text-center leading-tight ${
+                            topup.status === 'DISBURSED'
+                              ? 'bg-green-100 text-green-800'
+                              : topup.status === 'PENDING_GUARANTOR_APPROVAL'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : topup.status === 'PENDING_REVIEW' || topup.status === 'PENDING_LOAN_OFFICER_REVIEW'
+                              ? 'bg-blue-100 text-blue-800'
+                              : topup.status === 'PENDING_CREDIT_COMMITTEE'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : topup.status === 'PENDING_TREASURER'
+                              ? 'bg-orange-100 text-orange-800'
+                              : topup.status === 'APPROVED'
+                              ? 'bg-teal-100 text-teal-800'
+                              : topup.status === 'REJECTED'
+                              ? 'bg-red-100 text-red-800'
+                              : topup.status === 'CANCELLED'
+                              ? 'bg-gray-100 text-gray-800'
+                              : 'bg-purple-100 text-purple-800'
+                          }`}>
+                            <span className="hidden sm:inline">
+                              {/* Desktop: Full labels */}
+                              {topup.status === 'DISBURSED' ? 'Disbursed' :
+                              topup.status === 'PENDING_GUARANTOR_APPROVAL' ? 'Pending Guarantor Approval' :
+                              topup.status === 'PENDING_REVIEW' || topup.status === 'PENDING_LOAN_OFFICER_REVIEW' ? 'Pending Loan Officer Review' :
+                              topup.status === 'PENDING_CREDIT_COMMITTEE' ? 'Pending Credit Committee' :
+                              topup.status === 'PENDING_TREASURER' ? 'Pending Treasurer' :
+                              topup.status === 'APPROVED' ? 'Approved — Awaiting Disbursement' :
+                              topup.status === 'REJECTED' ? 'Rejected' :
+                              topup.status === 'CANCELLED' ? 'Cancelled' :
+                              topup.status.replace(/_/g, ' ')}
+                            </span>
+                            <span className="inline sm:hidden">
+                              {/* Mobile: Shorter labels */}
+                              {topup.status === 'DISBURSED' ? 'Disbursed' :
+                              topup.status === 'PENDING_GUARANTOR_APPROVAL' ? 'Guarantor' :
+                              topup.status === 'PENDING_REVIEW' || topup.status === 'PENDING_LOAN_OFFICER_REVIEW' ? 'Officer Review' :
+                              topup.status === 'PENDING_CREDIT_COMMITTEE' ? 'Committee' :
+                              topup.status === 'PENDING_TREASURER' ? 'Treasurer' :
+                              topup.status === 'APPROVED' ? 'Approved' :
+                              topup.status === 'REJECTED' ? 'Rejected' :
+                              topup.status === 'CANCELLED' ? 'Cancelled' :
+                              topup.status.replace(/_/g, ' ')}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Top-Up Details */}
+                      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white p-3 rounded border border-purple-200">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Requested Amount</p>
+                          <p className="font-semibold text-purple-900">{formatCurrency(topup.requestedAmount)}</p>
+                        </div>
+                        {topup.reviewedBy && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Reviewed By</p>
+                            <p className="font-medium text-sm">{topup.reviewedBy.username}</p>
+                          </div>
+                        )}
+                        {topup.reviewDate && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Review Date</p>
+                            <p className="font-medium text-sm">{new Date(topup.reviewDate).toLocaleDateString('en-KE')}</p>
+                          </div>
+                        )}
+                        {topup.disbursementDate && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Disbursement Date</p>
+                            <p className="font-medium text-sm">{new Date(topup.disbursementDate).toLocaleDateString('en-KE')}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Purpose */}
+                      {topup.purpose && (
+                        <div className="mt-3 bg-white p-3 rounded border border-purple-200">
+                          <p className="text-xs text-muted-foreground mb-1">Purpose</p>
+                          <p className="text-sm">{topup.purpose}</p>
+                        </div>
+                      )}
+
+                      {/* Guarantors */}
+                      {topup.guarantors && topup.guarantors.length > 0 && (
+                        <div className="mt-3 bg-white p-3 rounded border border-purple-200">
+                          <p className="text-xs text-muted-foreground mb-2">Guarantors ({topup.guarantors.length})</p>
+                          <div className="space-y-2">
+                            {topup.guarantors.map((guarantor: any, idx: number) => (
+                              <div key={idx} className="flex items-center justify-between text-sm">
+                                <div>
+                                  <p className="font-medium">
+                                    {guarantor.member?.firstName} {guarantor.member?.lastName}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {guarantor.member?.memberNumber}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-semibold">{formatCurrency(guarantor.guaranteeAmount)}</p>
+                                  <span className={`text-xs px-2 py-1 rounded ${
+                                    guarantor.status === 'APPROVED'
+                                      ? 'bg-green-100 text-green-700'
+                                      : guarantor.status === 'REJECTED'
+                                      ? 'bg-red-100 text-red-700'
+                                      : 'bg-yellow-100 text-yellow-700'
+                                  }`}>
+                                    {guarantor.status}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Top-Up Status Timeline */}
+                      <div className="mt-4 border-t pt-4">
+                        <TopUpStatusTimeline
+                          currentStatus={topup.status}
+                          requestedDate={topup.requestedDate}
+                          reviewDate={topup.reviewDate}
+                          disbursementDate={topup.disbursementDate}
+                          rejectionReason={topup.rejectionReason}
+                          loanNumber={topup.loan?.loanNumber}
+                          requestedAmount={topup.requestedAmount}
+                        />
+                      </div>
+                    </CardHeader>
+                  </Card>
+                ))
+              )}
+            </div>
           </TabsContent>
 
           {/* DEPOSITS TAB */}
@@ -1307,8 +1746,39 @@ export default function MemberDashboard() {
         {/* Guarantor Approval Dialog */}
         <GuarantorApprovalDialog
           open={guarantorDialogOpen}
-          onOpenChange={setGuarantorDialogOpen}
-          onApprovalChange={fetchDashboard}
+          onOpenChange={(open) => {
+            setGuarantorDialogOpen(open);
+            if (!open) {
+              setSelectedGuarantee(null);
+              fetchPendingGuarantees();
+            }
+          }}
+          onApprovalChange={() => {
+            fetchDashboard();
+            fetchPendingGuarantees();
+          }}
+          selectedGuarantee={selectedGuarantee}
+        />
+
+        {/* Top-Up Guarantor Approval Modal */}
+        <TopUpGuarantorApprovalModal
+          open={topUpGuarantorDialogOpen}
+          onOpenChange={(open) => {
+            setTopUpGuarantorDialogOpen(open);
+            if (!open) {
+              setSelectedTopUpGuarantee(null);
+              fetchPendingGuarantees();
+            }
+          }}
+          topUpRequest={selectedTopUpGuarantee?.topUpRequest}
+          guaranteeAmount={selectedTopUpGuarantee?.guaranteeAmount || 0}
+          topUpRequestId={selectedTopUpGuarantee?.topUpRequest?.id || 0}
+          onSuccess={() => {
+            fetchDashboard();
+            fetchPendingGuarantees();
+            setTopUpGuarantorDialogOpen(false);
+            setSelectedTopUpGuarantee(null);
+          }}
         />
 
         {/* Guarantor Rejection Options Dialog */}
@@ -1381,6 +1851,24 @@ export default function MemberDashboard() {
           type="withdraw"
           onSuccess={fetchDashboard}
         /> */}
+
+        {/* Loan Top-Up Request Dialog */}
+        {topUpLoan && (
+          <LoanTopUpRequestDialog
+            isOpen={topUpDialogOpen}
+            onClose={() => {
+              setTopUpDialogOpen(false);
+              setTopUpLoan(null);
+            }}
+            loanId={topUpLoan.id}
+            loanNumber={topUpLoan.loanNumber}
+            currentOutstanding={topUpLoan.outstandingBalance || 0}
+            onSuccess={() => {
+              fetchActiveLoans();
+              fetchDashboard();
+            }}
+          />
+        )}
       </div>
     </MemberLayout>
   );

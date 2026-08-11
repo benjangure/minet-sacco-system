@@ -144,7 +144,7 @@ spring.datasource.username=sacco_user
 spring.datasource.password=YourStrongPassword123!
 spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 
-server.port=8080
+server.port=9090
 server.servlet.context-path=/api
 
 spring.flyway.enabled=true
@@ -165,7 +165,7 @@ java -jar target\minetsacco-0.0.1-SNAPSHOT.jar
 
 Wait for startup, then open browser and visit:
 ```
-http://localhost:8080/api/auth/health
+http://localhost:9090/api/auth/health
 ```
 
 You should see: `{"status":"UP"}`
@@ -205,7 +205,7 @@ cd C:\minetsacco\minetsacco-main
 1. Open: `src\config\api.ts`
 2. Update backend URL:
 ```typescript
-const API_BASE_URL = "http://10.39.60.15:8080/api";
+const API_BASE_URL = "http://10.39.60.15:9090/api";
 ```
 
 ### Step 3: Install Dependencies
@@ -260,7 +260,7 @@ Then create rewrite rule:
 1. Double-click **URL Rewrite**
 2. Click **Add Rule** → **Reverse Proxy**
 3. Inbound pattern: `^api/(.*)`
-4. Rewrite URL: `http://localhost:8080/api/{R:1}`
+4. Rewrite URL: `http://localhost:9090/api/{R:1}`
 5. Click **OK**
 
 ---
@@ -297,7 +297,7 @@ Open **Services** (services.msc) and look for **MinetSaccoBackend** - it should 
 ### Test Backend
 Open browser and visit:
 ```
-http://10.39.60.15:8080/api/auth/health
+http://10.39.60.15:9090/api/auth/health
 ```
 
 ### Test Frontend
@@ -319,8 +319,8 @@ Try logging in with:
 
 ### Backend won't start
 ```cmd
-# Check if port 8080 is in use
-netstat -ano | findstr :8080
+# Check if port 9090 is in use
+netstat -ano | findstr :9090
 
 # If in use, identify the process and stop it
 tasklist /FI "PID eq <process_id>"
@@ -340,7 +340,7 @@ mysql -u sacco_user -p minetsacco
 
 ### Can't access from another computer
 1. Open **Windows Firewall with Advanced Security**
-2. Create inbound rules for ports: `80`, `8080`
+2. Create inbound rules for ports: `80`, `9090`
 3. Restrict to specific IP addresses if possible
 
 ---
@@ -363,7 +363,7 @@ mysql -u sacco_user -p minetsacco
 
 **Access Points:**
 - Frontend: `http://10.39.60.15`
-- Backend API: `http://10.39.60.15:8080/api`
+- Backend API: `http://10.39.60.15:9090/api`
 - Database: `localhost:3306`
 
 **Key Folders:**
@@ -393,7 +393,7 @@ mysql -u root -p
 
 Your Minet SACCO system is now deployed with:
 - ✓ MySQL database running securely on port 3306
-- ✓ Java backend running on port 8080
+- ✓ Java backend running on port 9090
 - ✓ IIS frontend running on port 80
 - ✓ All three components communicating
 - ✓ Security best practices implemented

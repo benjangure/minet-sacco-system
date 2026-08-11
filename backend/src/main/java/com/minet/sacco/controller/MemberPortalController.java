@@ -269,9 +269,11 @@ public class MemberPortalController {
             
             // Recalculate outstanding balance for each loan to ensure accuracy
             for (Loan loan : loans) {
-                // Skip outstanding balance calculation for loans still in approval stages
-                // These loans don't have totalRepayable set yet (it's calculated by treasurer)
-                if (loan.getTotalRepayable() != null) {
+                // Skip outstanding balance calculation only for loans in early approval stages
+                // Calculate for DISBURSED/ACTIVE loans even if totalRepayable is null
+                if (loan.getTotalRepayable() != null || 
+                    "DISBURSED".equals(loan.getStatus().name()) || 
+                    "ACTIVE".equals(loan.getStatus().name())) {
                     // Use principal amount repaid, not total amount, for accurate outstanding balance
                     BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(loan.getId());
                     if (totalPrincipalRepaid == null) {
@@ -315,8 +317,10 @@ public class MemberPortalController {
             
             Loan loanData = loan.get();
             
-            // Recalculate outstanding balance to ensure accuracy only for loans with totalRepayable set
-            if (loanData.getTotalRepayable() != null) {
+            // Recalculate outstanding balance to ensure accuracy for DISBURSED/ACTIVE loans
+            if (loanData.getTotalRepayable() != null ||
+                "DISBURSED".equals(loanData.getStatus().name()) ||
+                "ACTIVE".equals(loanData.getStatus().name())) {
                 // Use principal amount repaid, not total amount, for accurate outstanding balance
                 BigDecimal totalPrincipalRepaid = loanRepaymentRepository.getTotalPrincipalRepaid(id);
                 if (totalPrincipalRepaid == null) {
@@ -481,9 +485,11 @@ public class MemberPortalController {
     @GetMapping("/member-by-employee-id/{employeeId}")
     public ResponseEntity<?> getMemberByEmployeeId(@PathVariable String employeeId) {
         try {
+            System.out.println("Looking up member by employee ID: " + employeeId);
             Optional<Member> memberOpt = memberRepository.findByEmployeeId(employeeId);
             if (!memberOpt.isPresent()) {
-                return ResponseEntity.notFound().build();
+                System.out.println("Member not found with employee ID: " + employeeId);
+                return ResponseEntity.status(404).body("Member not found with employee ID: " + employeeId);
             }
             
             Member member = memberOpt.get();
@@ -494,9 +500,12 @@ public class MemberPortalController {
             response.put("firstName", member.getFirstName());
             response.put("lastName", member.getLastName());
             
+            System.out.println("Successfully found member: " + member.getFullName());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+            System.err.println("Error looking up member by employee ID: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Error: " + e.getMessage());
         }
     }
 
@@ -2053,6 +2062,59 @@ public class MemberPortalController {
             System.err.println("ERROR: Failed to change member password: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("Failed to change password: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Search for guarantor by member number (for top-up guarantor lookup)
+     */
+    @GetMapping("/search-guarantor/{memberNumber}")
+    public ResponseEntity<?> searchGuarantorByNumber(@PathVariable String memberNumber) {
+        try {
+            Optional<Member> memberOpt = memberRepository.findByMemberNumber(memberNumber);
+            if (!memberOpt.isPresent()) {
+                return ResponseEntity.status(404).body(ApiResponse.error("Member not found with number: " + memberNumber));
+            }
+            
+            Member guarantorMember = memberOpt.get();
+            
+            // Check if member is ACTIVE
+            if (guarantorMember.getStatus() != Member.Status.ACTIVE) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("Member is not active"));
+            }
+            
+            // Get guarantor's available capacity
+            Optional<Account> savingsAccount = accountRepository.findByMemberIdAndAccountType(
+                    guarantorMember.getId(), Account.AccountType.SAVINGS);
+            
+            BigDecimal savingsBalance = savingsAccount.map(Account::getBalance).orElse(BigDecimal.ZERO);
+            BigDecimal frozenSavings = savingsAccount.map(Account::getFrozenSavings).orElse(BigDecimal.ZERO);
+            if (frozenSavings == null) frozenSavings = BigDecimal.ZERO;
+            
+            // Get current pledge commitments
+            BigDecimal currentPledges = guarantorRepository.sumActivePledgesByMemberId(guarantorMember.getId());
+            if (currentPledges == null) currentPledges = BigDecimal.ZERO;
+            
+            BigDecimal totalFrozen = frozenSavings.add(currentPledges);
+            BigDecimal availableCapacity = savingsBalance.subtract(totalFrozen);
+            
+            // Build response
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("id", guarantorMember.getId());
+            response.put("memberId", guarantorMember.getId());
+            response.put("memberNumber", guarantorMember.getMemberNumber());
+            response.put("employeeId", guarantorMember.getEmployeeId());
+            response.put("firstName", guarantorMember.getFirstName());
+            response.put("lastName", guarantorMember.getLastName());
+            response.put("savingsBalance", savingsBalance);
+            response.put("frozenSavings", frozenSavings);
+            response.put("currentPledges", currentPledges);
+            response.put("availableCapacity", availableCapacity);
+            response.put("canGuarantee", availableCapacity.compareTo(BigDecimal.ZERO) > 0);
+            
+            return ResponseEntity.ok(ApiResponse.success("Guarantor found", response));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Error: " + e.getMessage()));
         }
     }
 }

@@ -1,8 +1,13 @@
-import { ReactNode, useState, useRef } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import MemberSidebar from './MemberSidebar';
-import { Menu, Bell, Home, Send, User, FileText, Handshake, ChevronLeft, ChevronRight, Settings, LogOut } from 'lucide-react';
+import NotificationDropdown from './NotificationDropdown';
+import { Menu, LogOut } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LogoutConfirmationDialog } from './LogoutConfirmationDialog';
+import { Button } from '@/components/ui/button';
+import { RefreshCw } from 'lucide-react';
+import { MemberPageSkeleton } from './MemberPageSkeleton';
+import { useRefresh } from '@/contexts/RefreshContext';
 
 interface MemberLayoutProps {
   children: ReactNode;
@@ -18,57 +23,23 @@ export default function MemberLayout({
   unreadNotifications = 0,
 }: MemberLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('home');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const { triggerRefresh } = useRefresh();
   const navigate = useNavigate();
   const location = useLocation();
-  const tabsRef = useRef<HTMLDivElement>(null);
 
-  const tabs = [
-    { icon: Home, label: 'Home', id: 'home' },
-    { icon: Send, label: 'Transact', id: 'transact' },
-    { icon: User, label: 'My Account', id: 'account' },
-    { icon: FileText, label: 'Loans', id: 'loans' },
-    { icon: FileText, label: 'Deposits', id: 'deposits' },
-    { icon: FileText, label: 'Reports', id: 'reports' },
-    { icon: Bell, label: 'Notifications', id: 'notifications' },
-    { icon: Settings, label: 'Settings', id: 'settings' },
-  ];
+  // Show skeleton briefly when route changes
+  useEffect(() => {
+    setIsNavigating(true);
+    const timer = setTimeout(() => {
+      setIsNavigating(false);
+    }, 300); // Show skeleton for 300ms during navigation
 
-  const handleTabClick = (tabId: string) => {
-    setActiveTab(tabId);
-    switch(tabId) {
-      case 'home':
-        navigate('/member/dashboard');
-        break;
-      case 'transact':
-        navigate('/member/dashboard?tab=transact');
-        break;
-      case 'account':
-        navigate('/member/dashboard?tab=account');
-        break;
-      case 'loans':
-        navigate('/member/dashboard?tab=loans');
-        break;
-      case 'deposits':
-        navigate('/member/dashboard?tab=deposits');
-        break;
-      case 'reports':
-        navigate('/member/dashboard?tab=reports');
-        break;
-      case 'notifications':
-        navigate('/member/dashboard?tab=notifications');
-        break;
-      case 'settings':
-        navigate('/member/settings');
-        break;
-    }
-  };
-
-  const handleNotificationClick = () => {
-    setActiveTab('notifications');
-    navigate('/member/dashboard?tab=notifications');
-  };
+    return () => clearTimeout(timer);
+  }, [location.pathname]);
 
   const handleLogoutClick = () => {
     setShowLogoutDialog(true);
@@ -83,33 +54,39 @@ export default function MemberLayout({
     setShowLogoutDialog(false);
   };
 
-  const scrollTabs = (direction: 'left' | 'right') => {
-    if (tabsRef.current) {
-      const scrollAmount = 150;
-      if (direction === 'left') {
-        tabsRef.current.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
-      } else {
-        tabsRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-      }
-    }
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    
+    // Trigger context-based refresh - all pages listening will refetch data
+    triggerRefresh();
+    
+    // Visual feedback for 800ms
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 800);
   };
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      {/* Sidebar - Hidden on mobile, visible on desktop */}
-      <div className="hidden lg:block">
+    <div className="flex h-screen bg-background overflow-hidden w-full">
+      {/* Sidebar - Fixed on desktop, hidden on mobile */}
+      <div className={`hidden lg:block flex-shrink-0 transition-all duration-500 ease-in-out ${isSidebarCollapsed ? 'w-16' : 'w-64'}`}>
         <MemberSidebar
           memberName={memberName}
           onLogout={onLogout}
           unreadNotifications={unreadNotifications}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
       </div>
 
-      {/* Mobile Sidebar Drawer - Only visible on mobile when open */}
+      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-50 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
-          <div className="fixed left-0 top-0 h-screen w-64 z-50 lg:hidden">
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden" 
+            onClick={() => setIsSidebarOpen(false)} 
+          />
+          <div className="fixed left-0 top-0 h-full w-64 z-50 lg:hidden">
             <MemberSidebar
               memberName={memberName}
               onLogout={onLogout}
@@ -122,68 +99,60 @@ export default function MemberLayout({
         </>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto w-full flex flex-col">
-        {/* Mobile Top Navigation Bar - Only visible on mobile */}
-        <header className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-red-600 to-red-700">
-          {/* Top bar with hamburger, title, notification, and logout */}
-          <div className="h-14 flex items-center px-4 gap-4">
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
+        {/* Desktop Header */}
+        <header className="hidden lg:flex h-14 items-center border-b bg-background px-4 lg:px-6 gap-4 flex-shrink-0">
+          <h2 className="text-sm font-medium text-muted-foreground flex-1">
+            Minet SACCO Member Portal
+          </h2>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="text-muted-foreground hover:text-foreground transition-transform duration-200 hover:scale-110"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </Button>
+          <NotificationDropdown unreadCount={unreadNotifications} />
+        </header>
+
+        {/* Mobile Header - Simplified */}
+        <header className="lg:hidden flex-shrink-0 bg-gradient-to-r from-red-600 to-red-700">
+          {/* Single Top bar */}
+          <div className="h-14 flex items-center px-4 gap-3">
             <button onClick={() => setIsSidebarOpen(true)} className="text-white">
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="text-white font-semibold text-lg flex-1 text-center">Minet SACCO</h1>
-            <button onClick={handleNotificationClick} className="relative">
-              <Bell className="w-5 h-5 text-white" />
-              {unreadNotifications > 0 && (
-                <span className="absolute -top-1 -right-1 bg-white text-red-600 text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-                  {unreadNotifications}
-                </span>
-              )}
-            </button>
-            <button onClick={handleLogoutClick} className="text-white hover:text-red-100 transition-colors">
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Horizontal scrollable tabs with navigation buttons */}
-          <div className="relative border-t border-red-500/30">
-            <button
-              onClick={() => scrollTabs('left')}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-red-700/80 text-white p-1 rounded-r shadow-md"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <div
-              ref={tabsRef}
-              className="flex overflow-x-auto scrollbar-hide px-8"
-            >
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => handleTabClick(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 whitespace-nowrap transition-colors flex-shrink-0 ${
-                    activeTab === tab.id
-                      ? 'text-white border-b-2 border-white'
-                      : 'text-white/70 hover:text-white'
-                  }`}
-                >
-                  <tab.icon className="w-4 h-4" />
-                  <span className="text-sm font-medium">{tab.label}</span>
-                </button>
-              ))}
+            <h1 className="text-white font-semibold text-base sm:text-lg flex-1">
+              Minet SACCO
+            </h1>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="text-white hover:bg-white/10 transition-transform duration-200 hover:scale-110"
+                title="Refresh"
+              >
+                <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </Button>
+              <NotificationDropdown unreadCount={unreadNotifications} variant="light" />
+              <button onClick={handleLogoutClick} className="text-white hover:text-red-100 transition-colors">
+                <LogOut className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              onClick={() => scrollTabs('right')}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-red-700/80 text-white p-1 rounded-l shadow-md"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
           </div>
         </header>
 
-        {/* Content - Add top padding on mobile for fixed header */}
-        <div className="px-4 lg:px-8 pt-28 lg:pt-8 w-full max-w-full flex-1">
-          {children}
+        {/* Content Area - Scrollable */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+          <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full max-w-full">
+            {isNavigating ? <MemberPageSkeleton /> : children}
+          </div>
         </div>
       </main>
 

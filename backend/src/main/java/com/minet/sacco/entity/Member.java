@@ -23,12 +23,15 @@ public class Member {
     @Column(name = "employee_id", unique = true)
     private String employeeId;
 
-    @NotBlank(message = "First name is required")
-    @Size(max = 50)
-    private String firstName;
+    @NotBlank(message = "Full name is required")
+    @Size(max = 150)
+    @Column(name = "full_name")
+    private String fullName;
 
+    // Legacy fields - kept temporarily for backward compatibility
     @Size(max = 50)
-    private String lastName;
+    @Deprecated
+    private String firstName;
 
     @Email(message = "Invalid email format")
     @Size(max = 100)
@@ -109,6 +112,12 @@ public class Member {
     private LocalDateTime exitDate;
     private String exitReason; // RESIGNED, RETIRED, TERMINATED, DECEASED, OTHER
 
+    @Column(name = "exited_by")
+    private Long exitedBy; // User ID who marked member as exited
+
+    @Column(name = "exit_notes", columnDefinition = "TEXT")
+    private String exitNotes; // Additional notes about the exit
+
     // Migration tracking
     @Column(name = "consecutive_months_counter")
     private Integer consecutiveMonthsCounter = 0;
@@ -152,11 +161,33 @@ public class Member {
     public String getEmployeeId() { return employeeId; }
     public void setEmployeeId(String employeeId) { this.employeeId = employeeId; }
 
-    public String getFirstName() { return firstName; }
-    public void setFirstName(String firstName) { this.firstName = firstName; }
+    public String getFullName() { return fullName; }
+    public void setFullName(String fullName) { this.fullName = fullName; }
 
-    public String getLastName() { return lastName; }
-    public void setLastName(String lastName) { this.lastName = lastName; }
+    // Legacy getters/setters - kept for backward compatibility
+    @Deprecated
+    public String getFirstName() { 
+        // For backward compatibility, return fullName if firstName is not set
+        return firstName != null ? firstName : fullName; 
+    }
+    @Deprecated
+    public void setFirstName(String firstName) { 
+        this.firstName = firstName;
+        // Automatically update fullName if it's not set
+        if (this.fullName == null || this.fullName.isEmpty()) {
+            this.fullName = firstName;
+        }
+    }
+
+    @Deprecated
+    public String getLastName() { 
+        // Return empty string for backward compatibility
+        return ""; 
+    }
+    @Deprecated
+    public void setLastName(String lastName) { 
+        // Ignore - no longer used
+    }
 
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
@@ -253,4 +284,10 @@ public class Member {
 
     public Boolean getIsLegacyMember() { return isLegacyMember; }
     public void setIsLegacyMember(Boolean isLegacyMember) { this.isLegacyMember = isLegacyMember; }
+
+    public Long getExitedBy() { return exitedBy; }
+    public void setExitedBy(Long exitedBy) { this.exitedBy = exitedBy; }
+
+    public String getExitNotes() { return exitNotes; }
+    public void setExitNotes(String exitNotes) { this.exitNotes = exitNotes; }
 }

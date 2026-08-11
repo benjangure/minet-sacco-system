@@ -35,7 +35,7 @@ export const detectBackendIP = async (): Promise<string[]> => {
 };
 
 // Test connectivity to a specific IP:port
-export const testConnectivity = async (ip: string, port: number = 8080): Promise<boolean> => {
+export const testConnectivity = async (ip: string, port: number = 9090): Promise<boolean> => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
@@ -117,7 +117,7 @@ export const getSuggestedIP = async (): Promise<string> => {
   }
   
   // Fallback to common patterns including all supported subnets
-  return '192.168.0.70'; // Updated to 192.168.0.x subnet with port 8080
+  return '192.168.0.70'; // Updated to 192.168.0.x subnet with port 9090
 };
 
 // Detect current network IP for smarter suggestions

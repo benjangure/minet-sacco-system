@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bell, X, Check, CheckCheck } from 'lucide-react';
 import { notificationService, Notification } from '../services/notificationService';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,6 +11,7 @@ export const NotificationBell: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { session, role } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Check for staff session or member token
@@ -111,6 +113,83 @@ export const NotificationBell: React.FC = () => {
     return date.toLocaleDateString();
   };
 
+  // Determine navigation path based on notification type and context
+  const getNavigationPath = (notification: Notification): string | null => {
+    const type = notification.type?.toUpperCase();
+    const category = notification.category?.toUpperCase();
+
+    // Loan-related notifications
+    if (type?.includes('LOAN') || category?.includes('LOAN')) {
+      if (type?.includes('APPROVAL') || category === 'LOAN_APPROVAL') {
+        return '/loans'; // Staff view loans page
+      }
+      if (type?.includes('DISBURSED') || type?.includes('DISBURSEMENT')) {
+        return '/loans';
+      }
+      if (type?.includes('REPAYMENT')) {
+        return '/loan-repayments';
+      }
+      if (type?.includes('TOPUP') || type?.includes('TOP_UP')) {
+        return '/loans'; // Could be a specific topup page if it exists
+      }
+      return '/loans'; // Default for loan notifications
+    }
+
+    // Guarantor-related notifications
+    if (type?.includes('GUARANTOR') || category?.includes('GUARANTOR')) {
+      if (role === 'MEMBER') {
+        return '/member/guarantor-approvals'; // Member guarantor page
+      }
+      return '/loans'; // Staff can view from loans page
+    }
+
+    // Deposit-related notifications
+    if (type?.includes('DEPOSIT') || category?.includes('DEPOSIT')) {
+      return '/savings';
+    }
+
+    // Repayment-related notifications
+    if (type?.includes('REPAYMENT') || category?.includes('REPAYMENT')) {
+      return '/loan-repayments';
+    }
+
+    // Member-related notifications
+    if (type?.includes('MEMBER') || category?.includes('MEMBER')) {
+      return '/members';
+    }
+
+    // Bulk processing notifications
+    if (type?.includes('BULK') || category?.includes('BULK')) {
+      return '/bulk-processing';
+    }
+
+    // Transaction notifications
+    if (type?.includes('TRANSACTION') || category?.includes('TRANSACTION')) {
+      return '/member-transactions';
+    }
+
+    // Default: no navigation (notification is informational only)
+    return null;
+  };
+
+  const handleNotificationClick = async (notification: Notification) => {
+    // Mark as read
+    if (!notification.read) {
+      await handleMarkAsRead(notification.id);
+    }
+
+    // Navigate to relevant page
+    const path = getNavigationPath(notification);
+    if (path) {
+      setIsOpen(false); // Close the dropdown
+      navigate(path);
+    }
+  };
+
+  const isClickable = (notification: Notification): boolean => {
+    return getNavigationPath(notification) !== null;
+  };
+
   // Don't render if no token (check both staff session and member token)
   const staffSession = localStorage.getItem('session');
   const memberToken = localStorage.getItem('token');
@@ -123,15 +202,15 @@ export const NotificationBell: React.FC = () => {
   const totalBadgeCount = unreadCount;
 
   return (
-    <div className="relative">
+    <div className="relative py-1">
       <button
         onClick={handleBellClick}
-        className="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none"
+        className="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none transition-colors duration-200"
         title="Notifications"
       >
         <Bell size={24} />
         {totalBadgeCount > 0 && (
-          <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full">
+          <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold leading-none text-white bg-red-600 rounded-full">
             {totalBadgeCount > 99 ? '99+' : totalBadgeCount}
           </span>
         )}
@@ -169,20 +248,30 @@ export const NotificationBell: React.FC = () => {
                 {notifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className={`p-4 hover:bg-gray-50 transition ${
+                    onClick={() => isClickable(notification) && handleNotificationClick(notification)}
+                    className={`p-4 transition ${
                       !notification.read ? 'bg-blue-50' : ''
+                    } ${
+                      isClickable(notification) 
+                        ? 'hover:bg-gray-100 cursor-pointer' 
+                        : 'hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className="text-sm text-gray-900">
+                        <p className={`text-sm text-gray-900 ${
+                          isClickable(notification) ? 'font-medium' : ''
+                        }`}>
                           {notification.message}
+                          {isClickable(notification) && (
+                            <span className="text-blue-600 text-xs ml-2">→ View</span>
+                          )}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
                           {formatTime(notification.createdAt)}
                         </p>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                         {!notification.read && (
                           <button
                             onClick={() => handleMarkAsRead(notification.id)}

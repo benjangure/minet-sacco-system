@@ -39,7 +39,7 @@ public class LoanEligibilityReportService {
         LoanEligibilityReportDTO report = new LoanEligibilityReportDTO();
         report.setMemberId(member.getId());
         report.setMemberNumber(member.getMemberNumber());
-        report.setMemberName(member.getFirstName() + " " + member.getLastName());
+        report.setMemberName(member.getFullName());
         report.setMemberStatus(member.getStatus().toString());
         report.setDateJoined(member.getCreatedAt() != null ? member.getCreatedAt().toLocalDate() : LocalDate.now());
 

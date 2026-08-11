@@ -22,7 +22,7 @@ interface Suspension {
 }
 
 export default function MemberSuspension() {
-  const { role } = useAuth();
+  const { role, session } = useAuth();
   const { refreshKey } = useRefresh();
   const [members, setMembers] = useState<Member[]>([]);
   const [suspensions, setSuspensions] = useState<Suspension[]>([]);
@@ -45,13 +45,16 @@ export default function MemberSuspension() {
   const canInitiateSuspension = role && role.toLowerCase() === 'credit_committee';
 
   useEffect(() => {
-    fetchActiveSuspensions();
-    fetchAllSuspensions();
-    if (role && role.toLowerCase() === 'treasurer') {
-      fetchPendingSuspensions();
-      fetchPendingReactivations();
+    // Only load data if user is authenticated
+    if (session?.user) {
+      fetchActiveSuspensions();
+      fetchAllSuspensions();
+      if (role && role.toLowerCase() === 'treasurer') {
+        fetchPendingSuspensions();
+        fetchPendingReactivations();
+      }
     }
-  }, [role, refreshKey]);
+  }, [role, refreshKey, session]);
 
   const fetchActiveSuspensions = async () => {
     try {
@@ -60,7 +63,10 @@ export default function MemberSuspension() {
         setSuspensions(response.data.data);
       }
     } catch (err: any) {
-      setError('Failed to load suspensions');
+      // Silently fail on auth errors (401/403) - these are expected before login
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        setError('Failed to load suspensions');
+      }
     }
   };
 
@@ -71,7 +77,10 @@ export default function MemberSuspension() {
         setPendingSuspensions(response.data.data);
       }
     } catch (err: any) {
-      setError('Failed to load pending suspensions');
+      // Silently fail on auth errors (401/403) - these are expected before login
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        setError('Failed to load pending suspensions');
+      }
     }
   };
 
@@ -82,7 +91,10 @@ export default function MemberSuspension() {
         setAllSuspensions(response.data.data);
       }
     } catch (err: any) {
-      setError('Failed to load all suspensions');
+      // Silently fail on auth errors (401/403) - these are expected before login
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        setError('Failed to load all suspensions');
+      }
     }
   };
 
@@ -93,7 +105,10 @@ export default function MemberSuspension() {
         setPendingReactivations(response.data.data);
       }
     } catch (err: any) {
-      setError('Failed to load pending reactivations');
+      // Silently fail on auth errors (401/403) - these are expected before login
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        setError('Failed to load pending reactivations');
+      }
     }
   };
 

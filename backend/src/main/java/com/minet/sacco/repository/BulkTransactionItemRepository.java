@@ -16,4 +16,10 @@ public interface BulkTransactionItemRepository extends JpaRepository<BulkTransac
      * Used during batch rollback cleanup.
      */
     void deleteByBatch_Id(Long batchId);
+    
+    /**
+     * Delete all BulkTransactionItem records referencing a specific loan repayment.
+     * Used when deleting loans to prevent foreign key constraint violations.
+     */
+    void deleteByLoanRepaymentId(Long loanRepaymentId);
 }

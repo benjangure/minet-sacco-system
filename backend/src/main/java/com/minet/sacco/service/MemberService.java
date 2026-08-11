@@ -5,14 +5,19 @@ import com.minet.sacco.entity.Account;
 import com.minet.sacco.entity.Loan;
 import com.minet.sacco.entity.User;
 import com.minet.sacco.entity.MemberCredential;
+import com.minet.sacco.entity.Guarantor;
 import com.minet.sacco.dto.MemberCreationResponseDTO;
 import com.minet.sacco.repository.MemberRepository;
 import com.minet.sacco.repository.AccountRepository;
 import com.minet.sacco.repository.LoanRepository;
 import com.minet.sacco.repository.UserRepository;
 import com.minet.sacco.repository.MemberCredentialRepository;
+import com.minet.sacco.repository.GuarantorRepository;
 import com.minet.sacco.util.PasswordGenerator;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,22 +57,33 @@ public class MemberService {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    private GuarantorRepository guarantorRepository;
+
     // Temporary storage for generated passwords (cleaned up after use)
     private static final Map<Long, String> generatedPasswords = new ConcurrentHashMap<>();
 
+    @Cacheable(value = "members", unless = "#result == null || #result.isEmpty()")
     public List<Member> getAllMembers() {
         return memberRepository.findAll();
     }
 
+    public org.springframework.data.domain.Page<Member> getAllMembersPaginated(org.springframework.data.domain.Pageable pageable) {
+        return memberRepository.findAll(pageable);
+    }
+
+    @Cacheable(value = "memberById", key = "#id", unless = "#result == null || !#result.isPresent()")
     public Optional<Member> getMemberById(Long id) {
         return memberRepository.findById(id);
     }
 
+    @Cacheable(value = "memberByNumber", key = "#memberNumber", unless = "#result == null || !#result.isPresent()")
     public Optional<Member> getMemberByMemberNumber(String memberNumber) {
         return memberRepository.findByMemberNumber(memberNumber);
     }
 
     @Transactional
+    @CacheEvict(value = {"members", "membersByStatus"}, allEntries = true)
     public Member createMember(Member member, Long createdByUserId) {
         // Use employeeId as the member identifier (memberNumber)
         if (member.getEmployeeId() != null && !member.getEmployeeId().isBlank()) {
@@ -244,7 +260,7 @@ public class MemberService {
             MemberCredential credential = new MemberCredential();
             credential.setMemberId(member.getId());
             credential.setUsername(username);
-            credential.setMemberName(member.getFirstName() + " " + member.getLastName());
+            credential.setMemberName(member.getFullName());
             credential.setEmail(member.getEmail());
             credential.setHasNationalId(hasNationalId);
             credential.setEmailSent(false); // Admin needs to manually deliver credentials
@@ -366,11 +382,13 @@ public class MemberService {
         accountRepository.save(sharesAccount);
     }
 
+    @CacheEvict(value = {"members", "memberById", "memberByNumber", "membersByStatus"}, allEntries = true)
     public Member updateMember(Member member) {
         member.setUpdatedAt(LocalDateTime.now());
         return memberRepository.save(member);
     }
 
+    @CacheEvict(value = {"members", "memberById", "memberByNumber", "membersByStatus"}, allEntries = true)
     public void deleteMember(Long id) {
         memberRepository.deleteById(id);
     }
@@ -389,6 +407,7 @@ public class MemberService {
         generatedPasswords.put(memberId, password);
     }
 
+    @Cacheable(value = "membersByStatus", key = "#status", unless = "#result == null || #result.isEmpty()")
     public List<Member> getMembersByStatus(Member.Status status) {
         return memberRepository.findByStatus(status);
     }
@@ -403,8 +422,74 @@ public class MemberService {
         return String.format("MNT-%05d", count);
     }
 
+    /**
+     * Analyze the impact of a member exiting
+     * Returns information about loans they guarantee and NOK coverage
+     */
+    public com.minet.sacco.dto.MemberExitImpactResponse analyzeExitImpact(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+
+        // Check for active loans where this member is a guarantor
+        List<Guarantor> activeGuarantees = guarantorRepository.findActiveGuaranteesByMemberId(memberId);
+        
+        com.minet.sacco.dto.MemberExitImpactResponse response = new com.minet.sacco.dto.MemberExitImpactResponse();
+        response.setMemberId(memberId);
+        response.setMemberName(member.getFirstName() + " " + member.getLastName());
+        response.setEmployeeId(member.getEmployeeId());
+        response.setTotalLoansAsGuarantor(activeGuarantees.size());
+        
+        int loansWithoutNok = 0;
+        boolean allLoansHaveNok = true;
+        java.math.BigDecimal totalGuaranteeAmount = java.math.BigDecimal.ZERO;
+        java.util.List<com.minet.sacco.dto.MemberExitImpactResponse.LoanGuaranteeInfo> loanInfoList = new java.util.ArrayList<>();
+        
+        for (Guarantor guarantee : activeGuarantees) {
+            Loan loan = guarantee.getLoan();
+            Member borrower = loan.getMember();
+            
+            // Add guarantee amount to total
+            totalGuaranteeAmount = totalGuaranteeAmount.add(guarantee.getGuaranteeAmount());
+            
+            // Check if NOK exists
+            Guarantor nokGuarantor = guarantee.getNextOfKinGuarantor();
+            boolean hasNok = nokGuarantor != null;
+            String nokName = null;
+            Long nokMemberId = null;
+            
+            if (hasNok) {
+                Member nokMember = nokGuarantor.getMember();
+                nokName = nokMember.getFirstName() + " " + nokMember.getLastName();
+                nokMemberId = nokMember.getId();
+            } else {
+                loansWithoutNok++;
+                allLoansHaveNok = false;
+            }
+            
+            // Create loan info
+            com.minet.sacco.dto.MemberExitImpactResponse.LoanGuaranteeInfo loanInfo = 
+                new com.minet.sacco.dto.MemberExitImpactResponse.LoanGuaranteeInfo(
+                    loan.getId(),
+                    loan.getLoanNumber(),
+                    borrower.getFirstName() + " " + borrower.getLastName(),
+                    guarantee.getGuaranteeAmount(),
+                    hasNok,
+                    nokName,
+                    nokMemberId
+                );
+            loanInfoList.add(loanInfo);
+        }
+        
+        response.setLoansAsGuarantor(loanInfoList);
+        response.setTotalGuaranteeAmount(totalGuaranteeAmount);
+        response.setLoansWithoutNok(loansWithoutNok);
+        response.setAllLoansHaveNok(allLoansHaveNok);
+        
+        return response;
+    }
+
     @Transactional
-    public Member exitMember(Long memberId, String exitReason, Long exitedByUserId) {
+    public Member exitMember(Long memberId, com.minet.sacco.dto.MemberExitRequest exitRequest, Long exitedByUserId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new RuntimeException("Member not found"));
 
@@ -422,10 +507,31 @@ public class MemberService {
             throw new RuntimeException("Member has " + activeLoans.size() + " active loans. All loans must be settled before exit.");
         }
 
+        // Replace this member's guarantees with NOK guarantors
+        List<Guarantor> activeGuarantees = guarantorRepository.findActiveGuaranteesByMemberId(memberId);
+        for (Guarantor guarantee : activeGuarantees) {
+            Guarantor nokGuarantor = guarantee.getNextOfKinGuarantor();
+            if (nokGuarantor != null) {
+                // Activate the NOK guarantor
+                nokGuarantor.setStatus(Guarantor.Status.ACTIVATED_FROM_NOK);
+                guarantorRepository.save(nokGuarantor);
+                
+                // Deactivate the exiting member's guarantee
+                guarantee.setStatus(Guarantor.Status.REPLACED_DUE_TO_EXIT);
+                guarantee.setReplacedAt(LocalDateTime.now());
+                guarantee.setReplacedByGuarantorId(nokGuarantor.getId());
+                guarantee.setReplacementReason("Member exited from SACCO: " + exitRequest.getExitReason());
+                guarantorRepository.save(guarantee);
+            }
+        }
+
         // Mark member as EXITED
         member.setStatus(Member.Status.EXITED);
-        member.setExitDate(LocalDateTime.now());
-        member.setExitReason(exitReason);
+        member.setExitDate(exitRequest.getExitDate() != null ? exitRequest.getExitDate() : LocalDateTime.now());
+        member.setExitReason(exitRequest.getExitReason() + 
+                (exitRequest.getExitNotes() != null && !exitRequest.getExitNotes().trim().isEmpty() 
+                    ? " - " + exitRequest.getExitNotes() 
+                    : ""));
         member.setUpdatedAt(LocalDateTime.now());
 
         return memberRepository.save(member);
@@ -445,5 +551,37 @@ public class MemberService {
                         loan.getStatus() == Loan.Status.APPROVED);
                 })
                 .toList();
+    }
+
+    /**
+     * Reactivate an exited member
+     * Changes status from EXITED back to ACTIVE
+     */
+    @Transactional
+    public Member reactivateMember(Long memberId, Long reactivatedByUserId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+
+        if (member.getStatus() != Member.Status.EXITED) {
+            throw new RuntimeException("Only exited members can be reactivated. Current status: " + member.getStatus());
+        }
+
+        // Check if member has outstanding loans
+        List<Loan> outstandingLoans = loanRepository.findByMemberId(memberId).stream()
+                .filter(loan -> loan.getStatus() == Loan.Status.DISBURSED || 
+                               loan.getStatus() == Loan.Status.APPROVED)
+                .toList();
+
+        if (!outstandingLoans.isEmpty()) {
+            throw new RuntimeException("Member has " + outstandingLoans.size() + " outstanding loans. Loans must be cleared before reactivation.");
+        }
+
+        // Reactivate the member
+        member.setStatus(Member.Status.ACTIVE);
+        member.setExitDate(null); // Clear exit date
+        member.setExitReason(null); // Clear exit reason
+        member.setUpdatedAt(LocalDateTime.now());
+
+        return memberRepository.save(member);
     }
 }

@@ -56,6 +56,16 @@ public class Loan {
     @Column(name = "interest_collected", nullable = true)
     private BigDecimal interestCollected = BigDecimal.ZERO;
 
+    @Column(name = "interest_collected_manual_override")
+    private Boolean interestCollectedManualOverride = false;
+
+    @DecimalMin(value = "0.00")
+    @Column(name = "principal_repaid", nullable = true)
+    private BigDecimal principalRepaid;
+
+    @Column(name = "principal_repaid_manual_override")
+    private Boolean principalRepaidManualOverride = false;
+
     @DecimalMin(value = "0.00")
     private BigDecimal totalRepayable;
 
@@ -105,6 +115,19 @@ public class Loan {
 
     @Column(name = "migration_status")
     private String migrationStatus = "ACTIVE"; // ACTIVE or MIGRATED
+
+    // Loan Top-Up Support (Incremental Top-Up - Same Loan)
+    @Column(name = "total_topup_amount")
+    private BigDecimal totalTopupAmount = BigDecimal.ZERO;  // Sum of all top-ups on this loan
+
+    @Column(name = "topup_count")
+    private Integer topupCount = 0;  // Number of times this loan has been topped up
+
+    @Column(name = "last_topup_date")
+    private LocalDateTime lastTopupDate;  // Date of most recent top-up
+
+    @Column(name = "principal_before_topup")
+    private BigDecimal principalBeforeTopup;  // Store principal before each top-up for history
 
     public enum Status {
         PENDING, 
@@ -158,6 +181,19 @@ public class Loan {
     public BigDecimal getInterestCollected() { return interestCollected; }
     public void setInterestCollected(BigDecimal interestCollected) { this.interestCollected = interestCollected; }
 
+    public Boolean getInterestCollectedManualOverride() { return interestCollectedManualOverride; }
+    public void setInterestCollectedManualOverride(Boolean interestCollectedManualOverride) { 
+        this.interestCollectedManualOverride = interestCollectedManualOverride; 
+    }
+
+    public BigDecimal getPrincipalRepaid() { return principalRepaid; }
+    public void setPrincipalRepaid(BigDecimal principalRepaid) { this.principalRepaid = principalRepaid; }
+
+    public Boolean getPrincipalRepaidManualOverride() { return principalRepaidManualOverride; }
+    public void setPrincipalRepaidManualOverride(Boolean principalRepaidManualOverride) { 
+        this.principalRepaidManualOverride = principalRepaidManualOverride; 
+    }
+
     public BigDecimal getTotalRepayable() { return totalRepayable; }
     public void setTotalRepayable(BigDecimal totalRepayable) { this.totalRepayable = totalRepayable; }
 
@@ -206,6 +242,18 @@ public class Loan {
 
     public String getMigrationStatus() { return migrationStatus; }
     public void setMigrationStatus(String migrationStatus) { this.migrationStatus = migrationStatus; }
+
+    public BigDecimal getTotalTopupAmount() { return totalTopupAmount; }
+    public void setTotalTopupAmount(BigDecimal totalTopupAmount) { this.totalTopupAmount = totalTopupAmount; }
+
+    public Integer getTopupCount() { return topupCount; }
+    public void setTopupCount(Integer topupCount) { this.topupCount = topupCount; }
+
+    public LocalDateTime getLastTopupDate() { return lastTopupDate; }
+    public void setLastTopupDate(LocalDateTime lastTopupDate) { this.lastTopupDate = lastTopupDate; }
+
+    public BigDecimal getPrincipalBeforeTopup() { return principalBeforeTopup; }
+    public void setPrincipalBeforeTopup(BigDecimal principalBeforeTopup) { this.principalBeforeTopup = principalBeforeTopup; }
 
     /**
      * Calculate loan repayment details based on amount, interest rate, and term

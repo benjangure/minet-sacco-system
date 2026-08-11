@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useTransactionsSubscription } from "@/hooks/useWebSocket";
 import { Plus, Search, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -50,6 +52,7 @@ const Savings = () => {
   const [depositOpen, setDepositOpen] = useState(false);
   const { toast } = useToast();
   const { session, role } = useAuth();
+  const { refreshKey } = useRefresh();
 
   // Check if user can process transactions
   const canProcessTransactions = role === "ADMIN" || role === "TREASURER" || role === "TELLER";
@@ -111,7 +114,7 @@ const Savings = () => {
       fetchData();
       fetchActiveMembers();
     }
-  }, [session]);
+  }, [session, refreshKey]);
 
   // Refresh data when dialog opens
   useEffect(() => {
@@ -119,6 +122,25 @@ const Savings = () => {
       fetchData();
     }
   }, [depositOpen]);
+
+  // Handle real-time transaction updates
+  const handleTransactionUpdate = useCallback((message: any) => {
+    console.log('Real-time transaction update received:', message);
+    
+    // Show toast notification
+    if (message.type === 'TRANSACTION') {
+      toast({
+        title: "Transaction Processed",
+        description: `${message.transactionType}: KES ${message.amount?.toLocaleString()} for account ${message.accountType}`,
+      });
+    }
+    
+    // Refresh accounts to show updated balances
+    fetchData();
+  }, [toast]);
+
+  // Subscribe to WebSocket transaction updates
+  useTransactionsSubscription(handleTransactionUpdate);
 
   const [form, setForm] = useState({
     accountId: "",
@@ -197,7 +219,48 @@ const Savings = () => {
     }
   };
 
-  const filteredAccounts = accounts.filter(a =>
+  // Group accounts by member
+  const groupedAccounts = accounts.reduce((acc, account) => {
+    // Skip accounts without member data
+    if (!account.member || !account.member.id) {
+      return acc;
+    }
+    
+    const memberKey = account.member.id;
+    if (!acc[memberKey]) {
+      acc[memberKey] = {
+        member: account.member,
+        savingsBalance: 0,
+        sharesBalance: 0,
+        createdAt: account.createdAt,
+        savingsAccountId: null,
+        sharesAccountId: null,
+      };
+    }
+    if (account.accountType === "SAVINGS") {
+      acc[memberKey].savingsBalance = account.balance;
+      acc[memberKey].savingsAccountId = account.id;
+    } else if (account.accountType === "SHARES") {
+      acc[memberKey].sharesBalance = account.balance;
+      acc[memberKey].sharesAccountId = account.id;
+    }
+    // Use the earliest created date
+    if (new Date(account.createdAt) < new Date(acc[memberKey].createdAt)) {
+      acc[memberKey].createdAt = account.createdAt;
+    }
+    return acc;
+  }, {} as Record<number, {
+    member: Account['member'];
+    savingsBalance: number;
+    sharesBalance: number;
+    createdAt: string;
+    savingsAccountId: number | null;
+    sharesAccountId: number | null;
+  }>);
+
+  const groupedAccountsList = Object.values(groupedAccounts);
+
+  const filteredAccounts = groupedAccountsList.filter(a =>
     !search || 
     `${a.member?.firstName} ${a.member?.lastName} ${a.member?.memberNumber}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -345,10 +408,10 @@ const Savings = () => {
         </Card>
         <Card className="border-none shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Active Accounts</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Active Members</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{accounts.length}</div>
+            <div className="text-2xl font-bold">{groupedAccountsList.length}</div>
           </CardContent>
         </Card>
       </div>
@@ -376,8 +439,8 @@ const Savings = () => {
               <TableRow>
                 <TableHead>Member Number</TableHead>
                 <TableHead>Member Name</TableHead>
-                <TableHead>Account Type</TableHead>
-                <TableHead>Balance</TableHead>
+                <TableHead>Savings Balance</TableHead>
+                <TableHead>Shares Balance</TableHead>
                 <TableHead>Opened</TableHead>
               </TableRow>
             </TableHeader>
@@ -395,24 +458,30 @@ const Savings = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredAccounts.map(account => (
-                  <TableRow key={account.id}>
+                filteredAccounts.map(accountGroup => (
+                  <TableRow key={accountGroup.member?.id}>
                     <TableCell className="font-mono text-sm">
-                      {account.member?.memberNumber || "—"}
+                      {accountGroup.member?.memberNumber || "—"}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {account.member?.firstName} {account.member?.lastName}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={account.accountType === "SAVINGS" ? "default" : "secondary"}>
-                        {account.accountType}
-                      </Badge>
+                      {accountGroup.member?.firstName} {accountGroup.member?.lastName}
                     </TableCell>
                     <TableCell className="font-semibold">
-                      KES {account.balance.toLocaleString()}
+                      {accountGroup.savingsBalance > 0 ? (
+                        <span className="text-green-600">KES {accountGroup.savingsBalance.toLocaleString()}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-semibold">
+                      {accountGroup.sharesBalance > 0 ? (
+                        <span className="text-blue-600">KES {accountGroup.sharesBalance.toLocaleString()}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
-                      {new Date(account.createdAt).toLocaleDateString()}
+                      {new Date(accountGroup.createdAt).toLocaleDateString()}
                     </TableCell>
                   </TableRow>
                 ))

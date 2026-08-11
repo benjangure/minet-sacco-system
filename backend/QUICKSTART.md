@@ -69,7 +69,7 @@ mvn spring-boot:run
 
 Open your browser and visit:
 ```
-http://localhost:8080/swagger-ui/index.html
+http://localhost:9090/swagger-ui/index.html
 ```
 
 You should see the Swagger API documentation page.
@@ -78,7 +78,7 @@ You should see the Swagger API documentation page.
 
 ### Using Swagger UI (Easiest):
 
-1. Go to `http://localhost:8080/swagger-ui/index.html`
+1. Go to `http://localhost:9090/swagger-ui/index.html`
 2. Find "auth-controller"
 3. Click on `POST /api/auth/login`
 4. Click "Try it out"
@@ -185,7 +185,7 @@ POST /api/loans/repay          - Make repayment
 
 ## Troubleshooting
 
-### Port 8080 already in use
+### Port 9090 already in use
 ```properties
 # Edit src/main/resources/application.properties
 server.port=8081

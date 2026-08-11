@@ -121,8 +121,8 @@ Write-Host ""
 Write-Host "Next Steps:" -ForegroundColor Cyan
 Write-Host "1. Run the backend: .\mvnw.cmd spring-boot:run" -ForegroundColor White
 Write-Host "2. Backend will run Flyway migrations automatically" -ForegroundColor White
-Write-Host "3. Access API at: http://localhost:8080" -ForegroundColor White
-Write-Host "4. Access Swagger UI at: http://localhost:8080/swagger-ui/index.html" -ForegroundColor White
+Write-Host "3. Access API at: http://localhost:9090" -ForegroundColor White
+Write-Host "4. Access Swagger UI at: http://localhost:9090/swagger-ui/index.html" -ForegroundColor White
 Write-Host ""
 Write-Host "Database Details:" -ForegroundColor Cyan
 Write-Host "  Host: localhost:3306" -ForegroundColor White

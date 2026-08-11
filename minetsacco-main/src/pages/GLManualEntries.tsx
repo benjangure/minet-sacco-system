@@ -40,17 +40,23 @@ export default function GLManualEntries() {
   });
 
   useEffect(() => {
-    loadGLAccounts();
-    loadEntries();
-  }, [activeTab]);
+    // Only load data if user is authenticated
+    if (session?.user) {
+      loadGLAccounts();
+      loadEntries();
+    }
+  }, [activeTab, session]);
 
   const loadGLAccounts = async () => {
     try {
       const accounts = await glManualEntryService.getGLAccounts();
       setGlAccounts(accounts);
-    } catch (err) {
-      console.error('Error loading GL accounts:', err);
-      setError('Failed to load GL accounts');
+    } catch (err: any) {
+      // Silently fail on auth errors (401/403) - these are expected before login
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        console.error('Error loading GL accounts:', err);
+        setError('Failed to load GL accounts');
+      }
     }
   };
 
@@ -63,9 +69,12 @@ export default function GLManualEntries() {
           ? await glManualEntryService.getPendingEntries()
           : await glManualEntryService.getAllEntries();
       setEntries(data);
-    } catch (err) {
-      console.error('Error loading entries:', err);
-      setError('Failed to load entries');
+    } catch (err: any) {
+      // Silently fail on auth errors (401/403) - these are expected before login
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        console.error('Error loading entries:', err);
+        setError('Failed to load entries');
+      }
     } finally {
       setLoading(false);
     }

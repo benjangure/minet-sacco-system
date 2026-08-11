@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status Badge Responsive Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .demo-section {
+            margin-bottom: 40px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .screen-size {
+            background: #3b82f6;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container">
+        <h1 class="text-3xl font-bold mb-8 text-gray-800">Status Badge Responsiveness Test</h1>
+        
+        <!-- Desktop View (≥ 640px) -->
+        <div class="demo-section">
+            <div class="screen-size">Desktop View (≥ 640px)</div>
+            <p class="text-sm text-gray-600 mb-4">On screens 640px and wider, full status text is displayed:</p>
+            
+            <div class="space-y-3">
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-medium w-48">PENDING_LOAN_OFFICER_REVIEW:</span>
+                    <span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight">
+                        <span class="block sm:hidden">Officer Review</span>
+                        <span class="hidden sm:block">PENDING LOAN OFFICER REVIEW</span>
+                    </span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-medium w-48">PENDING_GUARANTOR_APPROVAL:</span>
+                    <span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight">
+                        <span class="block sm:hidden">Guarantor</span>
+                        <span class="hidden sm:block">PENDING GUARANTOR APPROVAL</span>
+                    </span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-medium w-48">PENDING_CREDIT_COMMITTEE:</span>
+                    <span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight">
+                        <span class="block sm:hidden">Committee</span>
+                        <span class="hidden sm:block">PENDING CREDIT COMMITTEE</span>
+                    </span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-medium w-48">PENDING_TREASURER:</span>
+                    <span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight">
+                        <span class="block sm:hidden">Treasurer</span>
+                        <span class="hidden sm:block">PENDING TREASURER</span>
+                    </span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-medium w-48">APPROVED:</span>
+                    <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight">
+                        <span class="block sm:hidden">Approved</span>
+                        <span class="hidden sm:block">APPROVED</span>
+                    </span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-medium w-48">DISBURSED:</span>
+                    <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight">
+                        <span class="block sm:hidden">Disbursed</span>
+                        <span class="hidden sm:block">DISBURSED</span>
+                    </span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-medium w-48">REJECTED:</span>
+                    <span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight">
+                        <span class="block sm:hidden">Rejected</span>
+                        <span class="hidden sm:block">REJECTED</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table Example (Desktop) -->
+        <div class="demo-section">
+            <div class="screen-size">Table View - Desktop</div>
+            <p class="text-sm text-gray-600 mb-4">How status badges look in a table on desktop:</p>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white border border-gray-200 rounded-lg">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">ID</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Member</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Product</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Amount</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <tr>
+                            <td class="px-4 py-3 text-sm">472</td>
+                            <td class="px-4 py-3 text-sm">Mr Watson Mutua</td>
+                            <td class="px-4 py-3 text-sm">Normal Loan</td>
+                            <td class="px-4 py-3 text-sm">KES 200,000</td>
+                            <td class="px-4 py-3">
+                                <span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight inline-block max-w-[140px] sm:max-w-none">
+                                    <span class="block sm:hidden">Officer Review</span>
+                                    <span class="hidden sm:block">PENDING LOAN OFFICER REVIEW</span>
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 text-sm">471</td>
+                            <td class="px-4 py-3 text-sm">Glenn Runaru</td>
+                            <td class="px-4 py-3 text-sm">Emergency Loan</td>
+                            <td class="px-4 py-3 text-sm">KES 150,000</td>
+                            <td class="px-4 py-3">
+                                <span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight inline-block max-w-[140px] sm:max-w-none">
+                                    <span class="block sm:hidden">Committee</span>
+                                    <span class="hidden sm:block">PENDING CREDIT COMMITTEE</span>
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 text-sm">470</td>
+                            <td class="px-4 py-3 text-sm">John Doe</td>
+                            <td class="px-4 py-3 text-sm">Business Loan</td>
+                            <td class="px-4 py-3 text-sm">KES 300,000</td>
+                            <td class="px-4 py-3">
+                                <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight inline-block max-w-[140px] sm:max-w-none">
+                                    <span class="block sm:hidden">Disbursed</span>
+                                    <span class="hidden sm:block">DISBURSED</span>
+                                </span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Mobile Instructions -->
+        <div class="demo-section bg-blue-50 border-blue-200">
+            <div class="screen-size bg-blue-600">Mobile Testing Instructions</div>
+            <div class="space-y-2 text-sm">
+                <p>🔍 <strong>To test mobile view:</strong></p>
+                <ol class="list-decimal ml-6 space-y-1">
+                    <li>Press <strong>F12</strong> to open Developer Tools</li>
+                    <li>Click the <strong>device toggle</strong> icon (or press Ctrl+Shift+M)</li>
+                    <li>Select a mobile device (e.g., iPhone 12, Pixel 5)</li>
+                    <li>Observe the status badges switch to shorter labels</li>
+                    <li>Try different screen widths to see the breakpoint at 640px</li>
+                </ol>
+                <p class="mt-4"><strong>Expected behavior:</strong></p>
+                <ul class="list-disc ml-6 space-y-1">
+                    <li><strong>< 640px:</strong> Shows shorter labels like "Officer Review", "Committee"</li>
+                    <li><strong>≥ 640px:</strong> Shows full labels like "PENDING LOAN OFFICER REVIEW"</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Current Screen Size Indicator -->
+        <div class="demo-section bg-green-50 border-green-200">
+            <div class="screen-size bg-green-600">Your Current Screen</div>
+            <p class="text-sm text-gray-700 mb-2">Your current viewport width is:</p>
+            <div id="screenWidth" class="text-3xl font-bold text-green-700"></div>
+            <p class="text-xs text-gray-600 mt-2">Resize your browser to see this update in real-time</p>
+            <div class="mt-4 p-4 bg-white rounded-lg border border-green-200">
+                <p class="text-sm font-semibold mb-2">Test Badge (Live):</p>
+                <span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-normal text-center leading-tight inline-block">
+                    <span class="block sm:hidden">Officer Review (Mobile)</span>
+                    <span class="hidden sm:block">PENDING LOAN OFFICER REVIEW (Desktop)</span>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateScreenWidth() {
+            const width = window.innerWidth;
+            const element = document.getElementById('screenWidth');
+            element.textContent = width + 'px';
+            
+            if (width < 640) {
+                element.style.color = '#dc2626'; // red
+                element.parentElement.querySelector('.screen-size').textContent = 'Mobile View (< 640px)';
+                element.parentElement.querySelector('.screen-size').style.background = '#dc2626';
+            } else {
+                element.style.color = '#16a34a'; // green
+                element.parentElement.querySelector('.screen-size').textContent = 'Desktop View (≥ 640px)';
+                element.parentElement.querySelector('.screen-size').style.background = '#16a34a';
+            }
+        }
+
+        updateScreenWidth();
+        window.addEventListener('resize', updateScreenWidth);
+    </script>
+</body>
+</html>

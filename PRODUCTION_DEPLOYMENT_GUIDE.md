@@ -1,209 +1,131 @@
-# Minet SACCO - Production Deployment Guide
+# Production Deployment Guide - Minet SACCO System
 
-**Last Updated**: May 2026  
-**Status**: Ready for Production Deployment
-
----
-
-## Table of Contents
-1. [Pre-Deployment Checklist](#pre-deployment-checklist)
-2. [Database Deployment](#database-deployment)
-3. [Backend Deployment](#backend-deployment)
-4. [Frontend Deployment](#frontend-deployment)
-5. [Post-Deployment Testing](#post-deployment-testing)
-6. [Monitoring & Maintenance](#monitoring--maintenance)
+**Date:** August 5, 2026  
+**Build Status:** ✅ Production Ready  
+**Server IP:** 10.39.60.15
 
 ---
 
-## Pre-Deployment Checklist
+## 📦 Build Artifacts
 
-Before deploying to production, ensure you have:
+### Frontend (PWA)
+- **Location:** `minetsacco-main/dist/`
+- **Size:** ~2 MB (compressed assets)
+- **API Endpoint:** http://10.39.60.15:9090
+- **Features:**
+  - Progressive Web App (PWA) with offline support
+  - Push notifications enabled
+  - Service Worker v4
+  - Session expiry auto-logout
+  - Auto-refresh on all member portal pages
 
-- [ ] Server with Linux OS (Ubuntu 20.04+ recommended)
-- [ ] Java 21 JDK installed on server
-- [ ] MySQL 8.x installed on server
-- [ ] Node.js 18+ installed on server
-- [ ] Nginx or Apache web server
-- [ ] SSL certificate (Let's Encrypt recommended)
-- [ ] Domain name configured
-- [ ] Backup of current database (if migrating)
-- [ ] All environment variables documented
-- [ ] Team trained on deployment process
-
----
-
-## Database Deployment
-
-### Step 1: Prepare MySQL Server
-
-**On Your Server:**
-
-```bash
-# Update system packages
-sudo apt update && sudo apt upgrade -y
-
-# Install MySQL 8.x
-sudo apt install mysql-server -y
-
-# Secure MySQL installation
-sudo mysql_secure_installation
-
-# Start MySQL service
-sudo systemctl start mysql
-sudo systemctl enable mysql
-```
-
-### Step 2: Create Production Database
-
-```bash
-# Connect to MySQL
-mysql -u root -p
-
-# Create database and user
-CREATE DATABASE sacco_db_prod CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'sacco_user'@'localhost' IDENTIFIED BY 'StrongPassword123!@#';
-GRANT ALL PRIVILEGES ON sacco_db_prod.* TO 'sacco_user'@'localhost';
-FLUSH PRIVILEGES;
-EXIT;
-```
-
-### Step 3: Backup Current Database (if migrating)
-
-```bash
-# Export current database from development
-mysqldump -u root sacco_db > sacco_db_backup.sql
-
-# Transfer to server
-scp sacco_db_backup.sql user@server:/home/user/
-
-# Import on production server
-mysql -u sacco_user -p sacco_db_prod < sacco_db_backup.sql
-```
-
-### Step 4: Verify Database
-
-```bash
-# Connect and verify
-mysql -u sacco_user -p sacco_db_prod
-
-# Check tables
-SHOW TABLES;
-SELECT COUNT(*) FROM members;
-EXIT;
-```
+### Backend (Spring Boot)
+- **Location:** `backend/target/minet-sacco-backend-0.0.1-SNAPSHOT.jar`
+- **Size:** 103.8 MB
+- **Port:** 9090
+- **Profile:** Production (uses `minetsacco` database)
 
 ---
 
-## Backend Deployment
+## 🚀 Deployment Steps
 
-### Step 1: Prepare Backend on Server
+### 1. Backend Deployment
 
+#### Prerequisites on Server:
+- Java 17 or higher installed
+- MySQL 8.0 running
+- Database `minetsacco` created
+- Database user `minetsacco` with password `0a0b0c0D.`
+
+#### Steps:
+
+**A. Upload JAR file to server:**
 ```bash
-# SSH into server
-ssh user@server
-
-# Create application directory
-mkdir -p /opt/minet-sacco
-cd /opt/minet-sacco
-
-# Clone repository (or upload files)
-git clone https://github.com/your-org/minetsacco-main.git
-cd minetsacco-main/backend
+# On your local machine, copy to server
+scp backend/target/minet-sacco-backend-0.0.1-SNAPSHOT.jar user@10.39.60.15:/opt/minet-sacco/
 ```
 
-### Step 2: Configure Production Properties
+**B. Create application.properties (if not exists on server):**
+```bash
+# On server
+mkdir -p /opt/minet-sacco/config
+nano /opt/minet-sacco/config/application.properties
+```
 
-**Edit `src/main/resources/application.properties`:**
-
+Paste this configuration:
 ```properties
-# Server Configuration
-server.port=8080
+spring.profiles.active=prod
+server.port=9090
 server.address=0.0.0.0
 
-# Database Configuration (PRODUCTION)
-spring.datasource.url=jdbc:mysql://localhost:3306/sacco_db_prod?createDatabaseIfNotExist=false&useSSL=true&serverTimezone=UTC
-spring.datasource.username=sacco_user
-spring.datasource.password=StrongPassword123!@#
+# Database
+spring.datasource.url=jdbc:mysql://localhost:3306/minetsacco?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&autoReconnect=true&failOverReadOnly=false&maxReconnects=10
+spring.datasource.username=minetsacco
+spring.datasource.password=0a0b0c0D.
 spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 
-# JPA/Hibernate
+# JPA
 spring.jpa.hibernate.ddl-auto=none
 spring.jpa.show-sql=false
-spring.jpa.database-platform=org.hibernate.dialect.MySQL8Dialect
 
-# Flyway (Database Migrations)
+# Flyway
 spring.flyway.enabled=true
-spring.flyway.baseline-on-migrate=true
-spring.flyway.validate-on-migrate=true
 
-# JWT (CHANGE THIS TO A STRONG SECRET)
-jwt.secret=GenerateNewSecureKeyWith256BitsMinimumLength_ChangeThisInProduction
-jwt.expiration=1800000
+# JWT
+jwt.secret=YourVerySecureSecretKeyThatIsAtLeast256BitsLongForHS256Algorithm
+jwt.expiration=86400000
 
-# Email Configuration (SendGrid or AWS SES)
-spring.mail.host=smtp.sendgrid.net
+# Email (Office365)
+spring.mail.host=smtp.office365.com
 spring.mail.port=587
-spring.mail.username=apikey
-spring.mail.password=SG.your-sendgrid-api-key-here
+spring.mail.username=no_reply@minet.co.ke
+spring.mail.password=fhcyvypyydghmyfp
 spring.mail.properties.mail.smtp.auth=true
 spring.mail.properties.mail.smtp.starttls.enable=true
 
-# Logging (Production - less verbose)
-logging.level.com.minet.sacco=INFO
-logging.level.org.springframework=WARN
+# Push Notifications VAPID Keys
+push.vapid.public.key=BN21Dp26FQFRhUYw11RNHgQ1d1tibAFWBVA8Eh-mBuwkvdzxzq_27IXLahyAmXyBHcvWx5tXpMIOpE-RrJSywcE
+push.vapid.private.key=OjKrwYCDGAluvQ_Bet1h1zFc8U3D8aZiTcf5kCIlLYI
+push.vapid.subject=mailto:admin@minetsacco.co.ke
 
-# File Upload Directories
-kyc.upload.directory=/var/minet-sacco/uploads/kyc
-deposit.upload.directory=/var/minet-sacco/uploads/deposits
+# HikariCP Connection Pool
+spring.datasource.hikari.maximum-pool-size=20
+spring.datasource.hikari.minimum-idle=5
+spring.datasource.hikari.connection-timeout=30000
+spring.datasource.hikari.idle-timeout=600000
+spring.datasource.hikari.max-lifetime=1500000
+spring.datasource.hikari.keepalive-time=120000
 
-# M-Pesa Configuration (Update with production credentials)
-mpesa.consumer-key=YOUR_PRODUCTION_CONSUMER_KEY
-mpesa.consumer-secret=YOUR_PRODUCTION_CONSUMER_SECRET
-mpesa.business-short-code=YOUR_PRODUCTION_SHORT_CODE
-mpesa.passkey=YOUR_PRODUCTION_PASSKEY
-mpesa.environment=production
-mpesa.callback-url=https://yourdomain.com/api/mpesa/callback/stk
-mpesa.timeout-url=https://yourdomain.com/api/mpesa/callback/timeout
+# File uploads
+kyc.upload.directory=/opt/minet-sacco/uploads/kyc
+deposit.upload.directory=/opt/minet-sacco/uploads/deposits
+spring.servlet.multipart.max-file-size=5MB
+spring.servlet.multipart.max-request-size=10MB
 ```
 
-### Step 3: Create Upload Directories
-
+**C. Create upload directories:**
 ```bash
-# Create directories for file uploads
-sudo mkdir -p /var/minet-sacco/uploads/kyc
-sudo mkdir -p /var/minet-sacco/uploads/deposits
-
-# Set permissions
-sudo chown -R $USER:$USER /var/minet-sacco
-sudo chmod -R 755 /var/minet-sacco
+mkdir -p /opt/minet-sacco/uploads/kyc
+mkdir -p /opt/minet-sacco/uploads/deposits
+chmod -R 755 /opt/minet-sacco/uploads
 ```
 
-### Step 4: Build Backend
-
+**D. Create systemd service (recommended for auto-restart):**
 ```bash
-cd /opt/minet-sacco/minetsacco-main/backend
-
-# Clean and build
-mvn clean package -DskipTests
-
-# Verify JAR was created
-ls -lh target/sacco-*.jar
+sudo nano /etc/systemd/system/minet-sacco.service
 ```
 
-### Step 5: Create Systemd Service
-
-**Create `/etc/systemd/system/minet-sacco-backend.service`:**
-
+Paste this configuration:
 ```ini
 [Unit]
 Description=Minet SACCO Backend Service
-After=network.target mysql.service
+After=mysql.service
 
 [Service]
 Type=simple
-User=sacco
-WorkingDirectory=/opt/minet-sacco/minetsacco-main/backend
-ExecStart=/usr/bin/java -jar target/sacco-*.jar
+User=your-user
+WorkingDirectory=/opt/minet-sacco
+ExecStart=/usr/bin/java -jar /opt/minet-sacco/minet-sacco-backend-0.0.1-SNAPSHOT.jar --spring.config.location=/opt/minet-sacco/config/application.properties
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
@@ -213,447 +135,317 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-### Step 6: Start Backend Service
-
+**E. Start the service:**
 ```bash
-# Create sacco user
-sudo useradd -r -s /bin/bash sacco
-
-# Set permissions
-sudo chown -R sacco:sacco /opt/minet-sacco
-sudo chown -R sacco:sacco /var/minet-sacco
-
-# Enable and start service
 sudo systemctl daemon-reload
-sudo systemctl enable minet-sacco-backend
-sudo systemctl start minet-sacco-backend
+sudo systemctl enable minet-sacco
+sudo systemctl start minet-sacco
+sudo systemctl status minet-sacco
+```
 
-# Check status
-sudo systemctl status minet-sacco-backend
+**F. Check logs:**
+```bash
+sudo journalctl -u minet-sacco -f
+```
 
-# View logs
-sudo journalctl -u minet-sacco-backend -f
+**Alternative: Run manually (not recommended for production):**
+```bash
+cd /opt/minet-sacco
+nohup java -jar minet-sacco-backend-0.0.1-SNAPSHOT.jar --spring.config.location=config/application.properties > backend.log 2>&1 &
 ```
 
 ---
 
-## Frontend Deployment
+### 2. Frontend Deployment
 
-### Step 1: Build Frontend
+#### Option A: IIS Deployment (Windows Server)
 
-**On Your Development Machine:**
-
-```bash
-cd minetsacco-main
-
-# Install dependencies
-npm install
-
-# Build for production
-npm run build
-
-# Verify dist folder was created
-ls -la dist/
+**A. Copy dist folder to IIS:**
+```powershell
+# Copy entire dist folder to server
+Copy-Item -Recurse minetsacco-main\dist\* \\10.39.60.15\c$\inetpub\wwwroot\minetsacco\
 ```
 
-### Step 2: Upload Frontend to Server
+**B. Configure IIS:**
+1. Open IIS Manager
+2. Create new Application Pool: `MinetSaccoAppPool` (.NET CLR: No Managed Code)
+3. Create new Website:
+   - Name: `Minet SACCO`
+   - Physical path: `C:\inetpub\wwwroot\minetsacco`
+   - Binding: Port 80 (or 443 for HTTPS)
+   - Application Pool: `MinetSaccoAppPool`
 
-```bash
-# From your development machine
-scp -r dist/* user@server:/home/user/frontend-dist/
+**C. URL Rewrite (Important for SPA routing):**
+
+The `web.config` file is already in the dist folder with these rules:
+```xml
+<rewrite>
+  <rules>
+    <rule name="React Routes" stopProcessing="true">
+      <match url=".*" />
+      <conditions logicalGrouping="MatchAll">
+        <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+        <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+      </conditions>
+      <action type="Rewrite" url="/" />
+    </rule>
+  </rules>
+</rewrite>
 ```
 
-### Step 3: Configure Nginx
+**D. MIME Types (for PWA):**
+Ensure these MIME types are configured in IIS:
+- `.json` → `application/json`
+- `.webmanifest` → `application/manifest+json`
+- `.js` → `application/javascript`
 
-**Create `/etc/nginx/sites-available/minet-sacco`:**
+---
 
+#### Option B: Apache/Nginx Deployment (Linux Server)
+
+**For Nginx:**
+
+1. Copy dist folder:
+```bash
+sudo mkdir -p /var/www/minetsacco
+sudo cp -r minetsacco-main/dist/* /var/www/minetsacco/
+sudo chown -R www-data:www-data /var/www/minetsacco
+```
+
+2. Create Nginx config:
+```bash
+sudo nano /etc/nginx/sites-available/minetsacco
+```
+
+Paste:
 ```nginx
-# Redirect HTTP to HTTPS
 server {
     listen 80;
-    server_name yourdomain.com www.yourdomain.com;
-    return 301 https://$server_name$request_uri;
-}
+    server_name 10.39.60.15;
+    root /var/www/minetsacco;
+    index index.html;
 
-# HTTPS Configuration
-server {
-    listen 443 ssl http2;
-    server_name yourdomain.com www.yourdomain.com;
-
-    # SSL Certificates (Let's Encrypt)
-    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
-
-    # SSL Configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-
-    # Security Headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-
-    # Frontend
+    # PWA and SPA routing
     location / {
-        root /var/www/minet-sacco;
         try_files $uri $uri/ /index.html;
-        expires 1h;
-        add_header Cache-Control "public, immutable";
     }
 
-    # Static assets (cache longer)
+    # Cache static assets
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        root /var/www/minet-sacco;
-        expires 30d;
+        expires 1y;
         add_header Cache-Control "public, immutable";
     }
 
-    # API Proxy to Backend
-    location /api/ {
-        proxy_pass http://localhost:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+    # Service worker (no cache)
+    location = /service-worker.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires 0;
     }
 
-    # Deny access to sensitive files
-    location ~ /\. {
-        deny all;
+    # Manifest
+    location = /manifest.json {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires 0;
     }
 }
 ```
 
-### Step 4: Deploy Frontend Files
-
+3. Enable and restart:
 ```bash
-# Create web directory
-sudo mkdir -p /var/www/minet-sacco
-sudo chown -R www-data:www-data /var/www/minet-sacco
-
-# Copy frontend files
-sudo cp -r /home/user/frontend-dist/* /var/www/minet-sacco/
-
-# Set permissions
-sudo chmod -R 755 /var/www/minet-sacco
-```
-
-### Step 5: Enable Nginx Site
-
-```bash
-# Enable site
-sudo ln -s /etc/nginx/sites-available/minet-sacco /etc/nginx/sites-enabled/
-
-# Test Nginx configuration
+sudo ln -s /etc/nginx/sites-available/minetsacco /etc/nginx/sites-enabled/
 sudo nginx -t
-
-# Restart Nginx
 sudo systemctl restart nginx
 ```
 
-### Step 6: Setup SSL Certificate (Let's Encrypt)
-
-```bash
-# Install Certbot
-sudo apt install certbot python3-certbot-nginx -y
-
-# Get certificate
-sudo certbot certonly --nginx -d yourdomain.com -d www.yourdomain.com
-
-# Auto-renewal
-sudo systemctl enable certbot.timer
-sudo systemctl start certbot.timer
-```
-
 ---
 
-## Post-Deployment Testing
+## 🔥 Firewall Configuration
 
-### Test 1: Backend Health Check
-
-```bash
-# Check if backend is running
-curl https://yourdomain.com/api/auth/health
-
-# Expected response:
-# {"success":true,"message":"Backend is healthy","data":null}
-```
-
-### Test 2: Frontend Access
+Ensure these ports are open:
 
 ```bash
-# Open in browser
-https://yourdomain.com
+# Backend
+sudo ufw allow 9090/tcp
 
-# Verify:
-# - Page loads without errors
-# - Logo and styling display correctly
-# - No console errors (F12 → Console tab)
-```
-
-### Test 3: Login Test
-
-1. Open https://yourdomain.com
-2. Login with test credentials:
-   - Username: `admin`
-   - Password: `password`
-3. Verify dashboard loads
-4. Check browser console for errors (F12)
-
-### Test 4: API Endpoints
-
-```bash
-# Get JWT token
-TOKEN=$(curl -s -X POST https://yourdomain.com/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"password"}' | jq -r '.token')
-
-# Test members endpoint
-curl -H "Authorization: Bearer $TOKEN" \
-  https://yourdomain.com/api/members
-
-# Should return member list
-```
-
-### Test 5: Database Connectivity
-
-```bash
-# SSH to server
-ssh user@server
-
-# Check database
-mysql -u sacco_user -p sacco_db_prod -e "SELECT COUNT(*) as member_count FROM members;"
-```
-
-### Test 6: File Upload Test
-
-1. Login as customer support user
-2. Navigate to KYC Document Upload
-3. Upload a test document
-4. Verify file appears in `/var/minet-sacco/uploads/kyc/`
-
-### Test 7: Critical Workflows
-
-Test these key workflows:
-
-- [ ] Member login and dashboard access
-- [ ] Staff login and member management
-- [ ] Loan application and approval
-- [ ] Deposit and withdrawal
-- [ ] KYC document upload
-- [ ] Report generation
-- [ ] User management
-
----
-
-## Monitoring & Maintenance
-
-### Daily Checks
-
-```bash
-# Check backend service
-sudo systemctl status minet-sacco-backend
-
-# Check database
-mysql -u sacco_user -p sacco_db_prod -e "SELECT NOW();"
-
-# Check disk space
-df -h
-
-# Check logs
-sudo journalctl -u minet-sacco-backend -n 50
-```
-
-### Weekly Tasks
-
-```bash
-# Backup database
-mysqldump -u sacco_user -p sacco_db_prod > /backups/sacco_db_$(date +%Y%m%d).sql
-
-# Check SSL certificate expiry
-sudo certbot certificates
-
-# Review error logs
-sudo tail -100 /var/log/nginx/error.log
-```
-
-### Monthly Tasks
-
-- Review system performance metrics
-- Update system packages: `sudo apt update && sudo apt upgrade -y`
-- Verify backups are working
-- Test disaster recovery procedure
-- Review user access logs
-
-### Troubleshooting
-
-**Backend won't start:**
-```bash
-sudo journalctl -u minet-sacco-backend -n 100
-# Check application.properties for errors
-# Verify MySQL is running: sudo systemctl status mysql
-```
-
-**Frontend shows 404:**
-```bash
-# Check Nginx configuration
-sudo nginx -t
-# Verify files in /var/www/minet-sacco
-ls -la /var/www/minet-sacco/
-```
-
-**Database connection error:**
-```bash
-# Test connection
-mysql -u sacco_user -p -h localhost sacco_db_prod
-# Check credentials in application.properties
-```
-
-**SSL certificate issues:**
-```bash
-# Renew certificate
-sudo certbot renew --force-renewal
-# Check certificate
-sudo certbot certificates
-```
-
----
-
-## Environment Variables (Optional but Recommended)
-
-Instead of hardcoding values, use environment variables:
-
-**Create `/opt/minet-sacco/.env`:**
-
-```bash
-DB_URL=jdbc:mysql://localhost:3306/sacco_db_prod
-DB_USER=sacco_user
-DB_PASSWORD=StrongPassword123!@#
-JWT_SECRET=YourSecureJWTSecret
-MPESA_KEY=your-mpesa-key
-MPESA_SECRET=your-mpesa-secret
-SENDGRID_API_KEY=your-sendgrid-key
-```
-
-**Update systemd service to load env:**
-
-```ini
-[Service]
-EnvironmentFile=/opt/minet-sacco/.env
-ExecStart=/usr/bin/java -jar target/sacco-*.jar
-```
-
----
-
-## Rollback Procedure
-
-If deployment fails:
-
-```bash
-# Stop backend
-sudo systemctl stop minet-sacco-backend
-
-# Restore previous database backup
-mysql -u sacco_user -p sacco_db_prod < /backups/sacco_db_previous.sql
-
-# Restore previous JAR
-cp /backups/sacco-previous.jar /opt/minet-sacco/minetsacco-main/backend/target/
-
-# Restart backend
-sudo systemctl start minet-sacco-backend
+# Frontend (if using Nginx/Apache)
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 
 # Verify
-sudo systemctl status minet-sacco-backend
+sudo ufw status
 ```
 
 ---
 
-## Performance Optimization
+## ✅ Post-Deployment Verification
 
-### Database Optimization
+### 1. Backend Health Check
+```bash
+# Check if backend is running
+curl http://10.39.60.15:9090/actuator/health
 
+# Expected response:
+# {"status":"UP"}
+```
+
+### 2. Frontend Access
+- **Staff Portal:** http://10.39.60.15/login
+- **Member Portal:** http://10.39.60.15/member/login
+
+### 3. Test PWA Features
+1. Open browser DevTools → Application tab
+2. Check Service Worker is registered
+3. Check Manifest loaded
+4. Test "Add to Home Screen" prompt
+
+### 4. Test Push Notifications
+1. Login as member
+2. Go to Settings → Notifications
+3. Toggle "Enable Push Notifications" ON
+4. Click "Send Test Notification"
+5. Should receive browser notification
+
+### 5. Test Session Expiry
+1. Login to any portal
+2. Wait for session to expire (or manually expire token in backend)
+3. Make any action (click refresh, navigate)
+4. Should auto-logout and redirect to login page
+
+---
+
+## 📊 Monitoring
+
+### Backend Logs
+```bash
+# If using systemd
+sudo journalctl -u minet-sacco -f
+
+# If running manually
+tail -f /opt/minet-sacco/backend.log
+```
+
+### Nginx Logs
+```bash
+sudo tail -f /var/log/nginx/access.log
+sudo tail -f /var/log/nginx/error.log
+```
+
+### Database Connections
 ```sql
--- Create indexes for frequently queried columns
-CREATE INDEX idx_member_status ON members(status);
-CREATE INDEX idx_loan_member ON loans(member_id);
-CREATE INDEX idx_transaction_date ON transactions(transaction_date);
+-- Check active connections
+SHOW PROCESSLIST;
 
--- Enable query cache
-SET GLOBAL query_cache_type = 1;
-SET GLOBAL query_cache_size = 268435456;
+-- Check HikariCP pool status (check backend logs)
 ```
 
-### Backend Optimization
+---
 
-- Connection pool already configured in `application.properties`
-- Caching enabled (Caffeine cache)
-- Batch processing enabled for Hibernate
+## 🔄 Updates & Rollback
 
-### Frontend Optimization
+### To Update Frontend:
+```bash
+# Build new version locally
+npm run build
 
-- Already built with production optimizations
-- Gzip compression enabled in Nginx
-- Static assets cached for 30 days
+# Copy to server
+scp -r minetsacco-main/dist/* user@10.39.60.15:/var/www/minetsacco/
+
+# Force service worker update
+# Users will see update on next visit
+```
+
+### To Update Backend:
+```bash
+# Build new JAR locally
+./mvnw.cmd clean package -DskipTests
+
+# Copy to server
+scp backend/target/minet-sacco-backend-0.0.1-SNAPSHOT.jar user@10.39.60.15:/opt/minet-sacco/
+
+# Restart service
+ssh user@10.39.60.15 "sudo systemctl restart minet-sacco"
+```
+
+### Rollback Plan:
+```bash
+# Keep previous versions
+cp minet-sacco-backend-0.0.1-SNAPSHOT.jar minet-sacco-backend-0.0.1-SNAPSHOT.jar.backup-$(date +%Y%m%d)
+
+# To rollback, restore backup and restart
+```
 
 ---
 
-## Security Checklist
+## 🔐 Security Checklist
 
-- [ ] Change default admin password
-- [ ] Update JWT secret to strong random value
-- [ ] Enable HTTPS/SSL
-- [ ] Configure firewall rules
-- [ ] Set up database backups
-- [ ] Enable audit logging
-- [ ] Configure email for alerts
-- [ ] Set up monitoring/alerting
-- [ ] Document all credentials securely
-- [ ] Restrict SSH access
-- [ ] Disable unnecessary services
+- [ ] Change JWT secret in production
+- [ ] Use HTTPS (install SSL certificate)
+- [ ] Set strong database passwords
+- [ ] Configure CORS properly (already done in SecurityConfig)
+- [ ] Keep VAPID private key secret
+- [ ] Secure file upload directories
+- [ ] Enable firewall on server
+- [ ] Regular database backups
+- [ ] Keep Java and MySQL updated
 
 ---
 
-## Support & Escalation
+## 📱 APK Deployment (Future)
 
-**For Issues:**
-1. Check logs: `sudo journalctl -u minet-sacco-backend -f`
-2. Verify services: `sudo systemctl status minet-sacco-backend mysql nginx`
-3. Check disk space: `df -h`
-4. Review error logs: `/var/log/nginx/error.log`
-
-**Contact:**
-- Technical Team: tech@minetsacco.com
-- Emergency: +254-XXX-XXX-XXX
+When ready to deploy Android APK:
+1. User will need to configure backend URL in app settings
+2. Default URL in APK: http://10.39.60.15:9090
+3. APK will be available at: `minetsacco-main/android/app/build/outputs/apk/`
 
 ---
 
-## Deployment Checklist
+## 🆘 Troubleshooting
 
-- [ ] Database created and configured
-- [ ] Backend built and deployed
-- [ ] Frontend built and deployed
-- [ ] Nginx configured with SSL
-- [ ] All services running
-- [ ] Health checks passing
-- [ ] Login test successful
-- [ ] File uploads working
-- [ ] Backups configured
-- [ ] Monitoring enabled
-- [ ] Team trained
-- [ ] Documentation updated
+### Backend won't start:
+```bash
+# Check Java version
+java -version
+
+# Check database connection
+mysql -u minetsacco -p -h localhost minetsacco
+
+# Check port 9090 is free
+netstat -an | grep 9090
+```
+
+### Frontend not loading:
+- Clear browser cache (Ctrl+Shift+Delete)
+- Check browser console for errors
+- Verify API URL in .env.production
+- Check CORS errors in backend logs
+
+### Push notifications not working:
+- Verify VAPID keys match in backend and frontend
+- Check browser supports notifications (not Safari on iOS)
+- Ensure HTTPS is enabled (required for push)
+
+### Session expiry not redirecting:
+- Check browser console for errors
+- Verify api.ts interceptor is working
+- Check 401/403 responses in Network tab
 
 ---
 
-**Deployment Date**: _______________  
-**Deployed By**: _______________  
-**Verified By**: _______________
+## 📞 Support
 
+For deployment issues:
+- Check logs first
+- Review this guide
+- Contact: admin@minetsacco.co.ke
+
+---
+
+**Build Information:**
+- Frontend Build: August 5, 2026 3:00 PM
+- Backend Build: August 5, 2026 3:02 PM
+- Build Machine: Windows 11
+- Node Version: Latest
+- Java Version: 17
+- Maven Version: 3.9.6
+
+✅ **Ready for Production Deployment**

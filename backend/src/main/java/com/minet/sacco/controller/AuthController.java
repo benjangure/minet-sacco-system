@@ -18,6 +18,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.LocalDateTime;
 
@@ -46,9 +47,13 @@ public class AuthController {
 
     @Autowired
     private MemberRepository memberRepository;
+    
+    @Autowired(required = false)
+    private com.minet.sacco.service.DeviceTrackingService deviceTrackingService;
 
     @PostMapping("/login")
-    public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest) throws Exception {
+    public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest, HttpServletRequest request) throws Exception {
+        User user = null;
         try {
             System.out.println("DEBUG: Attempting authentication for user: " + authRequest.getUsername());
             authenticationManager.authenticate(
@@ -57,6 +62,19 @@ public class AuthController {
             System.out.println("DEBUG: Authentication successful");
         } catch (BadCredentialsException e) {
             System.err.println("ERROR: Bad credentials for user: " + authRequest.getUsername());
+            
+            // Track failed login attempt
+            if (deviceTrackingService != null) {
+                try {
+                    user = userRepository.findByUsername(authRequest.getUsername()).orElse(null);
+                    if (user != null) {
+                        deviceTrackingService.trackLogin(user, request, false, "Invalid credentials");
+                    }
+                } catch (Exception ex) {
+                    System.err.println("Failed to track failed login: " + ex.getMessage());
+                }
+            }
+            
             throw new Exception("Incorrect username or password", e);
         } catch (Exception e) {
             System.err.println("ERROR: Authentication failed: " + e.getMessage());
@@ -69,7 +87,7 @@ public class AuthController {
             final UserDetails userDetails = userDetailsService.loadUserByUsername(authRequest.getUsername());
             
             // Check if user is a MEMBER - members cannot login to staff portal
-            User user = userRepository.findByUsername(authRequest.getUsername())
+            user = userRepository.findByUsername(authRequest.getUsername())
                     .orElseThrow(() -> new Exception("User not found"));
             
             if (user.getRole() == User.Role.MEMBER) {
@@ -80,6 +98,15 @@ public class AuthController {
             System.out.println("DEBUG: User details loaded, generating JWT token");
             final String jwt = jwtUtil.generateToken(userDetails);
             System.out.println("DEBUG: JWT token generated successfully");
+            
+            // Track successful login and check for new device
+            if (deviceTrackingService != null) {
+                try {
+                    deviceTrackingService.trackLogin(user, request, true, null);
+                } catch (Exception ex) {
+                    System.err.println("Failed to track login: " + ex.getMessage());
+                }
+            }
 
             return ResponseEntity.ok(new AuthResponse(jwt));
         } catch (Exception e) {
@@ -95,7 +122,8 @@ public class AuthController {
      * Password: National ID (initial), then custom password after first login
      */
     @PostMapping("/member/login")
-    public ResponseEntity<?> memberLogin(@RequestBody AuthRequest authRequest) throws Exception {
+    public ResponseEntity<?> memberLogin(@RequestBody AuthRequest authRequest, HttpServletRequest request) throws Exception {
+        User user = null;
         try {
             System.out.println("DEBUG: Member login attempt for: " + authRequest.getUsername());
             authenticationManager.authenticate(
@@ -104,6 +132,19 @@ public class AuthController {
             System.out.println("DEBUG: Member authentication successful");
         } catch (BadCredentialsException e) {
             System.err.println("ERROR: Invalid member credentials for: " + authRequest.getUsername());
+            
+            // Track failed login attempt
+            if (deviceTrackingService != null) {
+                try {
+                    user = userRepository.findByUsername(authRequest.getUsername()).orElse(null);
+                    if (user != null) {
+                        deviceTrackingService.trackLogin(user, request, false, "Invalid credentials");
+                    }
+                } catch (Exception ex) {
+                    System.err.println("Failed to track failed login: " + ex.getMessage());
+                }
+            }
+            
             throw new Exception("Invalid username or password", e);
         } catch (Exception e) {
             System.err.println("ERROR: Member authentication failed: " + e.getMessage());
@@ -114,7 +155,7 @@ public class AuthController {
             final UserDetails userDetails = userDetailsService.loadUserByUsername(authRequest.getUsername());
             
             // Get the user to extract memberId and verify role
-            User user = userRepository.findByUsername(authRequest.getUsername())
+            user = userRepository.findByUsername(authRequest.getUsername())
                     .orElseThrow(() -> new Exception("User not found"));
             
             System.out.println("DEBUG: User found - id=" + user.getId() + ", role=" + user.getRole() + ", firstLogin=" + user.isFirstLogin());
@@ -139,6 +180,15 @@ public class AuthController {
             final String jwt = jwtUtil.generateTokenWithMemberId(userDetails, user.getMemberId(), user.isFirstLogin());
             
             System.out.println("DEBUG: JWT token generated successfully, first login flag: " + user.isFirstLogin());
+            
+            // Track successful login and check for new device
+            if (deviceTrackingService != null) {
+                try {
+                    deviceTrackingService.trackLogin(user, request, true, null);
+                } catch (Exception ex) {
+                    System.err.println("Failed to track login: " + ex.getMessage());
+                }
+            }
             
             return ResponseEntity.ok(new AuthResponse(jwt, user.getMemberId(), user.isFirstLogin()));
         } catch (Exception e) {

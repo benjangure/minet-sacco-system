@@ -29,7 +29,7 @@ public class MemberValidationService {
 
         MemberValidationResult result = new MemberValidationResult();
         result.setMemberId(member.getId());
-        result.setMemberName(member.getFirstName() + " " + member.getLastName());
+        result.setMemberName(member.getFullName());
         result.setIsEligible(true);
 
         // Check 1: Member must be ACTIVE

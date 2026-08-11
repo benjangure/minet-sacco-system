@@ -1,19 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Eye, CheckCircle, XCircle, DollarSign, AlertCircle, Edit } from "lucide-react";
+import { Plus, Search, Eye, CheckCircle, XCircle, DollarSign, AlertCircle, Users } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import GuarantorDetailsModal from "@/components/GuarantorDetailsModal";
+import LoanTopUpReviewSection from "@/components/LoanTopUpReviewSection";
+import { useLoansSubscription, useTopUpsSubscription } from "@/hooks/useWebSocket";
 
 import { API_BASE_URL } from "@/config/api";
 
@@ -144,8 +147,52 @@ const Loans = () => {
   const [guarantorModalOpen, setGuarantorModalOpen] = useState(false);
   const [selectedLoanGuarantors, setSelectedLoanGuarantors] = useState<any[]>([]);
   const [selectedLoanForGuarantors, setSelectedLoanForGuarantors] = useState<Loan | null>(null);
+  
+  // Delete loan state
+  const [deleteLoanDialog, setDeleteLoanDialog] = useState(false);
+  const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  
+  // Full edit state
+  const [fullEditDialog, setFullEditDialog] = useState(false);
+  const [fullEditForm, setFullEditForm] = useState({
+    principal: "",
+    outstandingBalance: "",
+    interestRate: "",
+    termMonths: "",
+    totalInterest: "",
+    totalRepayable: "",
+    monthlyRepayment: "",
+    interestCollected: "",
+    principalRepaid: "",
+    reason: ""
+  });
+  const [fullEditSubmitting, setFullEditSubmitting] = useState(false);
+  
+  // Top-up states
+  const [topUpDialogOpen, setTopUpDialogOpen] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [topUpPurpose, setTopUpPurpose] = useState("");
+  const [topUpGuarantors, setTopUpGuarantors] = useState<Array<{ id: string; employeeId: string; pledgeAmount: number }>>([]);
+  const [topUpPreview, setTopUpPreview] = useState<any>(null);
+  const [topUpHistory, setTopUpHistory] = useState<any[]>([]);
+  const [loadingTopUpHistory, setLoadingTopUpHistory] = useState(false);
+  const [topUpSubmitting, setTopUpSubmitting] = useState(false);
+  
+  // Top-up edit/delete states
+  const [editTopUpDialog, setEditTopUpDialog] = useState(false);
+  const [topUpToEdit, setTopUpToEdit] = useState<any>(null);
+  const [editTopUpAmount, setEditTopUpAmount] = useState("");
+  const [editTopUpPurpose, setEditTopUpPurpose] = useState("");
+  const [editTopUpSubmitting, setEditTopUpSubmitting] = useState(false);
+  const [deleteTopUpDialog, setDeleteTopUpDialog] = useState(false);
+  const [topUpToDelete, setTopUpToDelete] = useState<any>(null);
+  const [deleteTopUpSubmitting, setDeleteTopUpSubmitting] = useState(false);
+  
   const { toast } = useToast();
   const { session, role } = useAuth();
+  const { refreshKey } = useRefresh();
 
   // Edit mode state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -270,16 +317,18 @@ const Loans = () => {
 
   useEffect(() => {
     if (session) {
-      fetchMembers();
-      fetchProducts();
-      // Fetch global loan term limit set by admin
-      fetch(`${API_BASE_URL}/loan-eligibility-rules`, {
-        headers: { "Authorization": `Bearer ${session?.token}` },
-      }).then(r => r.json()).then(data => {
-        if (data?.data?.maxLoanTermMonths) {
-          setMaxLoanTermMonths(data.data.maxLoanTermMonths);
-        }
-      }).catch(() => {});
+      // Run all independent fetches in parallel
+      Promise.all([
+        fetchMembers(),
+        fetchProducts(),
+        fetch(`${API_BASE_URL}/loan-eligibility-rules`, {
+          headers: { "Authorization": `Bearer ${session?.token}` },
+        }).then(r => r.json()).then(data => {
+          if (data?.data?.maxLoanTermMonths) {
+            setMaxLoanTermMonths(data.data.maxLoanTermMonths);
+          }
+        }).catch(() => {}),
+      ]);
     }
   }, [session]);
 
@@ -288,7 +337,7 @@ const Loans = () => {
     if (session) {
       fetchLoans();
     }
-  }, [session, statusFilter]);
+  }, [session, statusFilter, refreshKey]);
 
   const handleApplyStatusFilter = () => {
     fetchLoans();
@@ -316,6 +365,13 @@ const Loans = () => {
   const [guarantorAmountInput, setGuarantorAmountInput] = useState("");
   const [guarantorEligibilityMap, setGuarantorEligibilityMap] = useState<Record<number, any>>({});
   const [guarantorAmountMap, setGuarantorAmountMap] = useState<Record<number, number>>({});
+
+  // Next of Kin (NOK) Guarantor State
+  const [nokGuarantorMap, setNokGuarantorMap] = useState<Record<number, number>>({});  // primaryGuarantorId -> nokGuarantorId
+  const [nokEmployeeIdInput, setNokEmployeeIdInput] = useState<Record<number, string>>({});  // primaryGuarantorId -> employeeId input
+  const [nokLookupResult, setNokLookupResult] = useState<Record<number, Member | null>>({});  // primaryGuarantorId -> Member
+  const [nokLookupLoading, setNokLookupLoading] = useState<Record<number, boolean>>({});  // primaryGuarantorId -> loading state
+  const [nokEligibilityMap, setNokEligibilityMap] = useState<Record<number, any>>({});  // nokGuarantorId -> eligibility
 
   const runPreCheck = async (memberId: string, amount: string, guarantorIds: number[]) => {
     if (!memberId || !amount || parseFloat(amount) <= 0) {
@@ -391,6 +447,78 @@ const Loans = () => {
     return null;
   };
 
+  // Next of Kin Guarantor Lookup
+  const lookupNokByEmployeeId = async (primaryGuarantorId: number, employeeId: string) => {
+    if (!employeeId.trim()) {
+      setNokLookupResult({...nokLookupResult, [primaryGuarantorId]: null});
+      return;
+    }
+    setNokLookupLoading({...nokLookupLoading, [primaryGuarantorId]: true});
+    try {
+      const response = await fetch(`${API_BASE_URL}/member/member-by-employee-id/${employeeId}`, {
+        headers: { "Authorization": `Bearer ${session?.token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const member: Member = {
+          id: data.memberId,
+          memberNumber: data.memberNumber,
+          employeeId: data.employeeId,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          status: "ACTIVE"
+        };
+        
+        // Validate NOK is not same as primary
+        if (member.id === primaryGuarantorId) {
+          toast({ title: "Invalid", description: "Next of kin cannot be the same as primary guarantor", variant: "destructive" });
+          setNokLookupResult({...nokLookupResult, [primaryGuarantorId]: null});
+          return;
+        }
+        
+        // Validate NOK is not already a primary guarantor
+        if (selectedGuarantors.includes(member.id)) {
+          toast({ title: "Invalid", description: "This member is already a primary guarantor", variant: "destructive" });
+          setNokLookupResult({...nokLookupResult, [primaryGuarantorId]: null});
+          return;
+        }
+        
+        setNokLookupResult({...nokLookupResult, [primaryGuarantorId]: member});
+        
+        // Check eligibility automatically
+        const guaranteeAmount = guarantorAmountMap[primaryGuarantorId];
+        if (guaranteeAmount) {
+          await checkNokEligibility(member.id, guaranteeAmount);
+        }
+      } else {
+        setNokLookupResult({...nokLookupResult, [primaryGuarantorId]: null});
+        toast({ title: "Not Found", description: `No member found with employee ID: ${employeeId}`, variant: "destructive" });
+      }
+    } catch (error) {
+      setNokLookupResult({...nokLookupResult, [primaryGuarantorId]: null});
+      toast({ title: "Error", description: "Failed to lookup NOK member", variant: "destructive" });
+    } finally {
+      setNokLookupLoading({...nokLookupLoading, [primaryGuarantorId]: false});
+    }
+  };
+
+  const checkNokEligibility = async (nokId: number, guaranteeAmount: number) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/loans/validate-guarantor-eligibility?guarantorMemberId=${nokId}&guaranteeAmount=${guaranteeAmount}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${session?.token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setNokEligibilityMap({...nokEligibilityMap, [nokId]: data.data});
+        return data.data;
+      }
+    } catch (error) {
+      console.error("Error checking NOK eligibility:", error);
+    }
+    return null;
+  };
+
   const handleProductChange = (productId: string) => {
     const product = products.find(p => p.id === parseInt(productId));
     setSelectedProduct(product || null);
@@ -423,12 +551,17 @@ const Loans = () => {
       return;
     }
 
+    // Next of kin is now optional - removed validation
+
     try {
-      // Build guarantor requests with amounts
+      // Build guarantor requests with amounts and NOK
       const guarantorRequests = selectedGuarantors.map(guarantorId => ({
         guarantorId: guarantorId,
         guaranteeAmount: guarantorAmountMap[guarantorId] || 0,
-        selfGuarantee: false
+        selfGuarantee: false,
+        // Include NOK if assigned
+        nextOfKinGuarantorId: nokGuarantorMap[guarantorId] || null,
+        nextOfKinGuaranteeAmount: nokGuarantorMap[guarantorId] ? guarantorAmountMap[guarantorId] : null
       }));
 
       const response = await fetch(`${API_BASE_URL}/loans/apply`, {
@@ -455,6 +588,10 @@ const Loans = () => {
         setSelectedGuarantors([]);
         setGuarantorAmountMap({});
         setGuarantorEligibilityMap({});
+        setNokGuarantorMap({});
+        setNokEmployeeIdInput({});
+        setNokLookupResult({});
+        setNokEligibilityMap({});
         fetchLoans();
       } else {
         const error = await response.json();
@@ -492,27 +629,18 @@ const Loans = () => {
     // Allow viewing any loan regardless of status
     const loanToDisplay = { ...loan };
     
-    // Fetch interest collected from actual repayments for this loan
-    try {
-      const repaymentRes = await fetch(`${API_BASE_URL}/loans/${loan.id}/repayments`, {
-        headers: { "Authorization": `Bearer ${session?.token}` },
-      });
-      if (repaymentRes.ok) {
-        const repaymentData = await repaymentRes.json();
-        const repayments = repaymentData.data || [];
-        const repaymentInterest = repayments.reduce((sum: number, rep: any) => sum + (rep.interestAmount || 0), 0);
-        loanToDisplay.interestCollected = Math.max(
-          repaymentInterest,
-          loan.interestCollected || 0
-        );
-      }
-    } catch (error) {
-      console.error("Error fetching repayments for interest calculation:", error);
-      // Continue with existing data if repayment fetch fails
-    }
+    // DON'T override interestCollected from database
+    // The backend already calculates it correctly as:
+    // interestCollected = migration snapshot + post-migration repayments
+    // Let the backend value be the source of truth
     
     setSelectedLoanForDetails(loanToDisplay);
     setLoanDetailsOpen(true);
+    
+    // Fetch top-up history if loan is disbursed/active
+    if ((loan.status === "DISBURSED" || loan.status === "ACTIVE") && role === "TREASURER") {
+      fetchTopUpHistory(loan.id);
+    }
   };
 
   const handleAction = async () => {
@@ -685,12 +813,14 @@ const Loans = () => {
     }
   };
 
-  const filteredLoans = loans.filter(loan =>
-    !search ||
-    loan.loanNumber?.toLowerCase().includes(search.toLowerCase()) ||
-    `${loan.member?.firstName} ${loan.member?.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
-    loan.member?.memberNumber?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredLoans = loans
+    .filter(loan => loan.status !== 'REPAID') // Hide REPAID loans (zero-balance duplicates)
+    .filter(loan =>
+      !search ||
+      loan.loanNumber?.toLowerCase().includes(search.toLowerCase()) ||
+      `${loan.member?.firstName} ${loan.member?.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
+      loan.member?.memberNumber?.toLowerCase().includes(search.toLowerCase())
+    );
 
   const handleViewGuarantors = async (loan: Loan) => {
     try {
@@ -821,25 +951,65 @@ const Loans = () => {
             pledgeAmount: g.pledgeAmount
           })));
 
-        // Validate total guarantees match principal amount
-        const totalGuarantees = guarantorsToSubmit.reduce((sum, g) => sum + g.pledgeAmount, 0);
-        // Allow small rounding differences (within 1 unit)
-        const difference = Math.abs(totalGuarantees - loanToEdit.amount);
-        if (difference > 1) {
+        // Final check for duplicate guarantors
+        const allEmployeeIds = guarantorsToSubmit.map(g => g.employeeId);
+        const uniqueIds = new Set(allEmployeeIds);
+        if (allEmployeeIds.length !== uniqueIds.size) {
           toast({ 
-            title: "Validation Error", 
-            description: `Total guarantees (KES ${totalGuarantees.toLocaleString()}) must equal principal amount (KES ${loanToEdit.amount.toLocaleString()})`, 
+            title: "Duplicate Guarantor", 
+            description: "You have the same member as a guarantor multiple times. Please ensure each guarantor is unique.",
             variant: "destructive" 
           });
           setEditSubmitting(false);
           return;
         }
 
-        if (guarantorsToSubmit.length === 0) {
-          toast({ title: "Error", description: "At least one guarantor must be assigned", variant: "destructive" });
-          setEditSubmitting(false);
-          return;
+        // Validate total guarantees vs outstanding balance
+        const totalGuarantees = guarantorsToSubmit.reduce((sum, g) => sum + g.pledgeAmount, 0);
+        
+        // Special case: If outstanding is 0, loan is fully paid - allow removing all guarantors
+        if (finalOutstanding === 0 || finalOutstanding === null || isNaN(finalOutstanding)) {
+          // No validation needed for fully paid loans
+          // Allow proceeding with any guarantor configuration (including zero guarantors)
+        } else {
+          // Normal validation for active loans
+          const percentage = (totalGuarantees / finalOutstanding) * 100;
+          
+          // Check if exceeds 100%
+          if (percentage > 100) {
+            const confirmed = window.confirm(
+              `Warning: Total guarantor coverage is ${percentage.toFixed(1)}% (exceeds 100%).\n\n` +
+              `Total pledged: KES ${totalGuarantees.toLocaleString()}\n` +
+              `Outstanding balance: KES ${finalOutstanding.toLocaleString()}\n\n` +
+              `Do you want to proceed anyway?`
+            );
+            if (!confirmed) {
+              setEditSubmitting(false);
+              return;
+            }
+          }
         }
+
+        // Allow small rounding differences (within 1 unit) - but only for active loans
+        if (finalOutstanding > 0 && !isNaN(finalOutstanding)) {
+          const difference = Math.abs(totalGuarantees - loanToEdit.amount);
+          if (difference > 1) {
+            toast({ 
+              title: "Validation Error", 
+              description: `Total guarantees (KES ${totalGuarantees.toLocaleString()}) must equal principal amount (KES ${loanToEdit.amount.toLocaleString()})`, 
+              variant: "destructive" 
+            });
+            setEditSubmitting(false);
+            return;
+          }
+
+          if (guarantorsToSubmit.length === 0) {
+            toast({ title: "Error", description: "At least one guarantor must be assigned for active loans", variant: "destructive" });
+            setEditSubmitting(false);
+            return;
+          }
+        }
+        // For fully paid loans (outstanding = 0), allow any guarantor configuration including zero guarantors
 
         updatePayload.guarantorshipType = "NORMAL";
         updatePayload.guarantors = guarantorsToSubmit;
@@ -877,6 +1047,23 @@ const Loans = () => {
           guarantors: []
         });
         fetchLoans();
+        
+        // Fetch the UPDATED loan from backend before displaying
+        if (selectedLoanForDetails && selectedLoanForDetails.id === loanToEdit.id) {
+          try {
+            const loanResponse = await fetch(`${API_BASE_URL}/loans/${loanToEdit.id}`, {
+              headers: { "Authorization": `Bearer ${session?.token}` },
+            });
+            if (loanResponse.ok) {
+              const loanData = await loanResponse.json();
+              const updatedLoan = loanData.data;
+              // Refresh loan details with fresh data
+              handleEyeIconClick(updatedLoan);
+            }
+          } catch (error) {
+            console.error("Error fetching updated loan:", error);
+          }
+        }
       } else {
         const error = await response.json();
         toast({ title: "Error", description: error.message || "Failed to update loan", variant: "destructive" });
@@ -948,6 +1135,342 @@ const Loans = () => {
       toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to reassign guarantors", variant: "destructive" });
     } finally {
       setReassignSubmitting(false);
+    }
+  };
+
+  // Delete loan handler
+  const handleDeleteLoan = async () => {
+    if (!loanToDelete || !deleteReason.trim()) {
+      toast({ title: "Error", description: "Please provide a reason for deletion", variant: "destructive" });
+      return;
+    }
+
+    setDeleteSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/loans/${loanToDelete.id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.token}`,
+        },
+        body: JSON.stringify({ reason: deleteReason }),
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Loan deleted successfully" });
+        setDeleteLoanDialog(false);
+        setLoanToDelete(null);
+        setDeleteReason("");
+        fetchLoans();
+      } else {
+        const error = await response.json();
+        toast({ title: "Error", description: error.message || "Failed to delete loan", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to delete loan", variant: "destructive" });
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
+  // Fetch top-up history
+  const fetchTopUpHistory = async (loanId: number) => {
+    setLoadingTopUpHistory(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/loans/${loanId}/topup-history`, {
+        headers: { "Authorization": `Bearer ${session?.token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Top-up history for loan', loanId, ':', data);
+        setTopUpHistory(data.data || data || []);
+      } else {
+        console.error('Failed to fetch top-up history:', response.status);
+        setTopUpHistory([]);
+      }
+    } catch (error) {
+      console.error("Error fetching top-up history:", error);
+      setTopUpHistory([]);
+    } finally {
+      setLoadingTopUpHistory(false);
+    }
+  };
+
+  // Preview top-up
+  const previewTopUp = async (loanId: number, amount: string) => {
+    if (!amount || parseFloat(amount) <= 0) {
+      setTopUpPreview(null);
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/loans/${loanId}/topup-preview?amount=${amount}`, {
+        headers: { "Authorization": `Bearer ${session?.token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTopUpPreview(data.data);
+      }
+    } catch (error) {
+      console.error("Error previewing top-up:", error);
+    }
+  };
+
+  // Handle top-up submission
+  const handleTopUpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLoanForDetails || !topUpAmount || parseFloat(topUpAmount) <= 0) {
+      toast({ title: "Error", description: "Please enter a valid top-up amount", variant: "destructive" });
+      return;
+    }
+
+    // Validate guarantors if provided
+    const validGuarantors = topUpGuarantors.filter(g => g.employeeId && g.pledgeAmount > 0);
+    if (topUpGuarantors.length > 0 && validGuarantors.length === 0) {
+      toast({ title: "Error", description: "Please complete all guarantor details or remove empty entries", variant: "destructive" });
+      return;
+    }
+
+    // Final check for duplicate guarantors
+    if (validGuarantors.length > 0) {
+      const employeeIds = validGuarantors.map(g => g.employeeId);
+      const uniqueIds = new Set(employeeIds);
+      if (employeeIds.length !== uniqueIds.size) {
+        toast({ 
+          title: "Duplicate Guarantor", 
+          description: "You have selected the same guarantor multiple times. Please ensure each guarantor is unique.",
+          variant: "destructive" 
+        });
+        setTopUpSubmitting(false);
+        return;
+      }
+    }
+
+    // Check if guarantors exceed 100%
+    if (validGuarantors.length > 0) {
+      const totalPledged = validGuarantors.reduce((sum, g) => sum + g.pledgeAmount, 0);
+      const percentage = (totalPledged / parseFloat(topUpAmount)) * 100;
+      
+      if (percentage > 100) {
+        const confirmed = window.confirm(
+          `Warning: Total guarantor coverage is ${percentage.toFixed(1)}% (exceeds 100%).\n\n` +
+          `Total pledged: KES ${totalPledged.toLocaleString()}\n` +
+          `Top-up amount: KES ${parseFloat(topUpAmount).toLocaleString()}\n\n` +
+          `Do you want to proceed anyway?`
+        );
+        if (!confirmed) return;
+      }
+    }
+
+    setTopUpSubmitting(true);
+    try {
+      // Map guarantors to backend format
+      const newGuarantors = validGuarantors.map(g => ({
+        guarantorMemberNumber: g.employeeId,
+        guaranteeAmount: g.pledgeAmount
+      }));
+
+      const response = await fetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}/add-topup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.token}`,
+        },
+        body: JSON.stringify({
+          topupAmount: parseFloat(topUpAmount),
+          purpose: topUpPurpose || "Loan top-up",
+          newGuarantors: newGuarantors.length > 0 ? newGuarantors : null
+        }),
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Loan top-up added successfully" });
+        setTopUpDialogOpen(false);
+        setTopUpAmount("");
+        setTopUpPurpose("");
+        setTopUpGuarantors([]);
+        setTopUpPreview(null);
+        fetchLoans();
+        // Refresh loan details
+        handleEyeIconClick(selectedLoanForDetails);
+      } else {
+        const error = await response.json();
+        toast({ title: "Error", description: error.message || "Failed to add top-up", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to add top-up", variant: "destructive" });
+    } finally {
+      setTopUpSubmitting(false);
+    }
+  };
+
+  // Edit top-up handler
+  const handleEditTopUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!topUpToEdit || !editTopUpAmount || parseFloat(editTopUpAmount) <= 0) {
+      toast({ title: "Error", description: "Please enter a valid top-up amount", variant: "destructive" });
+      return;
+    }
+
+    setEditTopUpSubmitting(true);
+    try {
+      // Backend expects query parameters, not request body
+      const params = new URLSearchParams({
+        topupAmount: editTopUpAmount,
+        ...(editTopUpPurpose && { purpose: editTopUpPurpose })
+      });
+      
+      const response = await fetch(`${API_BASE_URL}/loans/topup/${topUpToEdit.id}?${params}`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${session?.token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Top-up updated successfully" });
+        setEditTopUpDialog(false);
+        setTopUpToEdit(null);
+        setEditTopUpAmount("");
+        setEditTopUpPurpose("");
+        fetchLoans();
+        // Refresh loan details
+        if (selectedLoanForDetails) {
+          fetchTopUpHistory(selectedLoanForDetails.id);
+          handleEyeIconClick(selectedLoanForDetails);
+        }
+      } else {
+        const error = await response.json();
+        toast({ title: "Error", description: error.message || "Failed to update top-up", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update top-up", variant: "destructive" });
+    } finally {
+      setEditTopUpSubmitting(false);
+    }
+  };
+
+  // Delete top-up handler
+  const handleDeleteTopUp = async () => {
+    if (!topUpToDelete) return;
+
+    setDeleteTopUpSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/loans/topup/${topUpToDelete.id}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${session?.token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Top-up deleted successfully" });
+        setDeleteTopUpDialog(false);
+        setTopUpToDelete(null);
+        fetchLoans();
+        // Refresh loan details
+        if (selectedLoanForDetails) {
+          fetchTopUpHistory(selectedLoanForDetails.id);
+          handleEyeIconClick(selectedLoanForDetails);
+        }
+      } else {
+        const error = await response.json();
+        toast({ title: "Error", description: error.message || "Failed to delete top-up", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to delete top-up", variant: "destructive" });
+    } finally {
+      setDeleteTopUpSubmitting(false);
+    }
+  };
+
+  // Full edit handler
+  const handleFullEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLoanForDetails) return;
+
+    // Validate at least one field is provided
+    const hasChanges = fullEditForm.principal || fullEditForm.outstandingBalance || 
+                      fullEditForm.interestRate || fullEditForm.termMonths || 
+                      fullEditForm.totalInterest || fullEditForm.totalRepayable || 
+                      fullEditForm.monthlyRepayment || fullEditForm.interestCollected ||
+                      fullEditForm.principalRepaid;
+    
+    if (!hasChanges) {
+      toast({ title: "Error", description: "Please provide at least one field to update", variant: "destructive" });
+      return;
+    }
+
+    if (!fullEditForm.reason || !fullEditForm.reason.trim()) {
+      toast({ title: "Error", description: "Please provide a reason for this edit", variant: "destructive" });
+      return;
+    }
+
+    setFullEditSubmitting(true);
+    try {
+      const params = new URLSearchParams();
+      
+      // Include fields even if they're 0 (empty string means "no change", "0" means "set to zero")
+      if (fullEditForm.principal !== "") params.append("principal", fullEditForm.principal);
+      if (fullEditForm.outstandingBalance !== "") params.append("outstandingBalance", fullEditForm.outstandingBalance);
+      if (fullEditForm.interestRate !== "") params.append("interestRate", fullEditForm.interestRate);
+      if (fullEditForm.termMonths !== "") params.append("termMonths", fullEditForm.termMonths);
+      if (fullEditForm.totalInterest !== "") params.append("totalInterest", fullEditForm.totalInterest);
+      if (fullEditForm.totalRepayable !== "") params.append("totalRepayable", fullEditForm.totalRepayable);
+      if (fullEditForm.monthlyRepayment !== "") params.append("monthlyRepayment", fullEditForm.monthlyRepayment);
+      if (fullEditForm.interestCollected !== "") params.append("interestCollected", fullEditForm.interestCollected);
+      if (fullEditForm.principalRepaid !== "") params.append("principalRepaid", fullEditForm.principalRepaid);
+      params.append("reason", fullEditForm.reason);
+
+      const response = await fetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}/update-financials?${params}`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${session?.token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({ title: "Success", description: "Loan financials updated successfully" });
+        setFullEditDialog(false);
+        setFullEditForm({
+          principal: "",
+          outstandingBalance: "",
+          interestRate: "",
+          termMonths: "",
+          totalInterest: "",
+          totalRepayable: "",
+          monthlyRepayment: "",
+          interestCollected: "",
+          principalRepaid: "",
+          reason: ""
+        });
+        fetchLoans();
+        
+        // Fetch the UPDATED loan from backend before displaying
+        try {
+          const loanResponse = await fetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}`, {
+            headers: { "Authorization": `Bearer ${session?.token}` },
+          });
+          if (loanResponse.ok) {
+            const loanData = await loanResponse.json();
+            const updatedLoan = loanData.data;
+            // Refresh loan details with fresh data
+            handleEyeIconClick(updatedLoan);
+          } else {
+            // Fallback: close details and let user reopen
+            setLoanDetailsOpen(false);
+          }
+        } catch (error) {
+          console.error("Error fetching updated loan:", error);
+          setLoanDetailsOpen(false);
+        }
+      } else {
+        const error = await response.json();
+        toast({ title: "Error", description: error.message || "Failed to update loan", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update loan", variant: "destructive" });
+    } finally {
+      setFullEditSubmitting(false);
     }
   };
 
@@ -1235,35 +1758,143 @@ const Loans = () => {
                         const guarantor = members.find(m => m.id === guarantorId);
                         const amount = guarantorAmountMap[guarantorId] || 0;
                         const eligibility = guarantorEligibilityMap[guarantorId];
+                        const nokMember = nokLookupResult[guarantorId];
+                        const nokId = nokGuarantorMap[guarantorId];
+                        const nokEligibility = nokId ? nokEligibilityMap[nokId] : null;
+                        
                         return (
-                          <div key={guarantorId} className="flex items-center justify-between bg-white p-2 rounded border border-blue-200">
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">{guarantor?.firstName} {guarantor?.lastName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {guarantor?.employeeId} • Guaranteeing: KES {amount.toLocaleString()}
-                              </p>
+                          <div key={guarantorId} className="bg-white p-3 rounded border border-blue-200 space-y-3">
+                            {/* Primary Guarantor Info */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{guarantor?.firstName} {guarantor?.lastName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {guarantor?.employeeId} • Guaranteeing: KES {amount.toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {eligibility?.eligible ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-red-600" />
+                                )}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    const updated = selectedGuarantors.filter(id => id !== guarantorId);
+                                    setSelectedGuarantors(updated);
+                                    const newAmountMap = {...guarantorAmountMap};
+                                    delete newAmountMap[guarantorId];
+                                    setGuarantorAmountMap(newAmountMap);
+                                    // Clear NOK data
+                                    const newNokMap = {...nokGuarantorMap};
+                                    delete newNokMap[guarantorId];
+                                    setNokGuarantorMap(newNokMap);
+                                    runPreCheck(form.memberId, form.amount, updated);
+                                  }}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              {eligibility?.eligible ? (
-                                <CheckCircle className="h-4 w-4 text-green-600" />
+
+                            {/* Next of Kin Guarantor Section */}
+                            <div className="border-t pt-3 space-y-2">
+                              <Label className="text-xs font-semibold text-blue-700">
+                                Next of Kin (Backup) Guarantor (Optional)
+                              </Label>
+                              
+                              {!nokId ? (
+                                <div className="space-y-2">
+                                  <div className="flex gap-2">
+                                    <Input
+                                      placeholder="Enter NOK employee ID"
+                                      value={nokEmployeeIdInput[guarantorId] || ""}
+                                      onChange={(e) => setNokEmployeeIdInput({...nokEmployeeIdInput, [guarantorId]: e.target.value})}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          lookupNokByEmployeeId(guarantorId, nokEmployeeIdInput[guarantorId] || "");
+                                        }
+                                      }}
+                                      className="text-sm"
+                                    />
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() => lookupNokByEmployeeId(guarantorId, nokEmployeeIdInput[guarantorId] || "")}
+                                      disabled={nokLookupLoading[guarantorId] || !nokEmployeeIdInput[guarantorId]?.trim()}
+                                    >
+                                      {nokLookupLoading[guarantorId] ? "..." : "Search"}
+                                    </Button>
+                                  </div>
+                                  
+                                  {nokMember && (
+                                    <div className="bg-green-50 border border-green-200 rounded p-2 space-y-2">
+                                      <div>
+                                        <p className="text-sm font-medium">{nokMember.firstName} {nokMember.lastName}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {nokMember.employeeId} • Will cover: KES {amount.toLocaleString()}
+                                        </p>
+                                      </div>
+                                      
+                                      {nokEligibility && (
+                                        nokEligibility.eligible ? (
+                                          <div className="flex items-center gap-1 text-xs text-green-600">
+                                            <CheckCircle className="h-3 w-3" />
+                                            <span>✓ Eligible as NOK</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-1 text-xs text-red-600">
+                                            <XCircle className="h-3 w-3" />
+                                            <span>✗ {nokEligibility.errors?.[0] || "Not eligible"}</span>
+                                          </div>
+                                        )
+                                      )}
+                                      
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        className="w-full"
+                                        onClick={() => {
+                                          if (nokEligibility?.eligible) {
+                                            setNokGuarantorMap({...nokGuarantorMap, [guarantorId]: nokMember.id});
+                                            setNokEmployeeIdInput({...nokEmployeeIdInput, [guarantorId]: ""});
+                                            setNokLookupResult({...nokLookupResult, [guarantorId]: null});
+                                            toast({ title: "Success", description: `${nokMember.firstName} added as NOK for ${guarantor?.firstName}` });
+                                          } else {
+                                            toast({ title: "Not Eligible", description: "This member cannot be NOK guarantor", variant: "destructive" });
+                                          }
+                                        }}
+                                      >
+                                        Add as NOK
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
-                                <XCircle className="h-4 w-4 text-red-600" />
+                                <div className="bg-blue-50 border border-blue-200 rounded p-2 flex items-center justify-between">
+                                  <div>
+                                    <p className="text-sm font-medium">{members.find(m => m.id === nokId)?.firstName} {members.find(m => m.id === nokId)?.lastName}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {members.find(m => m.id === nokId)?.employeeId} • NOK Backup
+                                    </p>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      const newNokMap = {...nokGuarantorMap};
+                                      delete newNokMap[guarantorId];
+                                      setNokGuarantorMap(newNokMap);
+                                    }}
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
                               )}
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  const updated = selectedGuarantors.filter(id => id !== guarantorId);
-                                  setSelectedGuarantors(updated);
-                                  const newAmountMap = {...guarantorAmountMap};
-                                  delete newAmountMap[guarantorId];
-                                  setGuarantorAmountMap(newAmountMap);
-                                  runPreCheck(form.memberId, form.amount, updated);
-                                }}
-                              >
-                                Remove
-                              </Button>
                             </div>
                           </div>
                         );
@@ -1366,6 +1997,13 @@ const Loans = () => {
         </Alert>
       )}
 
+      {/* Loan Top-Up Review Section - Loan Officer, Credit Committee, and Treasurer */}
+      {(role === "LOAN_OFFICER" || role === "CREDIT_COMMITTEE" || role === "TREASURER") && (
+        <div className="mb-6">
+          <LoanTopUpReviewSection />
+        </div>
+      )}
+
       {/* Filters */}
       <Card className="mb-6 border-none shadow-sm">
         <CardContent className="pt-6">
@@ -1434,8 +2072,21 @@ const Loans = () => {
                   <TableCell>{loan.loanProduct?.name}</TableCell>
                   <TableCell>KES {loan.amount.toLocaleString()}</TableCell>
                   <TableCell>
-                    <Badge className={loanStatusColors[loan.status]}>
-                      {loan.status.replace("_", " ")}
+                    <Badge className={`${loanStatusColors[loan.status]} whitespace-normal sm:whitespace-nowrap text-center leading-tight max-w-[140px] sm:max-w-none`}>
+                      <span className="block sm:hidden">
+                        {/* Mobile: Shorter labels */}
+                        {loan.status === 'PENDING_LOAN_OFFICER_REVIEW' ? 'Officer Review' :
+                         loan.status === 'PENDING_GUARANTOR_APPROVAL' ? 'Guarantor Approval' :
+                         loan.status === 'PENDING_GUARANTOR_REPLACEMENT' ? 'Replace Guarantor' :
+                         loan.status === 'PENDING_GUARANTOR_REASSIGNMENT' ? 'Reassign Guarantor' :
+                         loan.status === 'PENDING_CREDIT_COMMITTEE' ? 'Credit Committee' :
+                         loan.status === 'PENDING_TREASURER' ? 'Treasurer' :
+                         loan.status.replace(/_/g, " ")}
+                      </span>
+                      <span className="hidden sm:block">
+                        {/* Desktop: Full labels */}
+                        {loan.status.replace(/_/g, " ")}
+                      </span>
                     </Badge>
                   </TableCell>
                   <TableCell>{new Date(loan.applicationDate).toLocaleDateString()}</TableCell>
@@ -1451,6 +2102,7 @@ const Loans = () => {
                         }} 
                         title="View Details" 
                         type="button"
+                        className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -1464,9 +2116,9 @@ const Loans = () => {
                         }} 
                         title="View Guarantors"
                         type="button"
-                        className="text-blue-600"
+                        className="text-blue-600 hover:bg-blue-50"
                       >
-                        <Eye className="h-4 w-4 mr-1" />
+                        <Users className="h-4 w-4 mr-1" />
                         Guarantors
                       </Button>
                       {loan.status === "PENDING" && canApproveLoans && (
@@ -1505,18 +2157,7 @@ const Loans = () => {
                           <DollarSign className="h-4 w-4" />
                         </Button>
                       )}
-                      {(loan.status === "DISBURSED" || loan.status === "REPAID" || loan.status === "DEFAULTED") && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => handleOpenEditDialog(loan)}
-                          title="Edit Loan"
-                          className="text-amber-600"
-                          type="button"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      )}
+
                       {loan.status === "PENDING_GUARANTOR_REASSIGNMENT" && (
                         <Button 
                           variant="ghost" 
@@ -1550,27 +2191,25 @@ const Loans = () => {
             <DialogTitle className="text-base">Loan Details</DialogTitle>
           </DialogHeader>
           {selectedLoanForDetails && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {/* Loan Summary */}
-              <Card className="p-2">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-1 text-xs">
-                  <div>
-                    <p className="text-xs text-gray-600">ID</p>
-                    <p className="font-medium">{selectedLoanForDetails.id}</p>
+              <Card className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-600 mb-1.5">ID</p>
+                    <p className="font-medium text-sm">{selectedLoanForDetails.id}</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-gray-600">Status</p>
-                    <Badge className={`${loanStatusColors[selectedLoanForDetails.status]} text-xs py-0.5`}>
-                      {selectedLoanForDetails.status.replace("_", " ")}
-                    </Badge>
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-600 mb-1.5">Member</p>
+                    <p className="font-medium text-sm truncate" title={`${selectedLoanForDetails.member?.firstName} ${selectedLoanForDetails.member?.lastName}`}>
+                      {selectedLoanForDetails.member?.firstName} {selectedLoanForDetails.member?.lastName}
+                    </p>
                   </div>
-                  <div>
-                    <p className="text-xs text-gray-600">Member</p>
-                    <p className="font-medium text-xs">{selectedLoanForDetails.member?.firstName} {selectedLoanForDetails.member?.lastName}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-600">Product</p>
-                    <p className="font-medium text-xs">{selectedLoanForDetails.loanProduct?.name}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-600 mb-1.5">Product</p>
+                    <p className="font-medium text-sm truncate" title={selectedLoanForDetails.loanProduct?.name}>
+                      {selectedLoanForDetails.loanProduct?.name}
+                    </p>
                   </div>
                 </div>
               </Card>
@@ -1601,10 +2240,83 @@ const Loans = () => {
                   </div>
                   <div>
                     <p className="text-xs text-gray-600">Status</p>
-                    <p className="font-medium">{selectedLoanForDetails.status}</p>
+                    <Badge className={`${loanStatusColors[selectedLoanForDetails.status]} text-[10px] py-0.5 px-2 whitespace-normal sm:whitespace-nowrap text-center leading-tight inline-block`}>
+                      <span className="block sm:hidden">
+                        {/* Mobile: Shorter labels */}
+                        {selectedLoanForDetails.status === 'PENDING_LOAN_OFFICER_REVIEW' ? 'Officer Review' :
+                         selectedLoanForDetails.status === 'PENDING_GUARANTOR_APPROVAL' ? 'Guarantor' :
+                         selectedLoanForDetails.status === 'PENDING_GUARANTOR_REPLACEMENT' ? 'Replace Guarantor' :
+                         selectedLoanForDetails.status === 'PENDING_GUARANTOR_REASSIGNMENT' ? 'Reassign' :
+                         selectedLoanForDetails.status === 'PENDING_CREDIT_COMMITTEE' ? 'Committee' :
+                         selectedLoanForDetails.status === 'PENDING_TREASURER' ? 'Treasurer' :
+                         selectedLoanForDetails.status === 'APPROVED' ? 'Approved' :
+                         selectedLoanForDetails.status === 'DISBURSED' ? 'Disbursed' :
+                         selectedLoanForDetails.status === 'REJECTED' ? 'Rejected' :
+                         selectedLoanForDetails.status.replace(/_/g, " ")}
+                      </span>
+                      <span className="hidden sm:block">
+                        {/* Desktop: Full labels */}
+                        {selectedLoanForDetails.status.replace(/_/g, " ")}
+                      </span>
+                    </Badge>
                   </div>
                 </div>
               </Card>
+
+              {/* Top-Up History Section - View Only */}
+              {(selectedLoanForDetails.status === "DISBURSED" || selectedLoanForDetails.status === "ACTIVE") && topUpHistory.length > 0 && (
+                <Card className="p-3 bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-semibold text-sm text-purple-900">💰 Loan Top-Up History</p>
+                  </div>
+
+                  {/* Top-Up History Table - View Only */}
+                  {loadingTopUpHistory ? (
+                    <p className="text-xs text-gray-600">Loading top-up history...</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-purple-800">Top-Up History ({topUpHistory.length})</p>
+                      <div className="max-h-48 overflow-y-auto space-y-1">
+                        {topUpHistory.map((topup: any, idx: number) => (
+                          <div key={idx} className="bg-white p-2 rounded border border-purple-200 text-xs">
+                            <div className="flex justify-between items-start mb-1">
+                              <div>
+                                <p className="font-semibold text-purple-900">KES {topup.topupAmount?.toLocaleString()}</p>
+                                <p className="text-gray-600">{new Date(topup.topupDate).toLocaleDateString()}</p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Badge className="bg-purple-100 text-purple-800 text-xs">
+                                  Top-Up #{topup.id}
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 text-xs">
+                              <div>
+                                <span className="text-gray-600">Before:</span>
+                                <span className="font-medium ml-1">KES {topup.outstandingBeforeTopup?.toLocaleString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-600">After:</span>
+                                <span className="font-medium ml-1">KES {topup.outstandingAfterTopup?.toLocaleString()}</span>
+                              </div>
+                            </div>
+                            {topup.purpose && (
+                              <p className="text-gray-700 mt-1">
+                                <span className="font-medium">Purpose:</span> {topup.purpose}
+                              </p>
+                            )}
+                            {topup.principalPaidBeforeTopup !== undefined && (
+                              <p className="text-green-700 bg-green-50 p-1 rounded mt-1">
+                                ✓ Principal paid before top-up: KES {topup.principalPaidBeforeTopup?.toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )}
 
               {/* Repayment Progress Tracker - For Active/Disbursed Loans */}
               {(selectedLoanForDetails.status === "ACTIVE" || selectedLoanForDetails.status === "DISBURSED") && (
@@ -1652,9 +2364,7 @@ const Loans = () => {
                       <div className="bg-white rounded p-1.5 border border-purple-100">
                         <p className="text-gray-600 text-xs">Total Repaid</p>
                         <p className="font-bold text-purple-600">
-                          KES {selectedLoanForDetails.amount && selectedLoanForDetails.outstandingBalance !== undefined
-                            ? Math.max(0, (selectedLoanForDetails.amount - selectedLoanForDetails.outstandingBalance) + (selectedLoanForDetails.interestCollected || 0)).toLocaleString()
-                            : "0"}
+                          KES {selectedLoanForDetails.totalRepaid?.toLocaleString() || "0"}
                         </p>
                       </div>
                       <div className="bg-white rounded p-1.5 border border-red-100">
@@ -1772,172 +2482,7 @@ const Loans = () => {
                 </Card>
               )}
 
-              {/* Phase A: Low-Risk Field Editing Section - Treasurer Only */}
-              {role === "TREASURER" && (
-                <Card className="p-3 border-indigo-200 bg-indigo-50">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-semibold text-xs text-indigo-900">📝 Phase A: Edit Loan Fields</p>
-                    <p className="text-xs text-indigo-700 font-medium">(No guarantor changes)</p>
-                  </div>
-                  
-                  {phaseAEditOpen ? (
-                    <form onSubmit={handlePhaseAEdit} className="space-y-3">
-                      {phaseAErrors._form && (
-                        <Alert className="bg-red-50 border-red-200">
-                          <AlertCircle className="h-4 w-4 text-red-600" />
-                          <AlertDescription className="text-xs text-red-700">{phaseAErrors._form}</AlertDescription>
-                        </Alert>
-                      )}
 
-                      {/* Loan Status */}
-                      <div>
-                        <Label className="text-xs">Loan Status</Label>
-                        <Select value={phaseAForm.loanStatus} onValueChange={(val) => setPhaseAForm({...phaseAForm, loanStatus: val})}>
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Leave unchanged" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="PENDING">PENDING</SelectItem>
-                            <SelectItem value="APPROVED">APPROVED</SelectItem>
-                            <SelectItem value="DISBURSED">DISBURSED</SelectItem>
-                            <SelectItem value="REPAID">REPAID</SelectItem>
-                            <SelectItem value="DEFAULTED">DEFAULTED</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {phaseAErrors.loanStatus && <p className="text-xs text-red-600">{phaseAErrors.loanStatus}</p>}
-                      </div>
-
-                      {/* Disbursement Date */}
-                      <div>
-                        <Label className="text-xs">Disbursement Date</Label>
-                        <Input
-                          type="date"
-                          value={phaseAForm.disbursementDate}
-                          onChange={(e) => setPhaseAForm({...phaseAForm, disbursementDate: e.target.value})}
-                          className="h-8 text-xs"
-                          placeholder="Leave unchanged"
-                        />
-                        {phaseAErrors.disbursementDate && <p className="text-xs text-red-600">{phaseAErrors.disbursementDate}</p>}
-                      </div>
-
-                      {/* Interest Rate */}
-                      <div>
-                        <Label className="text-xs">Interest Rate (%)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={phaseAForm.interestRate}
-                          onChange={(e) => setPhaseAForm({...phaseAForm, interestRate: e.target.value})}
-                          className="h-8 text-xs"
-                          placeholder="Leave unchanged"
-                        />
-                        {phaseAErrors.interestRate && <p className="text-xs text-red-600">{phaseAErrors.interestRate}</p>}
-                      </div>
-
-                      {/* Outstanding Balance */}
-                      <div>
-                        <Label className="text-xs">Outstanding Balance (KES) - Max: {selectedLoanForDetails.amount?.toLocaleString()}</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={phaseAForm.outstandingBalance}
-                          onChange={(e) => setPhaseAForm({...phaseAForm, outstandingBalance: e.target.value})}
-                          className="h-8 text-xs"
-                          placeholder="Leave unchanged"
-                        />
-                        {phaseAErrors.outstandingBalance && <p className="text-xs text-red-600">{phaseAErrors.outstandingBalance}</p>}
-                      </div>
-
-                      {/* Interest Collected - For Migrated Loans */}
-                      {selectedLoanForDetails.migrationStatus === "MIGRATED" && (
-                        <div>
-                          <Label className="text-xs">Interest Collected (KES) <span className="text-blue-600">Migrated Loans Only</span></Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={phaseAForm.interestCollected}
-                            onChange={(e) => setPhaseAForm({...phaseAForm, interestCollected: e.target.value})}
-                            className="h-8 text-xs"
-                            placeholder="Leave unchanged"
-                          />
-                          {phaseAErrors.interestCollected && <p className="text-xs text-red-600">{phaseAErrors.interestCollected}</p>}
-                          <p className="text-xs text-gray-500 mt-1">
-                            Interest already collected during loan repayment period. Updates interest remaining calculation.
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Purpose */}
-                      <div>
-                        <Label className="text-xs">Purpose</Label>
-                        <Textarea
-                          value={phaseAForm.purpose}
-                          onChange={(e) => setPhaseAForm({...phaseAForm, purpose: e.target.value})}
-                          className="text-xs min-h-16"
-                          placeholder="Leave unchanged"
-                        />
-                      </div>
-
-                      <Alert className="bg-blue-50 border-blue-200">
-                        <AlertCircle className="h-4 w-4 text-blue-600" />
-                        <AlertDescription className="text-xs text-blue-700">
-                          ✅ This form only sends Phase A fields. No guarantor data will be included in the request.
-                        </AlertDescription>
-                      </Alert>
-
-                      <div className="flex gap-2">
-                        <Button
-                          type="submit"
-                          size="sm"
-                          className="h-8 text-xs flex-1 bg-indigo-600 hover:bg-indigo-700"
-                          disabled={phaseASubmitting}
-                        >
-                          {phaseASubmitting ? "Updating..." : "Update Loan Fields"}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-8 text-xs flex-1"
-                          onClick={() => {
-                            setPhaseAEditOpen(false);
-                            setPhaseAForm({ loanStatus: "", disbursementDate: "", interestRate: "", outstandingBalance: "", interestCollected: "", purpose: "" });
-                            setPhaseAErrors({});
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </form>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="h-8 text-xs w-full bg-indigo-600 hover:bg-indigo-700"
-                      onClick={() => {
-                        if (selectedLoanForDetails) {
-                          // Pre-fill form with current loan values
-                          setPhaseAForm({
-                            loanStatus: selectedLoanForDetails.status || "",
-                            disbursementDate: selectedLoanForDetails.disbursementDate ? new Date(selectedLoanForDetails.disbursementDate).toISOString().split('T')[0] : "",
-                            interestRate: selectedLoanForDetails.interestRate?.toString() || "",
-                            outstandingBalance: selectedLoanForDetails.outstandingBalance?.toString() || "",
-                            interestCollected: (selectedLoanForDetails.interestCollected !== undefined ? selectedLoanForDetails.interestCollected : "").toString(),
-                            purpose: selectedLoanForDetails.purpose || ""
-                          });
-                          setPhaseAErrors({});
-                        }
-                        setPhaseAEditOpen(true);
-                      }}
-                    >
-                      <Edit className="w-3 h-3 mr-1" />
-                      Edit Loan Fields (Phase A)
-                    </Button>
-                  )}
-                </Card>
-              )}
 
               {/* Approval/Rejection Section - For Loan Officer, Credit Committee, and Treasurer */}
               {(
@@ -2427,6 +2972,9 @@ const Loans = () => {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-4">
           <DialogHeader className="pb-2">
             <DialogTitle className="text-base">Edit Loan</DialogTitle>
+            <DialogDescription>
+              Edit low-risk loan fields (status, dates, interest, outstanding, purpose). No guarantor changes.
+            </DialogDescription>
           </DialogHeader>
           {loanToEdit && (
             <form onSubmit={handleEditLoan} className="space-y-4">
@@ -2477,13 +3025,118 @@ const Loans = () => {
 
               {/* Guarantor Management Section - Treasurer Workflow */}
               <div className="border-t pt-3 space-y-3">
-                <div>
-                  <p className="text-sm font-medium mb-2">Guarantor Management</p>
-                  <p className="text-xs text-gray-600">
-                    Outstanding Balance: <span className="font-semibold">KES {(parseFloat(editForm.outstandingBalance) || loanToEdit.outstandingBalance || loanToEdit.amount).toLocaleString()}</span>
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">Remove guarantors • Edit pledge amounts • Add new guarantors</p>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium mb-2">Guarantor Management</p>
+                    <p className="text-xs text-gray-600">
+                      Outstanding Balance: <span className="font-semibold">KES {(parseFloat(editForm.outstandingBalance) || loanToEdit.outstandingBalance || loanToEdit.amount).toLocaleString()}</span>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Remove guarantors • Edit pledge amounts • Add new guarantors</p>
+                  </div>
+                  {/* Total Coverage Indicator */}
+                  {(() => {
+                    const outstanding = parseFloat(editForm.outstandingBalance) || loanToEdit.outstandingBalance || loanToEdit.amount;
+                    
+                    // Calculate total from current guarantors (not removed, with edited amounts)
+                    const currentTotal = currentEditGuarantors
+                      .filter((g: any) => !removedGuarantorIds.includes(g.guarantorId))
+                      .reduce((sum: number, g: any) => {
+                        const amount = editedGuarantorAmounts[g.guarantorId] !== undefined 
+                          ? editedGuarantorAmounts[g.guarantorId] 
+                          : g.guaranteeAmount || 0;
+                        return sum + amount;
+                      }, 0);
+                    
+                    // Calculate total from new guarantors
+                    const newTotal = newGuarantorsForEdit
+                      .filter(g => g.employeeId && g.pledgeAmount > 0)
+                      .reduce((sum, g) => sum + g.pledgeAmount, 0);
+                    
+                    const totalPledged = currentTotal + newTotal;
+                    
+                    // Special case: If outstanding is 0, loan is fully paid - no guarantors needed
+                    if (outstanding === 0 || outstanding === null || isNaN(outstanding)) {
+                      if (currentEditGuarantors.length > 0 || newGuarantorsForEdit.length > 0) {
+                        return (
+                          <div className="text-right">
+                            <p className="text-xs text-gray-600">Total Coverage</p>
+                            <p className="text-sm font-bold text-blue-600">
+                              N/A (Fully Paid)
+                            </p>
+                            <p className="text-xs text-blue-600">Remove all guarantors</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }
+                    
+                    const percentage = (totalPledged / outstanding) * 100;
+                    const isOver100 = percentage > 100;
+                    
+                    if (currentEditGuarantors.length > 0 || newGuarantorsForEdit.length > 0) {
+                      return (
+                        <div className="text-right">
+                          <p className="text-xs text-gray-600">Total Coverage</p>
+                          <p className={`text-sm font-bold ${isOver100 ? 'text-red-600' : 'text-green-700'}`}>
+                            {percentage.toFixed(1)}%
+                          </p>
+                          {isOver100 && (
+                            <p className="text-xs text-red-600 font-medium">Exceeds 100%!</p>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
+
+                {/* Warning Alert for Over 100% OR Fully Paid */}
+                {(() => {
+                  const outstanding = parseFloat(editForm.outstandingBalance) || loanToEdit.outstandingBalance || loanToEdit.amount;
+                  const currentTotal = currentEditGuarantors
+                    .filter((g: any) => !removedGuarantorIds.includes(g.guarantorId))
+                    .reduce((sum: number, g: any) => {
+                      const amount = editedGuarantorAmounts[g.guarantorId] !== undefined 
+                        ? editedGuarantorAmounts[g.guarantorId] 
+                        : g.guaranteeAmount || 0;
+                      return sum + amount;
+                    }, 0);
+                  const newTotal = newGuarantorsForEdit
+                    .filter(g => g.employeeId && g.pledgeAmount > 0)
+                    .reduce((sum, g) => sum + g.pledgeAmount, 0);
+                  const totalPledged = currentTotal + newTotal;
+                  
+                  // Special case: Outstanding is 0 (fully paid)
+                  if (outstanding === 0 || outstanding === null || isNaN(outstanding)) {
+                    if (totalPledged > 0) {
+                      return (
+                        <Alert className="bg-blue-50 border-blue-200 py-2">
+                          <AlertCircle className="h-4 w-4 text-blue-600" />
+                          <AlertDescription className="text-xs text-blue-800">
+                            <strong>Loan Fully Paid:</strong> Outstanding balance is KES 0. 
+                            You can remove all guarantors (KES {totalPledged.toLocaleString()} currently pledged) - no coverage needed for paid loans.
+                          </AlertDescription>
+                        </Alert>
+                      );
+                    }
+                    return null;
+                  }
+
+                  const percentage = (totalPledged / outstanding) * 100;
+
+                  if (percentage > 100) {
+                    return (
+                      <Alert className="bg-red-50 border-red-200 py-2">
+                        <AlertCircle className="h-4 w-4 text-red-600" />
+                        <AlertDescription className="text-xs text-red-800">
+                          <strong>Warning:</strong> Total guarantor coverage is {percentage.toFixed(1)}% (exceeds 100%). 
+                          Total pledged: KES {totalPledged.toLocaleString()} of KES {outstanding.toLocaleString()} needed.
+                        </AlertDescription>
+                      </Alert>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {guarantorsLoading ? (
                   <div className="border rounded-md p-3 bg-gray-50 text-center">
@@ -2649,6 +3302,33 @@ const Loans = () => {
                                         updated[i].employeeId = e.target.value;
                                         setNewGuarantorsForEdit(updated);
                                       }}
+                                      onBlur={(e) => {
+                                        const value = e.target.value.trim();
+                                        if (!value) return;
+                                        
+                                        // Check if this employeeId is in current guarantors (not removed)
+                                        const isDuplicateInCurrent = currentEditGuarantors.some((g: any) => 
+                                          !removedGuarantorIds.includes(g.guarantorId) && 
+                                          (g.memberNumber === value || g.employeeId === value)
+                                        );
+                                        
+                                        // Check if this employeeId is in new guarantors (excluding current one)
+                                        const isDuplicateInNew = newGuarantorsForEdit.some((guarantor, idx) => 
+                                          idx !== i && guarantor.employeeId === value
+                                        );
+                                        
+                                        if (isDuplicateInCurrent || isDuplicateInNew) {
+                                          toast({ 
+                                            title: "Duplicate Guarantor", 
+                                            description: "This member is already a guarantor for this loan. Please choose a different member.",
+                                            variant: "destructive" 
+                                          });
+                                          // Clear the duplicate entry
+                                          const updated = [...newGuarantorsForEdit];
+                                          updated[i].employeeId = "";
+                                          setNewGuarantorsForEdit(updated);
+                                        }
+                                      }}
                                       className="text-xs h-8"
                                     />
                                   </div>
@@ -2694,6 +3374,37 @@ const Loans = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => {
+                          // Check if already at 100% or more
+                          const outstanding = parseFloat(editForm.outstandingBalance) || loanToEdit.outstandingBalance || loanToEdit.amount;
+                          
+                          // Calculate current total
+                          const currentTotal = currentEditGuarantors
+                            .filter((g: any) => !removedGuarantorIds.includes(g.guarantorId))
+                            .reduce((sum: number, g: any) => {
+                              const amount = editedGuarantorAmounts[g.guarantorId] !== undefined 
+                                ? editedGuarantorAmounts[g.guarantorId] 
+                                : g.guaranteeAmount || 0;
+                              return sum + amount;
+                            }, 0);
+                          
+                          // Calculate new guarantors total
+                          const newTotal = newGuarantorsForEdit
+                            .filter(g => g.employeeId && g.pledgeAmount > 0)
+                            .reduce((sum, g) => sum + g.pledgeAmount, 0);
+                          
+                          const totalPledged = currentTotal + newTotal;
+                          const percentage = (totalPledged / outstanding) * 100;
+                          
+                          if (percentage >= 100) {
+                            const confirmed = window.confirm(
+                              `Current guarantor coverage is already ${percentage.toFixed(1)}%.\n\n` +
+                              `Total pledged: KES ${totalPledged.toLocaleString()}\n` +
+                              `Outstanding: KES ${outstanding.toLocaleString()}\n\n` +
+                              `Do you still want to add another guarantor?`
+                            );
+                            if (!confirmed) return;
+                          }
+                          
                           setNewGuarantorsForEdit([...newGuarantorsForEdit, { id: `new-${Date.now()}-${Math.random()}`, employeeId: "", pledgeAmount: 0 }]);
                         }}
                         className="w-full text-xs"
@@ -2924,6 +3635,669 @@ const Loans = () => {
           {reassignLoading && (
             <div className="flex items-center justify-center py-8">
               <p className="text-sm text-muted-foreground">Loading guarantor data...</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Loan Dialog */}
+      <Dialog open={deleteLoanDialog} onOpenChange={(open) => {
+        setDeleteLoanDialog(open);
+        if (!open) {
+          setLoanToDelete(null);
+          setDeleteReason("");
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">⚠️ Delete Loan</DialogTitle>
+            <DialogDescription>
+              Permanently delete this loan and all associated data including guarantors and repayment history.
+            </DialogDescription>
+          </DialogHeader>
+          {loanToDelete && (
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                <p className="text-sm font-medium text-red-900">Loan: {loanToDelete.loanNumber}</p>
+                <p className="text-xs text-red-800">{loanToDelete.member?.firstName} {loanToDelete.member?.lastName}</p>
+                <p className="text-xs text-red-800">Amount: KES {loanToDelete.amount.toLocaleString()}</p>
+                <p className="text-xs text-red-800">Status: {loanToDelete.status}</p>
+              </div>
+              <Alert className="bg-amber-50 border-amber-200">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-xs text-amber-800">
+                  <strong>Warning:</strong> This action cannot be undone. All loan data, guarantors, and repayment history will be permanently deleted.
+                </AlertDescription>
+              </Alert>
+              <div>
+                <Label className="text-sm font-medium">Reason for Deletion *</Label>
+                <Textarea
+                  placeholder="Provide a detailed reason for deleting this loan..."
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  className="mt-2 text-sm"
+                  rows={4}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeleteLoanDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleDeleteLoan}
+                  disabled={deleteSubmitting || !deleteReason.trim()}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {deleteSubmitting ? "Deleting..." : "Confirm Delete"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Top-Up Dialog */}
+      <Dialog open={topUpDialogOpen} onOpenChange={(open) => {
+        setTopUpDialogOpen(open);
+        if (!open) {
+          setTopUpAmount("");
+          setTopUpPurpose("");
+          setTopUpGuarantors([]);
+          setTopUpPreview(null);
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto p-4">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="text-base">Add Loan Top-Up</DialogTitle>
+            <DialogDescription>
+              Add additional funds to an existing loan while preserving payment history.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLoanForDetails && (
+            <form onSubmit={handleTopUpSubmit} className="space-y-4">
+              <div className="bg-purple-50 border border-purple-200 rounded-md p-3 text-sm">
+                <p className="font-medium text-purple-900">Loan: {selectedLoanForDetails.loanNumber}</p>
+                <p className="text-xs text-purple-800">{selectedLoanForDetails.member?.firstName} {selectedLoanForDetails.member?.lastName}</p>
+                <p className="text-xs text-purple-800">Original Principal: KES {selectedLoanForDetails.amount.toLocaleString()}</p>
+                <p className="text-xs text-purple-800">Current Outstanding: KES {selectedLoanForDetails.outstandingBalance?.toLocaleString() || '0'}</p>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Top-Up Amount (KES) *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  placeholder="Enter amount to add"
+                  value={topUpAmount}
+                  onChange={(e) => {
+                    setTopUpAmount(e.target.value);
+                    if (e.target.value && parseFloat(e.target.value) > 0 && selectedLoanForDetails) {
+                      previewTopUp(selectedLoanForDetails.id, e.target.value);
+                    }
+                  }}
+                  className="mt-2 text-sm"
+                />
+              </div>
+
+              {topUpPreview && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs space-y-2">
+                  <p className="font-semibold text-blue-900">Top-Up Preview</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-gray-700">Current Outstanding:</span>
+                      <p className="font-semibold">KES {topUpPreview.currentOutstanding?.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-700">Top-Up Amount:</span>
+                      <p className="font-semibold text-purple-700">+KES {topUpPreview.topupAmount?.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-700">New Outstanding:</span>
+                      <p className="font-bold text-red-600">KES {topUpPreview.newOutstanding?.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-700">Principal Paid So Far:</span>
+                      <p className="font-semibold text-green-600">KES {topUpPreview.principalPaidBeforeTopup?.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <p className="text-gray-700 bg-white p-2 rounded">
+                    ✓ This top-up will be added to the loan. Previous payments are preserved.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <Label className="text-sm font-medium">Purpose (Optional)</Label>
+                <Textarea
+                  placeholder="Reason for top-up (e.g., Additional business capital)"
+                  value={topUpPurpose}
+                  onChange={(e) => setTopUpPurpose(e.target.value)}
+                  className="mt-2 text-sm"
+                  rows={3}
+                />
+              </div>
+
+              {/* Guarantor Management for Top-Up */}
+              <div className="border rounded-md p-3 space-y-2 bg-green-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-900">Add Guarantors for Top-Up (Optional)</p>
+                    <p className="text-xs text-gray-600">Add new guarantors to support this top-up amount</p>
+                  </div>
+                  {topUpAmount && topUpGuarantors.length > 0 && (() => {
+                    const totalPledged = topUpGuarantors.reduce((sum, g) => sum + (g.pledgeAmount || 0), 0);
+                    const percentage = (totalPledged / parseFloat(topUpAmount)) * 100;
+                    const isOver100 = percentage > 100;
+                    return (
+                      <div className="text-right">
+                        <p className="text-xs text-gray-600">Total Guaranteed</p>
+                        <p className={`text-sm font-bold ${isOver100 ? 'text-red-600' : 'text-green-700'}`}>
+                          {percentage.toFixed(1)}%
+                        </p>
+                        {isOver100 && (
+                          <p className="text-xs text-red-600 font-medium">Exceeds 100%!</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {topUpAmount && topUpGuarantors.length > 0 && (() => {
+                  const totalPledged = topUpGuarantors.reduce((sum, g) => sum + (g.pledgeAmount || 0), 0);
+                  const percentage = (totalPledged / parseFloat(topUpAmount)) * 100;
+                  if (percentage > 100) {
+                    return (
+                      <Alert className="bg-red-50 border-red-200 py-2">
+                        <AlertCircle className="h-4 w-4 text-red-600" />
+                        <AlertDescription className="text-xs text-red-800">
+                          <strong>Warning:</strong> Total guarantor coverage is {percentage.toFixed(1)}% (exceeds 100%). 
+                          Total pledged: KES {totalPledged.toLocaleString()} of KES {parseFloat(topUpAmount).toLocaleString()} needed.
+                        </AlertDescription>
+                      </Alert>
+                    );
+                  }
+                })()}
+                
+                {topUpGuarantors.length > 0 && (
+                  <div className="space-y-2 mb-2">
+                    {topUpGuarantors.map((guarantor, i) => (
+                      <div key={guarantor.id} className="bg-white border rounded p-2 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-700">Guarantor {i + 1}</p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              const updated = topUpGuarantors.filter((_, index) => index !== i);
+                              setTopUpGuarantors(updated);
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                        <Select
+                          value={guarantor.employeeId}
+                          onValueChange={(value) => {
+                            // Check if this guarantor is already selected
+                            const isDuplicate = topUpGuarantors.some((g, idx) => idx !== i && g.employeeId === value);
+                            if (isDuplicate) {
+                              toast({ 
+                                title: "Duplicate Guarantor", 
+                                description: "This guarantor has already been selected. Please choose a different member.",
+                                variant: "destructive" 
+                              });
+                              return;
+                            }
+                            
+                            const updated = [...topUpGuarantors];
+                            updated[i].employeeId = value;
+                            setTopUpGuarantors(updated);
+                          }}
+                        >
+                          <SelectTrigger className="text-xs h-8">
+                            <SelectValue placeholder="Select guarantor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {members
+                              .filter(m => m.id !== selectedLoanForDetails.member?.id)
+                              .map((member) => {
+                                const isAlreadySelected = topUpGuarantors.some((g, idx) => 
+                                  idx !== i && g.employeeId === member.employeeId
+                                );
+                                return (
+                                  <SelectItem 
+                                    key={member.id} 
+                                    value={member.employeeId || ""} 
+                                    className="text-xs"
+                                    disabled={isAlreadySelected}
+                                  >
+                                    {member.firstName} {member.lastName} ({member.employeeId})
+                                    {isAlreadySelected && " - Already selected"}
+                                  </SelectItem>
+                                );
+                              })}
+                          </SelectContent>
+                        </Select>
+                        <div>
+                          <Label className="text-xs">Pledge Amount (KES)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Enter amount"
+                            value={guarantor.pledgeAmount || ""}
+                            onChange={(e) => {
+                              const updated = [...topUpGuarantors];
+                              updated[i].pledgeAmount = parseFloat(e.target.value) || 0;
+                              setTopUpGuarantors(updated);
+                            }}
+                            className="text-xs h-8 mt-1"
+                          />
+                          {topUpAmount && guarantor.pledgeAmount > 0 && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {((guarantor.pledgeAmount / parseFloat(topUpAmount)) * 100).toFixed(1)}% of top-up
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // Check if already at 100% or more
+                    if (topUpAmount && topUpGuarantors.length > 0) {
+                      const totalPledged = topUpGuarantors.reduce((sum, g) => sum + (g.pledgeAmount || 0), 0);
+                      const percentage = (totalPledged / parseFloat(topUpAmount)) * 100;
+                      
+                      if (percentage >= 100) {
+                        const confirmed = window.confirm(
+                          `Current guarantor coverage is already ${percentage.toFixed(1)}% (${percentage >= 100 ? 'at or above' : 'below'} 100%).\n\n` +
+                          `Total pledged: KES ${totalPledged.toLocaleString()}\n` +
+                          `Top-up amount: KES ${parseFloat(topUpAmount).toLocaleString()}\n\n` +
+                          `Do you still want to add another guarantor?`
+                        );
+                        if (!confirmed) return;
+                      }
+                    }
+                    
+                    setTopUpGuarantors([
+                      ...topUpGuarantors,
+                      { id: `new-${Date.now()}`, employeeId: "", pledgeAmount: 0 }
+                    ]);
+                  }}
+                  className="w-full text-xs"
+                >
+                  + Add Guarantor
+                </Button>
+              </div>
+
+              <Alert className="bg-yellow-50 border-yellow-200">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-xs text-yellow-800">
+                  <strong>Note:</strong> Top-up preserves all existing loan data and payment history. Add guarantors above if needed for this top-up.
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTopUpDialogOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={topUpSubmitting || !topUpAmount || parseFloat(topUpAmount) <= 0}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  {topUpSubmitting ? "Adding..." : "Add Top-Up"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Full Edit Dialog - Complete Financial Control */}
+      <Dialog open={fullEditDialog} onOpenChange={(open) => {
+        setFullEditDialog(open);
+        if (!open) {
+          setFullEditForm({
+            principal: "",
+            outstandingBalance: "",
+            interestRate: "",
+            termMonths: "",
+            totalInterest: "",
+            totalRepayable: "",
+            monthlyRepayment: "",
+            interestCollected: "",
+            reason: ""
+          });
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-4">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="text-base">Edit All Financial Fields</DialogTitle>
+            <DialogDescription>
+              Complete control over all loan financial fields. Can set outstanding to 0 for fully paid loans.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLoanForDetails && (
+            <form onSubmit={handleFullEdit} className="space-y-4">
+              <div className="bg-orange-50 border border-orange-200 rounded-md p-3 text-sm">
+                <p className="font-medium text-orange-900">Loan: {selectedLoanForDetails.loanNumber}</p>
+                <p className="text-xs text-orange-800">{selectedLoanForDetails.member?.firstName} {selectedLoanForDetails.member?.lastName}</p>
+                <p className="text-xs text-orange-800">Status: {selectedLoanForDetails.status}</p>
+              </div>
+
+              <Alert className="bg-red-50 border-red-200">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-xs text-red-800">
+                  <strong>Warning:</strong> This edit affects all financial calculations. Enter values carefully. You can set outstanding to 0 to mark as fully paid.
+                </AlertDescription>
+              </Alert>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Principal Amount (KES)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Leave blank to keep unchanged"
+                    value={fullEditForm.principal}
+                    onChange={(e) => setFullEditForm({...fullEditForm, principal: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.amount.toLocaleString()}</p>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">Outstanding Balance (KES) *Can set to 0*</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Enter 0 for fully paid"
+                    value={fullEditForm.outstandingBalance}
+                    onChange={(e) => setFullEditForm({...fullEditForm, outstandingBalance: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.outstandingBalance?.toLocaleString() || '0'}</p>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">Interest Rate (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Leave blank to keep unchanged"
+                    value={fullEditForm.interestRate}
+                    onChange={(e) => setFullEditForm({...fullEditForm, interestRate: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: {selectedLoanForDetails.interestRate}%</p>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">Term (Months)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    placeholder="Leave blank to keep unchanged"
+                    value={fullEditForm.termMonths}
+                    onChange={(e) => setFullEditForm({...fullEditForm, termMonths: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: {selectedLoanForDetails.termMonths} months</p>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">Total Interest (KES)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Leave blank to keep unchanged"
+                    value={fullEditForm.totalInterest}
+                    onChange={(e) => setFullEditForm({...fullEditForm, totalInterest: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.totalInterest?.toLocaleString() || '0'}</p>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">Total Repayable (KES)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Leave blank to keep unchanged"
+                    value={fullEditForm.totalRepayable}
+                    onChange={(e) => setFullEditForm({...fullEditForm, totalRepayable: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.totalRepayable?.toLocaleString() || '0'}</p>
+                </div>
+
+                <div className="col-span-2">
+                  <Label className="text-sm font-medium">Monthly Repayment (KES)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Leave blank to keep unchanged"
+                    value={fullEditForm.monthlyRepayment}
+                    onChange={(e) => setFullEditForm({...fullEditForm, monthlyRepayment: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.monthlyRepayment?.toLocaleString() || '0'}</p>
+                </div>
+
+                <div className="col-span-2">
+                  <Label className="text-sm font-medium">Interest Collected (KES)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Leave blank to keep unchanged"
+                    value={fullEditForm.interestCollected}
+                    onChange={(e) => setFullEditForm({...fullEditForm, interestCollected: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.interestCollected?.toLocaleString() || '0'}</p>
+                </div>
+
+                <div className="col-span-2">
+                  <Label className="text-sm font-medium">Principal Repaid (KES)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Leave blank to keep unchanged"
+                    value={fullEditForm.principalRepaid}
+                    onChange={(e) => setFullEditForm({...fullEditForm, principalRepaid: e.target.value})}
+                    className="mt-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.principalRepaid?.toLocaleString() || '0'}</p>
+                  <p className="text-xs text-amber-600 mt-1">⚠️ Manual override - ignores top-ups and outstanding balance</p>
+                </div>
+              </div>
+
+              <Alert className="bg-blue-50 border-blue-200">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-xs text-blue-800">
+                  <strong>Complete Control:</strong> You can now edit Principal Repaid directly (ignores top-ups). Set to 0 for a fresh start. 
+                  Total Repaid will recalculate as: Principal Repaid + Interest Collected.
+                </AlertDescription>
+              </Alert>
+
+              <div>
+                <Label className="text-sm font-medium">Reason for Edit *</Label>
+                <Textarea
+                  placeholder="Explain why you're making these changes (required)"
+                  value={fullEditForm.reason}
+                  onChange={(e) => setFullEditForm({...fullEditForm, reason: e.target.value})}
+                  className="mt-2 text-sm"
+                  rows={3}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFullEditDialog(false)}
+                  type="button"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={fullEditSubmitting || !fullEditForm.reason}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  {fullEditSubmitting ? "Updating..." : "Update Loan"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* Edit Top-Up Dialog */}
+      <Dialog open={editTopUpDialog} onOpenChange={setEditTopUpDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Top-Up #{topUpToEdit?.id}</DialogTitle>
+            <DialogDescription>
+              Modify the top-up amount and purpose. This will update loan calculations.
+            </DialogDescription>
+          </DialogHeader>
+          {topUpToEdit && (
+            <form onSubmit={handleEditTopUp} className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Top-Up Amount (KES) *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  value={editTopUpAmount}
+                  onChange={(e) => setEditTopUpAmount(e.target.value)}
+                  className="mt-2"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">Current: KES {topUpToEdit.topupAmount?.toLocaleString()}</p>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Purpose (Optional)</Label>
+                <Textarea
+                  value={editTopUpPurpose}
+                  onChange={(e) => setEditTopUpPurpose(e.target.value)}
+                  className="mt-2"
+                  rows={2}
+                  placeholder="e.g., Additional funds for business expansion"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditTopUpDialog(false);
+                    setTopUpToEdit(null);
+                    setEditTopUpAmount("");
+                    setEditTopUpPurpose("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={editTopUpSubmitting}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {editTopUpSubmitting ? "Updating..." : "Update Top-Up"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Top-Up Confirmation Dialog */}
+      <Dialog open={deleteTopUpDialog} onOpenChange={setDeleteTopUpDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Top-Up #{topUpToDelete?.id}?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this top-up and recalculate the loan. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {topUpToDelete && (
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded p-3">
+                <p className="text-sm font-medium text-red-900">Top-Up Details:</p>
+                <p className="text-sm text-red-800 mt-1">Amount: KES {topUpToDelete.topupAmount?.toLocaleString()}</p>
+                <p className="text-sm text-red-800">Date: {new Date(topUpToDelete.topupDate).toLocaleDateString()}</p>
+                {topUpToDelete.purpose && (
+                  <p className="text-sm text-red-800">Purpose: {topUpToDelete.purpose}</p>
+                )}
+              </div>
+
+              <Alert className="bg-yellow-50 border-yellow-200">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-xs text-yellow-800">
+                  <strong>Warning:</strong> Deleting this top-up will reduce the loan amount and recalculate outstanding balance, 
+                  total repayable, and monthly payment. Make sure this is what you want to do.
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setDeleteTopUpDialog(false);
+                    setTopUpToDelete(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={deleteTopUpSubmitting}
+                  className="bg-red-600 hover:bg-red-700"
+                  onClick={handleDeleteTopUp}
+                >
+                  {deleteTopUpSubmitting ? "Deleting..." : "Yes, Delete Top-Up"}
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

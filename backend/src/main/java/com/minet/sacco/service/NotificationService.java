@@ -23,6 +23,9 @@ public class NotificationService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired(required = false)
+    private EmailNotificationService emailNotificationService;
+
     @Transactional
     @CacheEvict(value = "unreadCount", key = "#userId")
     public void notifyUser(Long userId, String message, String type) {
@@ -36,6 +39,21 @@ public class NotificationService {
             notification.setRead(false);
             notification.setCreatedAt(LocalDateTime.now());
             notificationRepository.save(notification);
+            
+            // Send email notification if email service is available and user has email
+            if (emailNotificationService != null && user.get().getEmail() != null && !user.get().getEmail().isEmpty()) {
+                try {
+                    String subject = getEmailSubject(type);
+                    emailNotificationService.sendNotificationEmail(
+                        user.get().getEmail(),
+                        subject,
+                        message,
+                        type
+                    );
+                } catch (Exception e) {
+                    System.err.println("Failed to send email notification: " + e.getMessage());
+                }
+            }
         }
     }
 
@@ -55,7 +73,53 @@ public class NotificationService {
             notification.setRead(false);
             notification.setCreatedAt(LocalDateTime.now());
             notificationRepository.save(notification);
+            
+            // Send email notification
+            if (emailNotificationService != null && user.get().getEmail() != null && !user.get().getEmail().isEmpty()) {
+                try {
+                    String subject = getEmailSubject(type, category);
+                    emailNotificationService.sendNotificationEmail(
+                        user.get().getEmail(),
+                        subject,
+                        message,
+                        category != null ? category : type
+                    );
+                } catch (Exception e) {
+                    System.err.println("Failed to send email notification: " + e.getMessage());
+                }
+            }
         }
+    }
+
+    /**
+     * Generate appropriate email subject based on notification type
+     */
+    private String getEmailSubject(String type) {
+        return getEmailSubject(type, null);
+    }
+
+    private String getEmailSubject(String type, String category) {
+        if (category != null && !category.isEmpty()) {
+            switch (category.toUpperCase()) {
+                case "LOAN_APPROVAL": return "Loan Application Update - Minet SACCO";
+                case "LOAN": return "Loan Notification - Minet SACCO";
+                case "GUARANTOR": return "Guarantor Request - Minet SACCO";
+                case "DEPOSIT": return "Deposit Notification - Minet SACCO";
+                case "REPAYMENT": return "Repayment Notification - Minet SACCO";
+                case "DEPOSIT_REQUEST": return "Deposit Request - Minet SACCO";
+                case "DEPOSIT_APPROVED": return "Deposit Approved - Minet SACCO";
+                case "BULK_PROCESSING": return "Bulk Processing Update - Minet SACCO";
+            }
+        }
+        
+        if (type != null && !type.isEmpty()) {
+            if (type.toUpperCase().contains("LOAN")) return "Loan Notification - Minet SACCO";
+            if (type.toUpperCase().contains("DEPOSIT")) return "Deposit Notification - Minet SACCO";
+            if (type.toUpperCase().contains("GUARANTOR")) return "Guarantor Request - Minet SACCO";
+            if (type.toUpperCase().contains("APPROVAL")) return "Approval Notification - Minet SACCO";
+        }
+        
+        return "Notification from Minet SACCO";
     }
 
     @Transactional

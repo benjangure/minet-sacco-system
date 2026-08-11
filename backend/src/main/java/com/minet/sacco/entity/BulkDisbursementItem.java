@@ -18,6 +18,7 @@ public class BulkDisbursementItem {
     @JsonIgnoreProperties({"items", "memberItems", "loanItems", "disbursementItems", "uploadedBy", "approvedBy"})
     private BulkBatch batch;
 
+    @Column(name = "item_row_number")
     private Integer rowNumber;
 
     private String loanNumber;

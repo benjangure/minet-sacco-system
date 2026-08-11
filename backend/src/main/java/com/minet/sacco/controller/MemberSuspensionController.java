@@ -10,6 +10,8 @@ import com.minet.sacco.repository.UserRepository;
 import com.minet.sacco.repository.MemberExitRepository;
 import com.minet.sacco.repository.MemberSuspensionRepository;
 import com.minet.sacco.service.MemberSuspensionService;
+import com.minet.sacco.entity.MemberReactivation;
+import com.minet.sacco.service.MemberReactivationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,6 +40,9 @@ public class MemberSuspensionController {
 
     @Autowired
     private MemberSuspensionRepository memberSuspensionRepository;
+
+    @Autowired
+    private MemberReactivationService memberReactivationService;
 
     /**
      * Suspend a member
@@ -241,6 +246,21 @@ public class MemberSuspensionController {
         try {
             List<MemberSuspension> suspensions = memberSuspensionService.getAllActiveSuspensions();
             return ResponseEntity.ok(new ApiResponse<>(true, "Active suspensions retrieved", suspensions));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Get pending reactivations (for Treasurer approval)
+     */
+    @GetMapping("/reactivations/pending")
+    @PreAuthorize("hasRole('TREASURER')")
+    public ResponseEntity<ApiResponse<List<MemberReactivation>>> getPendingReactivations() {
+        try {
+            List<MemberReactivation> pending = memberReactivationService.getPendingReactivations();
+            return ResponseEntity.ok(new ApiResponse<>(true, "Pending reactivations retrieved", pending));
         } catch (Exception e) {
             return ResponseEntity.badRequest()
                     .body(new ApiResponse<>(false, e.getMessage(), null));

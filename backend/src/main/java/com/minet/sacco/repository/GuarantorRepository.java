@@ -12,7 +12,18 @@ import java.util.List;
 @Repository
 public interface GuarantorRepository extends JpaRepository<Guarantor, Long> {
 
+    // Optimized with JOIN FETCH to prevent N+1 queries
+    @Query("SELECT g FROM Guarantor g " +
+           "LEFT JOIN FETCH g.member " +
+           "LEFT JOIN FETCH g.loan " +
+           "WHERE g.loan.id = :loanId")
+    List<Guarantor> findByLoanIdWithDetails(@Param("loanId") Long loanId);
+
     List<Guarantor> findByLoanId(Long loanId);
+
+    // Batch version: get all guarantors for multiple loans in one query
+    @Query("SELECT g FROM Guarantor g LEFT JOIN FETCH g.member WHERE g.loan.id IN :loanIds ORDER BY g.loan.id")
+    List<Guarantor> findByLoanIdIn(@Param("loanIds") List<Long> loanIds);
 
     List<Guarantor> findByLoan(com.minet.sacco.entity.Loan loan);
 
@@ -79,4 +90,44 @@ public interface GuarantorRepository extends JpaRepository<Guarantor, Long> {
      * Used during batch rollback to remove all guarantees for a loan being deleted.
      */
     void deleteByLoanId(Long loanId);
+
+    // ============================================================
+    // NEXT OF KIN GUARANTOR QUERIES
+    // ============================================================
+
+    /**
+     * Find all active guarantees where member is PRIMARY guarantor (not NOK)
+     */
+    @Query("SELECT g FROM Guarantor g " +
+           "LEFT JOIN FETCH g.loan l " +
+           "LEFT JOIN FETCH l.member " +
+           "LEFT JOIN FETCH g.nextOfKinGuarantor nok " +
+           "LEFT JOIN FETCH nok.member " +
+           "WHERE g.member.id = :memberId " +
+           "AND g.isNextOfKin = false " +
+           "AND g.status IN ('ACTIVE', 'ACCEPTED', 'PENDING') " +
+           "AND l.status NOT IN ('REPAID', 'REJECTED', 'DEFAULTED')")
+    List<Guarantor> findActiveGuaranteesByMemberId(@Param("memberId") Long memberId);
+
+    /**
+     * Find guarantor by ID with NOK details loaded
+     */
+    @Query("SELECT g FROM Guarantor g " +
+           "LEFT JOIN FETCH g.nextOfKinGuarantor nok " +
+           "LEFT JOIN FETCH nok.member " +
+           "WHERE g.id = :guarantorId")
+    Guarantor findByIdWithNok(@Param("guarantorId") Long guarantorId);
+
+    /**
+     * PERFORMANCE OPTIMIZATION for Over-Committed Guarantor Report
+     * Fetch all active guarantors with loans in a single query using JOIN FETCH
+     */
+    @Query("SELECT g FROM Guarantor g " +
+           "LEFT JOIN FETCH g.member m " +
+           "LEFT JOIN FETCH g.loan l " +
+           "LEFT JOIN FETCH l.member borrower " +
+           "WHERE g.selfGuarantee = false " +
+           "AND g.status = 'ACTIVE' " +
+           "ORDER BY m.id")
+    List<Guarantor> findAllActiveGuarantorsWithDetails();
 }

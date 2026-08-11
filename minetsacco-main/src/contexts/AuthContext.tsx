@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { getBackendUrl } from "@/config/api";
+import { initializePush } from "@/services/pushNotificationService";
 
 type AppRole = "ADMIN" | "TREASURER" | "LOAN_OFFICER" | "CREDIT_COMMITTEE" | "AUDITOR" | "TELLER" | "CUSTOMER_SUPPORT" | "MEMBER";
 
@@ -184,6 +185,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("token", data.token);
 
       console.log('DEBUG: memberSignIn - session saved to localStorage');
+
+      // Initialize push notifications after successful login
+      try {
+        await initializePush();
+        console.log('DEBUG: memberSignIn - push notifications initialized');
+      } catch (error) {
+        console.log('DEBUG: memberSignIn - push initialization failed (non-critical):', error);
+      }
 
       return { error: null, firstLogin: false };
     } catch (error) {

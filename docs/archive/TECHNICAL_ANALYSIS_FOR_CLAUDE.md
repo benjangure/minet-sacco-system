@@ -305,7 +305,7 @@ id | loan_number | status | amount | total_interest | total_repayable | outstand
 ### Test 2: Verify API Response
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:8080/api/member/loans
+curl -H "Authorization: Bearer <token>" http://localhost:9090/api/member/loans
 ```
 
 **Expected:** JSON with `outstandingBalance: 280000`

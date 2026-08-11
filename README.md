@@ -60,7 +60,7 @@ npm run dev
 ### 2. Access the System
 - **Staff Portal:** http://localhost:3000
 - **Member Portal:** http://localhost:3000/member
-- **API Documentation:** http://localhost:8080/swagger-ui/index.html
+- **API Documentation:** http://localhost:9090/swagger-ui/index.html
 
 ### 3. Default Login Credentials
 - Username: `admin`

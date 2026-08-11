@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Upload, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate, useParams } from 'react-router-dom';
+import MemberLayout from '@/components/MemberLayout';
 
 interface RejectionDetails {
   requestId: number;
@@ -30,13 +31,32 @@ export default function MemberLoanRepaymentStatus() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [memberFirstName, setMemberFirstName] = useState<string>('Member');
   const { toast } = useToast();
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('session');
+    navigate('/member/login');
+  };
+
   useEffect(() => {
+    fetchMemberInfo();
     if (requestId) {
       fetchRejectionDetails();
     }
   }, [requestId]);
+
+  const fetchMemberInfo = async () => {
+    try {
+      const response = await api.get('/member/dashboard');
+      if (response.data && response.data.firstName) {
+        setMemberFirstName(response.data.firstName);
+      }
+    } catch (err) {
+      console.error('Error fetching member info:', err);
+    }
+  };
 
   const fetchRejectionDetails = async () => {
     setLoading(true);
@@ -137,30 +157,37 @@ export default function MemberLoanRepaymentStatus() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
+      <MemberLayout memberName={memberFirstName} onLogout={handleLogout}>
+        <div className="space-y-6 max-w-7xl mx-auto px-4 lg:px-0">
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+          </div>
+        </div>
+      </MemberLayout>
     );
   }
 
   if (!details) {
     return (
-      <div className="space-y-6">
-        <Button variant="outline" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Go Back
-        </Button>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-muted-foreground">Rejection details not found</p>
-          </CardContent>
-        </Card>
-      </div>
+      <MemberLayout memberName={memberFirstName} onLogout={handleLogout}>
+        <div className="space-y-6 max-w-7xl mx-auto px-4 lg:px-0">
+          <Button variant="outline" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Go Back
+          </Button>
+          <Card>
+            <CardContent className="pt-6 text-center">
+              <p className="text-muted-foreground">Rejection details not found</p>
+            </CardContent>
+          </Card>
+        </div>
+      </MemberLayout>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <MemberLayout memberName={memberFirstName} onLogout={handleLogout}>
+      <div className="space-y-6 max-w-7xl mx-auto px-4 lg:px-0">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
@@ -330,6 +357,7 @@ export default function MemberLoanRepaymentStatus() {
           <p>• Submit during business hours for faster processing</p>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </MemberLayout>
   );
 }
