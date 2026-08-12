@@ -1,0 +1,49 @@
+PLAY STORE SCREENSHOTS REQUIREMENTS
+====================================
+
+For optimal Play Store listing, you need:
+
+1. PHONE SCREENSHOTS (Required)
+   - Minimum: 2 screenshots
+   - Maximum: 8 screenshots
+   - Dimensions: 16:9 or 9:16 aspect ratio
+   - Recommended: 1080 x 1920 pixels (portrait) or 1920 x 1080 pixels (landscape)
+   - Format: PNG or JPEG
+
+2. 7-INCH TABLET SCREENSHOTS (Optional)
+   - Minimum: 1 screenshot
+   - Maximum: 8 screenshots
+   - Dimensions: Same as phone
+
+3. 10-INCH TABLET SCREENSHOTS (Optional)
+   - Minimum: 1 screenshot
+   - Maximum: 8 screenshots
+   - Dimensions: Same as phone
+
+HOW TO CAPTURE SCREENSHOTS:
+---------------------------
+1. Run your app on an emulator or physical device
+2. Navigate to key screens (login, dashboard, loans, etc.)
+3. Take screenshots using:
+   - Android Studio: View > Tool Windows > Running Devices > Screenshot
+   - Device: Power + Volume Down
+   - ADB: adb shell screencap -p /sdcard/screenshot.png
+
+RECOMMENDED SCREENS TO CAPTURE:
+-------------------------------
+1. Login screen
+2. Dashboard (member overview)
+3. Loans list/details
+4. Savings/deposits
+5. Payment history
+6. Profile/settings
+
+TIPS:
+-----
+- Use demo/test data for privacy
+- Ensure UI looks clean and professional
+- Show actual app functionality
+- Include diverse content
+- No personal/sensitive information
+
+Generated icons are ready in: C:\Users\Lenovo\Desktop\minet-sacco\minet-sacco-system\minetsacco-main\playstore-assets

@@ -1,374 +1,453 @@
-# Minet SACCO System
+# Minet SACCO Management System
 
-## 🎯 What This System Does
+[![Deployment](https://img.shields.io/badge/deployment-render-46E3B7)](https://minetsacco-backend.onrender.com)
+[![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web-blue)](https://github.com)
 
-The Minet SACCO System is a comprehensive member savings and loan management platform for employee SACCOs.
+A comprehensive SACCO (Savings and Credit Cooperative) management platform built with Spring Boot and React, featuring member portals, loan management, and financial tracking.
 
-**Core Features:**
-- **Member Management** - Register, approve, and manage members
-- **Savings Management** - Deposits, withdrawals, account tracking
-- **Loan Management** - Applications, approvals, disbursements, repayments
-- **Loan Officer Application** ✨ NEW - Apply for loans on behalf of members with live eligibility checking
-- **Guarantor Management** - Up to 3 guarantors per loan with eligibility validation
-- **Bulk Processing** - Process 500+ members/loans/repayments in minutes
-- **Reports & Analytics** - P&L reports, member reports, loan portfolio analysis
-- **Audit Trail** - Complete compliance logging of all actions
-- **Mobile App** - Android app for member self-service
+## 🌟 Features
 
-**Key Improvements:**
-- Live eligibility checking for members and guarantors
-- Real-time validation prevents errors
-- Faster loan processing (hours instead of days)
-- Better member experience with self-service portal
+### Member Portal
+- 📊 Real-time dashboard with account summaries
+- 💰 Loan application and tracking
+- 📈 Transaction history and statements
+- 👤 Profile management
+- 🔔 Push notifications
+- 📱 Mobile apps (Android/iOS)
+
+### Staff Portal
+- 👥 Member management
+- 💵 Loan approval and disbursement
+- 📋 Transaction processing
+- 📊 Financial reporting
+- 🔐 User access control
+- 📈 Analytics and insights
+
+### Core Features
+- ✅ Multi-account support (Savings, Shares)
+- ✅ Flexible loan products with guarantors
+- ✅ Automated interest calculations
+- ✅ M-Pesa integration (Daraja API)
+- ✅ Excel bulk uploads
+- ✅ PDF report generation
+- ✅ Real-time updates via WebSockets
+- ✅ Mobile-first responsive design
 
 ---
 
-## 📚 Documentation
+## 🏗️ Architecture
 
-### Quick Start
-- **[backend/QUICKSTART.md](backend/QUICKSTART.md)** - Get the system running in 5 minutes
-- **[backend/README.md](backend/README.md)** - Backend setup and configuration
-
-### User Guides
-- **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Complete step-by-step usage guide (START HERE)
-- **[PRESENTATION_SUMMARY.md](PRESENTATION_SUMMARY.md)** - Loan officer feature overview
-
-### System Documentation
-- **[SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)** - Complete system overview and features
-- **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - Project file organization
-- **[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md)** - System architecture and design patterns
-
-### Feature Documentation
-- **[GUARANTOR_REJECTION_HANDLING.md](GUARANTOR_REJECTION_HANDLING.md)** - Guarantor rejection workflow (planned feature)
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend Layer                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │   Web App    │  │  Android APK │  │   iOS App    │ │
+│  │  (React/TS)  │  │  (Capacitor) │  │ (Capacitor)  │ │
+│  └──────────────┘  └──────────────┘  └──────────────┘ │
+└─────────────────────────────────────────────────────────┘
+                           │
+                    HTTPS/REST API
+                           │
+┌─────────────────────────────────────────────────────────┐
+│                    Backend Layer                         │
+│              Spring Boot 3.2 (Java 17)                   │
+│                                                           │
+│  ├─ REST Controllers (JWT Authentication)                │
+│  ├─ Service Layer (Business Logic)                       │
+│  ├─ JPA Repositories (Data Access)                       │
+│  ├─ Flyway Migrations (Schema Management)                │
+│  └─ Security (Spring Security + JWT)                     │
+└─────────────────────────────────────────────────────────┘
+                           │
+                    JDBC Connection
+                           │
+┌─────────────────────────────────────────────────────────┐
+│                   Database Layer                         │
+│              PostgreSQL 16 (Render)                      │
+│                                                           │
+│  ├─ Members & Accounts                                   │
+│  ├─ Loans & Guarantors                                   │
+│  ├─ Transactions                                          │
+│  └─ Financial Records                                     │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Setup (First Time Only)
+### Prerequisites
+
+- **Java 17+** (OpenJDK recommended)
+- **Node.js 18+** and npm
+- **PostgreSQL 14+** (or use Render database)
+- **Git**
+
+### Backend Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/minet-sacco.git
+   cd minet-sacco/backend
+   ```
+
+2. **Configure database**
+   
+   Copy `.env.example` to `.env` and update:
+   ```properties
+   SPRING_PROFILES_ACTIVE=production
+   DATABASE_URL=postgresql://user:password@host:port/database
+   JWT_SECRET=your-64-character-secret-key
+   ```
+
+3. **Build and run**
+   ```bash
+   ./mvnw clean package
+   java -jar target/minet-sacco-backend-0.0.1-SNAPSHOT.jar
+   ```
+
+   Backend will start on `http://localhost:9090`
+
+### Frontend Setup
+
+1. **Navigate to frontend**
+   ```bash
+   cd ../minetsacco-main
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment**
+   
+   Create `.env.local`:
+   ```env
+   VITE_API_URL=http://localhost:9090
+   ```
+
+4. **Start development server**
+   ```bash
+   npm run dev
+   ```
+
+   Frontend will start on `http://localhost:5173`
+
+---
+
+## 🌐 Deployment
+
+### Deploy to Render (Recommended)
+
+The application is configured for deployment on [Render](https://render.com).
+
+#### Backend Deployment
+
+1. **Push to GitHub**
+   ```bash
+   git add .
+   git commit -m "Deploy to Render"
+   git push origin main
+   ```
+
+2. **Create PostgreSQL Database on Render**
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - New → PostgreSQL
+   - Configure database (already set up)
+
+3. **Create Web Service**
+   - New → Web Service
+   - Connect GitHub repository
+   - Set root directory: `backend`
+   - Build command: `./mvnw clean package -DskipTests`
+   - Start command: `java -Dserver.port=$PORT -jar target/minet-sacco-backend-0.0.1-SNAPSHOT.jar`
+   
+4. **Configure Environment Variables**
+   - `SPRING_PROFILES_ACTIVE=production`
+   - `DATABASE_URL=` (auto-filled from database)
+   - `JWT_SECRET=` (generate 64-char random string)
+   - `MPESA_CONSUMER_KEY=your-key`
+   - `MPESA_CONSUMER_SECRET=your-secret`
+
+5. **Deploy**
+   
+   Render will automatically build and deploy. Check logs for:
+   ```
+   Started MinetSaccoBackendApplication in XX.XXX seconds
+   ```
+
+#### Frontend Deployment (Optional - Static Site)
+
+1. **Create Static Site on Render**
+   - New → Static Site
+   - Root directory: `minetsacco-main`
+   - Build command: `npm run build`
+   - Publish directory: `dist`
+
+2. **Environment Variables**
+   ```
+   VITE_API_URL=https://minetsacco-backend.onrender.com
+   ```
+
+---
+
+## 📱 Mobile App Build
+
+### Android APK
+
+1. **Build web app**
+   ```bash
+   cd minetsacco-main
+   npm run build
+   ```
+
+2. **Sync Capacitor**
+   ```bash
+   npx cap sync android
+   ```
+
+3. **Build APK**
+   ```bash
+   cd android
+   ./gradlew assembleRelease
+   ```
+
+   APK location: `android/app/build/outputs/apk/release/app-release.apk`
+
+### iOS App (requires macOS)
+
+1. **Build web app**
+   ```bash
+   npm run build
+   ```
+
+2. **Sync Capacitor**
+   ```bash
+   npx cap sync ios
+   ```
+
+3. **Open Xcode**
+   ```bash
+   npx cap open ios
+   ```
+
+4. Build in Xcode for distribution
+
+---
+
+## 🔧 Configuration
+
+### Backend Configuration Files
+
+- `application.properties` - Default configuration
+- `application-production.properties` - Production (PostgreSQL)
+- `application-dev.properties` - Development (MySQL local)
+- `render.yaml` - Render deployment configuration
+
+### Frontend Configuration
+
+- `.env.development` - Development environment
+- `.env.production` - Production environment (Render)
+- `.env.example` - Template for local setup
+
+### Database Migrations
+
+Located in `backend/src/main/resources/db/migration/`
+
+- Flyway manages schema versions
+- Auto-runs on application startup
+- Baseline version: V0
+
+---
+
+## 🔐 Security
+
+- **Authentication:** JWT tokens (24-hour expiration)
+- **Password Hashing:** BCrypt
+- **API Security:** Spring Security with role-based access
+- **HTTPS:** Enforced in production (Render)
+- **CORS:** Configured for mobile apps and web
+
+### Default Credentials
+
+Create admin user manually after first deployment:
+
+```sql
+INSERT INTO users (username, password_hash, email, role, active, created_at)
+VALUES (
+  'admin',
+  '$2a$10$...', -- BCrypt hash of your password
+  'admin@minetsacco.co.ke',
+  'ADMIN',
+  true,
+  NOW()
+);
+```
+
+---
+
+## 📊 API Endpoints
+
+### Health Check
+- `GET /api/health` - Service health status
+- `GET /api/health/detailed` - Detailed health with DB check
+- `GET /api/ping` - Simple ping endpoint
+- `GET /api/version` - Version information
+
+### Authentication
+- `POST /api/auth/login` - User login
+- `POST /api/auth/logout` - User logout
+- `POST /api/auth/refresh-token` - Refresh JWT token
+
+### Member Portal
+- `GET /api/member/dashboard` - Member dashboard
+- `GET /api/member/profile` - Member profile
+- `GET /api/member/loans` - Member loans
+- `GET /api/member/accounts` - Member accounts
+- `GET /api/member/transactions` - Transaction history
+
+### Staff Portal
+- `GET /api/staff/members` - List all members
+- `POST /api/staff/loans/approve` - Approve loan
+- `POST /api/staff/transactions` - Process transaction
+- `GET /api/staff/reports` - Generate reports
+
+Full API documentation: `/swagger-ui.html` (when running locally)
+
+---
+
+## 🧪 Testing
+
+### Backend Tests
+
 ```bash
-# Backend
 cd backend
-mvn spring-boot:run
+./mvnw test
+```
 
-# Frontend (in another terminal)
+### Frontend Tests
+
+```bash
 cd minetsacco-main
-npm install
-npm run dev
-```
-
-### 2. Access the System
-- **Staff Portal:** http://localhost:3000
-- **Member Portal:** http://localhost:3000/member
-- **API Documentation:** http://localhost:9090/swagger-ui/index.html
-
-### 3. Default Login Credentials
-- Username: `admin`
-- Password: `admin123`
-
-### 4. First Steps
-1. Login as ADMIN
-2. Create staff users (TREASURER, LOAN_OFFICER, CREDIT_COMMITTEE, TELLER)
-3. Register members (manual or bulk)
-4. Configure loan products
-5. Set eligibility rules
-6. Start processing loans
-
----
-
-## 👥 User Roles
-
-| Role | Responsibility | Key Actions |
-|------|-----------------|-------------|
-| **ADMIN** | System configuration | Manage users, configure products, set rules |
-| **TREASURER** | Financial operations | Process deposits, approve withdrawals, disburse loans |
-| **LOAN_OFFICER** | Loan processing | Apply for loans, review applications, recommend approval |
-| **CREDIT_COMMITTEE** | Loan approval | Approve/reject loan applications |
-| **TELLER** | Member transactions | Register members, process deposits |
-| **AUDITOR** | Compliance monitoring | View audit trail, generate reports |
-| **MEMBER** | Self-service | Apply for loans, make deposits, view accounts |
-
----
-
-## ✅ System Capabilities
-
-### What It CAN Do
-✅ Member registration (manual and bulk)
-✅ Savings management (deposits, withdrawals)
-✅ Loan applications (member and loan officer)
-✅ Live eligibility checking
-✅ Guarantor management (up to 3 per loan)
-✅ Loan approval workflow
-✅ Loan disbursement
-✅ Loan repayment (individual and bulk)
-✅ Bulk processing (members, loans, repayments)
-✅ Reports and analytics
-✅ Audit trail and compliance
-✅ Mobile app (Android)
-✅ Notifications (email)
-
-### Planned Features
-🔄 Guarantor rejection handling (3 options)
-🔄 Advanced member financial scoring
-🔄 Integration with M-Pesa API
-🔄 SMS notifications
-🔄 Advanced analytics and ML predictions
-
----
-
-## 📊 System Status
-
-**Version:** 1.0 (April 2026)
-**Status:** Production Ready
-**Completion:** 85% (core features complete, guarantor rejection handling planned)
-
-### Completed Features
-- ✅ Member management
-- ✅ Savings management
-- ✅ Loan management
-- ✅ Loan officer application feature
-- ✅ Live eligibility checking
-- ✅ Guarantor management
-- ✅ Bulk processing
-- ✅ Reports & analytics
-- ✅ Audit trail
-- ✅ Mobile app
-- ✅ Notifications
-
-### In Progress
-- 🔄 Guarantor rejection handling (design complete, implementation pending)
-
----
-
-## 🔧 Technology Stack
-
-**Backend:** 
-- Java 21
-- Spring Boot 3.2
-- PostgreSQL
-- JWT Authentication
-- Flyway Migrations
-
-**Frontend:** 
-- React 18+
-- TypeScript
-- Tailwind CSS
-- Shadcn/ui Components
-- Vite Build Tool
-
-**Mobile:**
-- Capacitor
-- Android Native
-- Same React codebase
-
----
-
-## 📖 How to Use
-
-### For First-Time Users
-1. Read [USAGE_GUIDE.md](USAGE_GUIDE.md) - Complete step-by-step guide
-2. Follow [backend/QUICKSTART.md](backend/QUICKSTART.md) - Setup instructions
-3. Test with sample data
-
-### For Administrators
-1. Read [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md) - System overview
-2. Read [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - Project organization
-3. Configure database and environment
-4. Create user accounts
-5. Configure loan products and eligibility rules
-
-### For Developers
-1. Clone repository
-2. Follow [backend/QUICKSTART.md](backend/QUICKSTART.md)
-3. Review [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) - Architecture and design patterns
-4. Check API endpoints in Swagger UI
-5. Review code in `backend/src/main/java/com/minet/sacco/`
-
----
-
-## 🎓 Daily Workflow Example
-
-### Loan Application Processing
-
-**Morning - Loan Officer**
-```
-1. Login to staff portal
-2. Click "New Loan Application"
-3. Select member to apply for
-4. Enter loan details (product, amount, term)
-5. Search for guarantors by employee ID
-6. System shows live eligibility (✓ or ✗)
-7. Add up to 3 guarantors
-8. Submit application
-```
-
-**Mid-Morning - Credit Committee**
-```
-1. Login to staff portal
-2. View pending loan applications
-3. Review member and guarantor details
-4. Click "Approve" or "Reject"
-5. Add approval comments
-```
-
-**Afternoon - Treasurer**
-```
-1. View approved loans
-2. Click "Disburse Loan"
-3. Confirm amount and account
-4. System transfers funds
-5. Loan status changes to ACTIVE
-```
-
-**Next Day - Guarantor**
-```
-1. Receives notification
-2. Logs into member portal
-3. Views guarantee request
-4. Clicks "Approve" or "Reject"
-5. Loan proceeds if all approve
+npm run test
 ```
 
 ---
 
-## 🔐 Security Features
+## 📦 Tech Stack
 
-- **JWT Authentication** - Secure token-based login
-- **Role-Based Access Control** - Each role has specific permissions
-- **Password Encryption** - BCrypt hashing
-- **Audit Logging** - Complete history of all actions
-- **Data Validation** - Automatic error detection
-- **CORS Configuration** - Secure cross-origin requests
-- **SQL Injection Prevention** - Parameterized queries
-- **XSS Protection** - Input sanitization
+### Backend
+- **Framework:** Spring Boot 3.2
+- **Language:** Java 17
+- **Database:** PostgreSQL 16 (Render) / MySQL 8 (Local)
+- **ORM:** Hibernate/JPA
+- **Migration:** Flyway
+- **Security:** Spring Security + JWT
+- **API Docs:** SpringDoc OpenAPI
+- **Build:** Maven
 
----
+### Frontend
+- **Framework:** React 18 + TypeScript
+- **Build Tool:** Vite
+- **UI Library:** Tailwind CSS + shadcn/ui
+- **State:** React Context API
+- **HTTP Client:** Axios
+- **Mobile:** Capacitor
+- **Forms:** React Hook Form
+- **Charts:** Recharts
 
-## 📞 Support
-
-### For Questions
-1. Check [USAGE_GUIDE.md](USAGE_GUIDE.md)
-2. Review [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)
-3. Check system help tooltips
-4. Contact system administrator
-
-### For Issues
-1. Note the error message
-2. Check [USAGE_GUIDE.md](USAGE_GUIDE.md) troubleshooting section
-3. Review audit trail for details
-4. Contact IT support
-
----
-
-## 📋 File Structure
-
-```
-.
-├── README.md (this file)
-├── SYSTEM_OVERVIEW.md (system overview)
-├── PROJECT_STRUCTURE.md (project organization)
-├── SYSTEM_DESIGN.md (architecture and design)
-├── USAGE_GUIDE.md (user guide)
-├── PRESENTATION_SUMMARY.md (loan officer feature)
-├── GUARANTOR_REJECTION_HANDLING.md (planned feature)
-├── backend/
-│   ├── QUICKSTART.md (setup guide)
-│   ├── README.md (backend documentation)
-│   ├── pom.xml (dependencies)
-│   └── src/
-│       └── main/
-│           ├── java/com/minet/sacco/
-│           │   ├── controller/ (API endpoints)
-│           │   ├── service/ (business logic)
-│           │   ├── entity/ (database models)
-│           │   ├── repository/ (database access)
-│           │   ├── dto/ (data transfer objects)
-│           │   ├── security/ (authentication)
-│           │   └── config/ (configuration)
-│           └── resources/
-│               ├── application.properties (config)
-│               └── db/migration/ (database migrations)
-└── minetsacco-main/
-    ├── package.json (dependencies)
-    ├── vite.config.ts (build config)
-    ├── capacitor.config.ts (mobile config)
-    └── src/
-        ├── pages/ (screens)
-        ├── components/ (UI components)
-        ├── contexts/ (state management)
-        ├── services/ (API services)
-        └── App.tsx (main app)
-```
+### Infrastructure
+- **Hosting:** Render
+- **Database:** Render PostgreSQL
+- **SSL:** Automatic (Render)
+- **Domain:** Custom domain supported
 
 ---
 
-## 🎯 Next Steps
+## 📝 Environment Variables
 
-### Immediate (Today)
-1. Follow [backend/QUICKSTART.md](backend/QUICKSTART.md) to setup
-2. Test login with default credentials
-3. Create staff user accounts
-4. Configure loan products
+### Backend
 
-### Short Term (This Week)
-1. Register test members
-2. Configure eligibility rules
-3. Test loan application workflow
-4. Test guarantor approval workflow
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `SPRING_PROFILES_ACTIVE` | Active profile | Yes | `production` |
+| `DATABASE_URL` | PostgreSQL connection string | Yes | - |
+| `JWT_SECRET` | JWT signing key | Yes | - |
+| `MPESA_CONSUMER_KEY` | M-Pesa API key | No | - |
+| `MPESA_CONSUMER_SECRET` | M-Pesa API secret | No | - |
+| `MPESA_SHORTCODE` | M-Pesa shortcode | No | - |
 
-### Medium Term (This Month)
-1. Process first real loan application
-2. Verify audit trail
-3. Generate compliance report
-4. Train staff on system
+### Frontend
 
-### Long Term (Next Quarter)
-1. Implement guarantor rejection handling
-2. Add advanced analytics
-3. Integrate with M-Pesa API
-4. Deploy to production
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `VITE_API_URL` | Backend API URL | Yes | `https://minetsacco-backend.onrender.com` |
+| `VITE_APP_ENV` | Environment | No | `production` |
 
 ---
 
-## 📈 Performance
+## 🐛 Troubleshooting
 
-- **Member Registration:** < 5 minutes for 100 members (bulk)
-- **Loan Application:** < 2 minutes (with live eligibility checking)
-- **Loan Approval:** < 1 minute
-- **Loan Disbursement:** < 1 minute
-- **Bulk Repayment:** < 3 minutes for 100 repayments
+### Backend won't start
 
----
+**Issue:** Database connection failed
 
-## 📝 Version History
+**Solution:** 
+- Verify `DATABASE_URL` is correct
+- Check PostgreSQL is running
+- Ensure Flyway migrations are valid
 
-**v1.0 (April 2026)**
-- Initial release
-- Member management
-- Savings management
-- Loan management
-- Loan officer application feature
-- Live eligibility checking
-- Guarantor management
-- Bulk processing
-- Reports & analytics
-- Audit logging
-- Mobile app
-- Role-based access control
+### Frontend can't connect to backend
+
+**Issue:** CORS or network error
+
+**Solution:**
+- Check `VITE_API_URL` in `.env.production`
+- Verify backend is running
+- Check CORS settings in `application-production.properties`
+
+### Mobile app "Can't fetch" error
+
+**Issue:** Backend not reachable
+
+**Solution:**
+- Ensure backend is deployed and running
+- Test: `https://minetsacco-backend.onrender.com/api/health`
+- Rebuild APK after backend URL change
 
 ---
 
 ## 📄 License
 
-Internal use only - Minet SACCO
+Proprietary - Minet SACCO. All rights reserved.
 
 ---
 
-## 📞 Contact
+## 👥 Support
 
-For support or questions, contact your system administrator.
+For support and questions:
+- **Email:** support@minetsacco.co.ke
+- **Documentation:** [Deployment Guides](./DEPLOY_TO_RENDER_CHECKLIST.md)
 
 ---
 
-**System Status: Production Ready** ✅
+## 🔄 Version History
 
+### v1.1.0 (Current)
+- ✅ Render deployment support
+- ✅ PostgreSQL migration
+- ✅ Health check endpoints
+- ✅ Production-ready configuration
+- ✅ Mobile app builds (Android/iOS)
+
+### v1.0.0
+- ✅ Initial release
+- ✅ Member and Staff portals
+- ✅ Loan management
+- ✅ M-Pesa integration
+
+---
+
+**Built with ❤️ for Minet SACCO**

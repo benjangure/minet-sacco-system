@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Backup rules for Android Auto Backup
+    Specifies which files should be backed up
+-->
+<full-backup-content>
+    <!-- Include app preferences, but exclude sensitive data -->
+    <include domain="sharedpref" path="." />
+    <exclude domain="sharedpref" path="auth_token.xml" />
+    <exclude domain="sharedpref" path="user_credentials.xml" />
+</full-backup-content>

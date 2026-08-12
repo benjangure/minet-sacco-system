@@ -20,10 +20,32 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    buildTypes {
+    
+    signingConfigs {
         release {
+            storeFile file('release.keystore')
+            storePassword 'MinetSacco2026!'
+            keyAlias 'minetsacco'
+            keyPassword 'MinetSacco2026!'
+        }
+    }
+    
+    buildTypes {
+        debug {
+            // Debug build configuration
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            debuggable true
+        }
+        release {
+            // Release build configuration for Play Store
+            signingConfig signingConfigs.release
+            // Temporarily disable minification to build APK
+            minifyEnabled false
+            shrinkResources false
+            // proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            
+            // Ensure app is not debuggable in production
+            debuggable false
         }
     }
 }

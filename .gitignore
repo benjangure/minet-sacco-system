@@ -1,2 +1,201 @@
+# ================================
+# Minet SACCO - Git Ignore File
+# ================================
 
+# ================================
+# SENSITIVE FILES - NEVER COMMIT!
+# ================================
+.env
+.env.local
+.env.production
+.env.development
+*.pem
+*.key
+*.crt
+*.p12
+*.keystore
+**/release.keystore
+application-local.properties
+secrets.yml
+credentials.json
+
+# Database backups (contain sensitive data)
+database_backups/
+*.sql
+*.dump
+*.backup
+
+# ================================
+# BACKEND (Java/Spring Boot)
+# ================================
 backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+backend/.apt_generated
+backend/.classpath
+backend/.factorypath
+backend/.project
+backend/.settings
+backend/.springBeans
+backend/.sts4-cache
+backend/bin/
+backend/build/
+backend/!**/src/main/**/target/
+backend/!**/src/test/**/target/
+
+# Maven
+backend/pom.xml.tag
+backend/pom.xml.releaseBackup
+backend/pom.xml.versionsBackup
+backend/pom.xml.next
+backend/release.properties
+backend/dependency-reduced-pom.xml
+backend/buildNumber.properties
+backend/.mvn/timing.properties
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+backend/logs/
+backend/*.log
+backend/*.log.*
+
+# ================================
+# FRONTEND (React/Vite/Capacitor)
+# ================================
+minetsacco-main/node_modules/
+minetsacco-main/dist/
+minetsacco-main/build/
+minetsacco-main/.cache/
+minetsacco-main/.vite/
+minetsacco-main/.parcel-cache/
+
+# Production builds
+minetsacco-main/out/
+minetsacco-main/dist-ssr/
+minetsacco-main/*.local
+
+# Capacitor
+minetsacco-main/android/app/build/
+minetsacco-main/android/app/.cxx/
+minetsacco-main/android/.gradle/
+minetsacco-main/android/build/
+minetsacco-main/android/local.properties
+minetsacco-main/android/.idea/
+minetsacco-main/android/captures/
+minetsacco-main/android/*.iml
+minetsacco-main/android/.externalNativeBuild/
+minetsacco-main/android/.cxx/
+
+minetsacco-main/ios/App/Pods/
+minetsacco-main/ios/App/build/
+minetsacco-main/ios/App/*.xcworkspace/xcuserdata/
+minetsacco-main/ios/App/*.xcodeproj/xcuserdata/
+minetsacco-main/ios/App/*.xcodeproj/project.xcworkspace/xcuserdata/
+minetsacco-main/ios/App/DerivedData/
+
+# ================================
+# IDE & EDITOR FILES
+# ================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+.history/
+*.code-workspace
+
+# ================================
+# OPERATING SYSTEM FILES
+# ================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ================================
+# BUILD ARTIFACTS & TEMP FILES
+# ================================
+*.class
+*.jar
+!backend/.mvn/wrapper/maven-wrapper.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*.cache
+
+# ================================
+# TEST & COVERAGE
+# ================================
+coverage/
+.nyc_output/
+*.lcov
+.jest/
+junit.xml
+test-results/
+
+# ================================
+# KEEP THESE FILES (Exceptions)
+# ================================
+# Keep example env files
+!.env.example
+!.env.render.template
+
+# Keep render configuration
+!render.yaml
+
+# Keep Maven wrapper
+!backend/.mvn/wrapper/maven-wrapper.jar
+!backend/mvnw
+!backend/mvnw.cmd
+
+# Keep Gradle wrapper
+!minetsacco-main/android/gradle/wrapper/gradle-wrapper.jar
+!minetsacco-main/android/gradlew
+!minetsacco-main/android/gradlew.bat
+
+# ================================
+# PROJECT SPECIFIC
+# ================================
+# PowerShell scripts for local use only
+START_BACKEND_SERVER.ps1
+CHECK_SERVER_STATUS.ps1
+QUICK_START.md
+APK_SERVER_SETUP_GUIDE.md
+
+# Build output APKs/AABs (too large for GitHub)
+*.apk
+*.aab
+minetsacco-*.apk
+minetsacco-*.aab
+
+# Migration scripts with sensitive data
+**/RESET_*.sql
+**/DELETE_*.sql
+**/FIX_*.sql
+**/DIAGNOSE_*.sql
