@@ -1,0 +1,14 @@
+services:
+  # Spring Boot Backend Service (Docker)
+  - type: web
+    name: minetsacco-backend
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+    healthCheckPath: /api/health
+    autoDeploy: true
