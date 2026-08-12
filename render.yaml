@@ -10,5 +10,24 @@ services:
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: production
-    healthCheckPath: /api/health
+    # healthCheckPath: /api/health  # Disabled: startup takes 3-4 minutes
+    autoDeploy: true
+
+  # React Frontend Static Site
+  - type: web
+    name: minetsacco-frontend
+    env: static
+    plan: free
+    region: oregon
+    buildCommand: cd minetsacco-main && npm install && npm run build
+    staticPublishPath: ./minetsacco-main/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://minetsacco-backend.onrender.com
+      - key: VITE_APP_ENV
+        value: production
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     autoDeploy: true
