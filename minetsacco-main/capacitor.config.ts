@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     cleartext: true,
-    androidScheme: 'http',
+    androidScheme: 'https',
     allowNavigation: [
       '*' // Allow navigation to any domain for flexibility
     ]
