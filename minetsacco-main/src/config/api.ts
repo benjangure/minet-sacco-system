@@ -8,14 +8,14 @@ import { Capacitor } from '@capacitor/core';
 
 // For APK/iOS: Render production backend URL
 const DEFAULT_NATIVE_BACKEND_URL =
-  import.meta.env.VITE_NATIVE_BACKEND_URL || 'https://minetsacco-backend.onrender.com';
+  import.meta.env.VITE_NATIVE_BACKEND_URL || 'https://minetsacco-backend-docker.onrender.com';
 
 const getDefaultBackendUrl = (): string => {
   if (Capacitor.isNativePlatform()) {
     return DEFAULT_NATIVE_BACKEND_URL;
   }
   // For web: uses .env.development (localhost:9090) or .env.production (Render URL)
-  return import.meta.env.VITE_API_URL || 'https://minetsacco-backend.onrender.com';
+  return import.meta.env.VITE_API_URL || 'https://minetsacco-backend-docker.onrender.com';
 };
 
 const DEFAULT_BACKEND_URL = getDefaultBackendUrl();

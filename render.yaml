@@ -23,7 +23,7 @@ services:
     staticPublishPath: ./minetsacco-main/dist
     envVars:
       - key: VITE_API_URL
-        value: https://minetsacco-backend.onrender.com
+        value: https://minetsacco-backend-docker.onrender.com
       - key: VITE_APP_ENV
         value: production
     routes:
