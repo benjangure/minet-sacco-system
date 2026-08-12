@@ -33,7 +33,8 @@ public class V106MemberLoginInitializer {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @PostConstruct
+    // @PostConstruct - DISABLED: One-time migration task already completed
+    // Uncomment only if you need to re-run member login initialization
     @Transactional
     public void initializeMemberLogins() {
         try {

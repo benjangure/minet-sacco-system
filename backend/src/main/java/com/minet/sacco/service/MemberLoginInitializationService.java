@@ -28,7 +28,8 @@ public class MemberLoginInitializationService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @PostConstruct
+    // @PostConstruct - DISABLED: One-time initialization already completed
+    // Uncomment only if you need to re-create specific test member logins
     @Transactional
     public void initializeMemberLogins() {
         // Create login credentials for EMP019
