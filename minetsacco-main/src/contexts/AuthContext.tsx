@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { useNavigate } from "react-router-dom";
 import { getBackendUrl } from "@/config/api";
 import { initializePush } from "@/services/pushNotificationService";
+import { nativeFetch } from "@/utils/nativeHttp";
 
 type AppRole = "ADMIN" | "TREASURER" | "LOAN_OFFICER" | "CREDIT_COMMITTEE" | "AUDITOR" | "TELLER" | "CUSTOMER_SUPPORT" | "MEMBER";
 
@@ -122,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('DEBUG: memberSignIn - fetching from', `${getApiBaseUrl()}/auth/member/login`);
       
-      const response = await fetch(`${getApiBaseUrl()}/auth/member/login`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/auth/member/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -203,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (username: string, password: string) => {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
