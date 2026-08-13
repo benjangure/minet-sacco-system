@@ -5,7 +5,6 @@ const config: CapacitorConfig = {
   appName: 'Minet SACCO',
   webDir: 'dist',
   server: {
-    cleartext: true,
     androidScheme: 'https',
     allowNavigation: [
       '*' // Allow navigation to any domain for flexibility
@@ -23,7 +22,7 @@ const config: CapacitorConfig = {
     scheme: 'MinetSACCO'
   },
   android: {
-    allowMixedContent: true,
+    allowMixedContent: false,
     captureInput: true
   }
 };
