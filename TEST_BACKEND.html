@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Backend Connection</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        #result { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
+        .error { background-color: #ffdddd; }
+        .success { background-color: #ddffdd; }
+        button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <h1>Minet SACCO Backend Test</h1>
+    <p>Testing connection to: <strong>https://minetsacco-backend-docker.onrender.com</strong></p>
+    
+    <button onclick="testRootEndpoint()">Test Root Endpoint (GET /)</button>
+    <button onclick="testLoginEndpoint()">Test Login Endpoint (POST /api/auth/login)</button>
+    <button onclick="testWithFetch()">Test with Fetch API</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        const baseUrl = 'https://minetsacco-backend-docker.onrender.com';
+        const resultDiv = document.getElementById('result');
+        
+        function showResult(message, isError = false) {
+            resultDiv.className = isError ? 'error' : 'success';
+            resultDiv.innerHTML = '<pre>' + message + '</pre>';
+        }
+        
+        async function testRootEndpoint() {
+            showResult('Testing root endpoint...');
+            try {
+                const response = await fetch(baseUrl + '/', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                showResult(`Status: ${response.status} ${response.statusText}\n` +
+                          `Response: ${await response.text()}`, 
+                          response.status !== 401);
+            } catch (error) {
+                showResult(`Error: ${error.message}\n${error.stack}`, true);
+            }
+        }
+        
+        async function testLoginEndpoint() {
+            showResult('Testing login endpoint...');
+            try {
+                const response = await fetch(baseUrl + '/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'test',
+                        password: 'test'
+                    })
+                });
+                
+                const text = await response.text();
+                showResult(`Status: ${response.status} ${response.statusText}\n` +
+                          `Response: ${text}`, 
+                          response.status < 200 || response.status >= 600);
+            } catch (error) {
+                showResult(`Error: ${error.message}\n${error.stack}`, true);
+            }
+        }
+        
+        async function testWithFetch() {
+            showResult('Testing with plain fetch (like Android WebView)...');
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 15000);
+                
+                const response = await fetch(baseUrl + '/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'test',
+                        password: 'test'
+                    }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeout);
+                const data = await response.text();
+                showResult(`Status: ${response.status}\nResponse: ${data}`, false);
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    showResult('Request timed out after 15 seconds', true);
+                } else {
+                    showResult(`Error: ${error.message}`, true);
+                }
+            }
+        }
+        
+        // Auto-test on page load
+        window.onload = () => {
+            testRootEndpoint();
+        };
+    </script>
+</body>
+</html>

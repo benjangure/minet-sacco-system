@@ -1,0 +1,41 @@
+name: Keep Render Backend Alive
+
+on:
+  schedule:
+    # Run every 10 minutes to prevent Render free tier from spinning down
+    # Render spins down after 15 minutes of inactivity
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  ping-backend:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Ping Render Backend
+        run: |
+          echo "Pinging backend to keep it alive..."
+          
+          # Ping the root endpoint (expects 401 Unauthorized, which is fine)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            https://minetsacco-backend-docker.onrender.com/)
+          
+          echo "HTTP Status Code: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "200" ]; then
+            echo "✓ Backend is alive and responding"
+            exit 0
+          elif [ "$HTTP_CODE" = "000" ]; then
+            echo "⚠ Backend is starting up (timeout/connection refused)"
+            exit 0
+          else
+            echo "✗ Unexpected status code: $HTTP_CODE"
+            exit 1
+          fi
+      
+      - name: Send status notification
+        if: failure()
+        run: |
+          echo "Backend health check failed"
+          # You can add Slack/email notifications here if needed
