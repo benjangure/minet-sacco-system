@@ -9,7 +9,7 @@
         <relativePath/>
     </parent>
     <groupId>com.minet.sacco</groupId>
-    <artifactId>minet-sacco-backend</artifactId>
+    <artifactId>minet-sacco</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Minet SACCO Backend</name>
     <description>Spring Boot backend for Minet SACCO management system</description>

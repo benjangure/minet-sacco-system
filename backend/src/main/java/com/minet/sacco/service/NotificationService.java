@@ -1,5 +1,6 @@
 package com.minet.sacco.service;
 
+import com.minet.sacco.dto.PushNotificationDTO;
 import com.minet.sacco.entity.Notification;
 import com.minet.sacco.entity.User;
 import com.minet.sacco.repository.NotificationRepository;
@@ -25,6 +26,9 @@ public class NotificationService {
 
     @Autowired(required = false)
     private EmailNotificationService emailNotificationService;
+
+    @Autowired(required = false)
+    private PushNotificationService pushNotificationService;
 
     @Transactional
     @CacheEvict(value = "unreadCount", key = "#userId")
@@ -54,6 +58,9 @@ public class NotificationService {
                     System.err.println("Failed to send email notification: " + e.getMessage());
                 }
             }
+
+            // Send push notification
+            sendPushNotification(user.get(), message, type, null);
         }
     }
 
@@ -88,6 +95,57 @@ public class NotificationService {
                     System.err.println("Failed to send email notification: " + e.getMessage());
                 }
             }
+
+            // Send push notification
+            sendPushNotification(user.get(), message, category != null ? category : type, null);
+        }
+    }
+
+    /**
+     * Send a Web Push notification to a user if they have an active subscription.
+     * Non-critical: failures are logged but never bubble up.
+     */
+    private void sendPushNotification(User user, String message, String type, String url) {
+        if (pushNotificationService == null || !pushNotificationService.isConfigured()) {
+            return;
+        }
+        try {
+            if (!pushNotificationService.hasActiveSubscription(user)) {
+                return;
+            }
+            String title = getPushTitle(type);
+            String resolvedUrl = url != null ? url : "/member/dashboard?tab=notifications";
+            PushNotificationDTO pushDTO = new PushNotificationDTO.Builder(title, message)
+                    .type(type)
+                    .url(resolvedUrl)
+                    .icon("/icon-512.png")
+                    .badge("/icon-192.png")
+                    .tag(type != null ? type.toLowerCase() : "notification")
+                    .build();
+            pushNotificationService.sendNotificationToUser(user, pushDTO);
+        } catch (Exception e) {
+            System.err.println("Failed to send push notification to user " + user.getId() + ": " + e.getMessage());
+        }
+    }
+
+    private String getPushTitle(String type) {
+        if (type == null) return "Minet SACCO";
+        switch (type.toUpperCase()) {
+            case "LOAN":
+            case "LOAN_APPROVAL":
+            case "LOAN_APPROVED":
+            case "LOAN_REJECTED":
+            case "LOAN_DISBURSED":       return "Loan Update";
+            case "GUARANTOR":
+            case "GUARANTOR_REQUEST":    return "Guarantor Request";
+            case "DEPOSIT":
+            case "DEPOSIT_REQUEST":
+            case "DEPOSIT_APPROVED":     return "Deposit Update";
+            case "REPAYMENT":            return "Repayment Recorded";
+            case "BULK_PROCESSING":      return "Bulk Processing Update";
+            case "SECURITY_ALERT":
+            case "NEW_DEVICE_LOGIN":     return "Security Alert";
+            default:                     return "Minet SACCO";
         }
     }
 

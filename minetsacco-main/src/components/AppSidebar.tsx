@@ -68,7 +68,7 @@ const roleLabels: Record<string, string> = {
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const { profile, role, signOut } = useAuth();
+  const { profile, role, staffSignOut } = useAuth();
 
   const mainItems = allMainItems.filter(item => userHasRole(role, item.roles));
   const glItems = glAccountingItems.filter(item => userHasRole(role, item.roles));
@@ -187,12 +187,12 @@ export function AppSidebar() {
                 {role && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{roleLabels[role] || role}</Badge>}
               </div>
             </div>
-            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground hover:text-foreground" onClick={signOut}>
+            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground hover:text-foreground" onClick={staffSignOut}>
               <LogOut className="mr-2 h-4 w-4" />Sign Out
             </Button>
           </div>
         ) : (
-          <Button variant="ghost" size="icon" onClick={signOut} className="mx-auto">
+          <Button variant="ghost" size="icon" onClick={staffSignOut} className="mx-auto">
             <LogOut className="h-4 w-4" />
           </Button>
         )}

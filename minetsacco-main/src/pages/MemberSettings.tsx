@@ -77,8 +77,7 @@ export default function MemberSettings() {
           email: user.email || "",
           phone: user.phone || "",
         });
-      }
-    } catch (error) {
+      }    } catch (error) {
       console.error("Failed to fetch profile:", error);
     }
     setProfileLoading(false);
@@ -282,7 +281,7 @@ export default function MemberSettings() {
   };
 
   return (
-    <MemberLayout memberName="Member" onLogout={() => {
+    <MemberLayout memberName={[profileData.firstName, profileData.lastName].filter(Boolean).join(' ') || 'Member'} onLogout={() => {
       localStorage.removeItem('token');
       navigate('/member');
     }}>

@@ -196,6 +196,16 @@ public class MemberPortalController {
                 totalOutstanding,
                 pendingCount
             );
+            
+            // Set the full name - use fullName if available, otherwise construct from firstName + lastName
+            String displayName = member.getFullName();
+            if (displayName == null || displayName.trim().isEmpty()) {
+                displayName = (member.getFirstName() != null ? member.getFirstName() : "") + 
+                            " " + (member.getLastName() != null ? member.getLastName() : "");
+                displayName = displayName.trim();
+            }
+            dashboard.setFullName(displayName);
+            
             dashboard.setRecentTransactions(transactionDTOs);
             
             return ResponseEntity.ok(dashboard);

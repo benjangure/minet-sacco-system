@@ -24,6 +24,7 @@ interface Account {
     memberNumber: string;
     firstName: string;
     lastName: string;
+    fullName?: string;
   };
   accountType: string;
   balance: number;
@@ -48,6 +49,7 @@ interface Transaction {
 const Savings = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [search, setSearch] = useState("");
+  const [modalSearch, setModalSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [depositOpen, setDepositOpen] = useState(false);
   const { toast } = useToast();
@@ -262,7 +264,7 @@ const Savings = () => {
 
   const filteredAccounts = groupedAccountsList.filter(a =>
     !search || 
-    `${a.member?.firstName} ${a.member?.lastName} ${a.member?.memberNumber}`.toLowerCase().includes(search.toLowerCase())
+    `${a.member?.fullName || `${a.member?.firstName} ${a.member?.lastName}`} ${a.member?.memberNumber}`.toLowerCase().includes(search.toLowerCase())
   );
 
   const totalSavings = accounts
@@ -281,7 +283,7 @@ const Savings = () => {
           <p className="text-muted-foreground">Manage member shares, deposits, and withdrawals</p>
         </div>
         {canProcessTransactions && (
-          <Dialog open={depositOpen} onOpenChange={setDepositOpen}>
+          <Dialog open={depositOpen} onOpenChange={(open) => { setDepositOpen(open); if (!open) setModalSearch(""); }}>
             <DialogTrigger asChild>
               <Button><Plus className="mr-2 h-4 w-4" />New Transaction</Button>
             </DialogTrigger>
@@ -303,6 +305,18 @@ const Savings = () => {
                       } />
                     </SelectTrigger>
                     <SelectContent>
+                      <div className="px-2 py-1.5 sticky top-0 bg-white z-10">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <input
+                            className="w-full pl-8 pr-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                            placeholder="Search by name or member no..."
+                            value={modalSearch}
+                            onChange={e => setModalSearch(e.target.value)}
+                            onKeyDown={e => e.stopPropagation()}
+                          />
+                        </div>
+                      </div>
                       {accounts.length === 0 ? (
                         <div className="p-2 text-sm text-muted-foreground text-center">
                           No accounts found. Approve members first to create accounts.
@@ -310,9 +324,17 @@ const Savings = () => {
                       ) : (
                         accounts
                           .filter(account => form.transactionType === "DEPOSIT" ? account.accountType !== "SHARES" : true)
+                          .filter(account => {
+                            if (!modalSearch) return true;
+                            const fullName = account.member?.fullName || `${account.member?.firstName} ${account.member?.lastName}`;
+                            return (
+                              fullName.toLowerCase().includes(modalSearch.toLowerCase()) ||
+                              (account.member?.memberNumber || "").toLowerCase().includes(modalSearch.toLowerCase())
+                            );
+                          })
                           .map(account => (
                           <SelectItem key={account.id} value={account.id.toString()}>
-                            {account.member?.memberNumber} — {account.member?.firstName} {account.member?.lastName} ({account.accountType}) - KES {account.balance.toLocaleString()}
+                            {account.member?.memberNumber} — {account.member?.fullName || `${account.member?.firstName} ${account.member?.lastName}`} ({account.accountType}) - KES {account.balance.toLocaleString()}
                           </SelectItem>
                         ))
                       )}
@@ -464,7 +486,7 @@ const Savings = () => {
                       {accountGroup.member?.memberNumber || "—"}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {accountGroup.member?.firstName} {accountGroup.member?.lastName}
+                      {accountGroup.member?.fullName || `${accountGroup.member?.firstName} ${accountGroup.member?.lastName}`}
                     </TableCell>
                     <TableCell className="font-semibold">
                       {accountGroup.savingsBalance > 0 ? (

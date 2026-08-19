@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake, Settings, ChevronLeft, ChevronRight, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/images/logo.png';
@@ -45,6 +45,9 @@ export default function MemberSidebar({
       case 'transact':
         targetPath = '/member/dashboard?tab=transact';
         break;
+      case 'transaction-history':
+        targetPath = '/member/dashboard?tab=transaction-history';
+        break;
       case 'account':
         targetPath = '/member/dashboard?tab=account';
         break;
@@ -76,6 +79,7 @@ export default function MemberSidebar({
   const menuItems = [
     { icon: Home, label: 'Home', id: 'home' },
     { icon: Send, label: 'Transactions', id: 'transact' },
+    { icon: History, label: 'Transaction History', id: 'transaction-history' },
     { icon: User, label: 'My Account', id: 'account' },
     { icon: FileText, label: 'Loans', id: 'loans' },
     { icon: Handshake, label: 'My Guarantees', id: 'guarantees' },

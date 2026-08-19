@@ -146,7 +146,8 @@ public class BulkProcessingService {
         BulkBatch savedBatch = txTemplate.execute(status -> {
             batch.setTotalRecords(finalItems.size());
             batch.setTotalAmount(finalTotalAmount);
-            batch.setStatus("PROCESSING");
+            // Auto-approve monthly contributions - no manual approval needed
+            batch.setStatus("APPROVED");
             batch.setApprovedBy(batch.getUploadedBy());
             batch.setApprovedAt(LocalDateTime.now());
             BulkBatch b = bulkBatchRepository.save(batch);
@@ -250,7 +251,10 @@ public class BulkProcessingService {
 
         batch.setTotalRecords(items.size());
         batch.setTotalAmount(totalAmount);
-        batch.setStatus("PENDING");
+        // Auto-approve loan applications - no manual approval needed
+        batch.setStatus("APPROVED");
+        batch.setApprovedBy(batch.getUploadedBy());
+        batch.setApprovedAt(LocalDateTime.now());
         batch = bulkBatchRepository.save(batch);
 
         for (BulkLoanItem item : items) {
@@ -260,6 +264,9 @@ public class BulkProcessingService {
 
         auditService.logAction(batch.getUploadedBy(), "BULK_UPLOAD", "BulkBatch", batch.getId(),
             "Uploaded loan applications batch: " + batch.getBatchNumber() + " with " + items.size() + " records", null, null);
+
+        // Auto-process loan applications immediately
+        processApprovedBatch(batch);
 
         return batch;
     }
@@ -277,7 +284,10 @@ public class BulkProcessingService {
 
         batch.setTotalRecords(items.size());
         batch.setTotalAmount(totalAmount);
-        batch.setStatus("PENDING");
+        // Auto-approve loan disbursements - no manual approval needed
+        batch.setStatus("APPROVED");
+        batch.setApprovedBy(batch.getUploadedBy());
+        batch.setApprovedAt(LocalDateTime.now());
         batch = bulkBatchRepository.save(batch);
 
         for (BulkDisbursementItem item : items) {
@@ -287,6 +297,9 @@ public class BulkProcessingService {
 
         auditService.logAction(batch.getUploadedBy(), "BULK_UPLOAD", "BulkBatch", batch.getId(),
             "Uploaded loan disbursements batch: " + batch.getBatchNumber() + " with " + items.size() + " records", null, null);
+
+        // Auto-process loan disbursements immediately
+        processApprovedBatch(batch);
 
         return batch;
     }
@@ -433,7 +446,10 @@ public class BulkProcessingService {
             throw new RuntimeException("Only PENDING batches can be approved");
         }
         
-        if (batch.getUploadedBy().getId().equals(approver.getId())) {
+        // Maker-Checker rule: Allow self-approval for routine MONTHLY_CONTRIBUTIONS
+        // For other batch types (loans, member registration), enforce maker-checker
+        if (!batch.getBatchType().equals("MONTHLY_CONTRIBUTIONS") && 
+            batch.getUploadedBy().getId().equals(approver.getId())) {
             throw new RuntimeException("Cannot approve your own batch (Maker-Checker rule)");
         }
 
@@ -488,24 +504,24 @@ public class BulkProcessingService {
             try {
                 txTemplate.execute(status -> {
                     processTransactionItem(item);
+                    // Save the item INSIDE the same transaction where foreign keys were created
+                    item.setStatus("SUCCESS");
+                    item.setProcessedAt(LocalDateTime.now());
+                    bulkTransactionItemRepository.save(item);
                     return null;
                 });
-                item.setStatus("SUCCESS");
-                item.setProcessedAt(LocalDateTime.now());
                 successCount++;
             } catch (Exception e) {
                 item.setStatus("FAILED");
                 item.setErrorMessage(e.getMessage());
                 item.setProcessedAt(LocalDateTime.now());
                 failedCount++;
-            }
-            try {
-                bulkTransactionItemRepository.save(item);
-            } catch (Exception saveException) {
-                item.setStatus("FAILED");
-                item.setErrorMessage("Failed to persist item status: " + saveException.getMessage());
-                item.setProcessedAt(LocalDateTime.now());
-                failedCount++;
+                // Save the failed status outside transaction (no foreign keys set on failure)
+                try {
+                    bulkTransactionItemRepository.save(item);
+                } catch (Exception saveException) {
+                    item.setErrorMessage("Failed to persist item status: " + saveException.getMessage());
+                }
             }
         }
 
@@ -668,12 +684,31 @@ public class BulkProcessingService {
         }
 
         if (item.getLoanRepaymentAmount() != null && item.getLoanRepaymentAmount().compareTo(BigDecimal.ZERO) > 0) {
-            if (item.getLoanNumber() == null || item.getLoanNumber().isEmpty()) {
-                throw new RuntimeException("Loan number required for repayment");
-            }
+            Loan loan = null;
             
-            Loan loan = loanRepository.findByLoanNumber(item.getLoanNumber())
-                .orElseThrow(() -> new RuntimeException("Loan not found: " + item.getLoanNumber()));
+            // Try to find loan by loan number if provided
+            if (item.getLoanNumber() != null && !item.getLoanNumber().isEmpty()) {
+                loan = loanRepository.findByLoanNumber(item.getLoanNumber())
+                    .orElseThrow(() -> new RuntimeException("Loan not found: " + item.getLoanNumber()));
+            } else {
+                // Auto-match: Find member's single disbursed loan
+                List<Loan> disbursedLoans = loanRepository.findByMemberIdAndStatus(
+                    member.getId(), 
+                    Loan.Status.DISBURSED
+                );
+                
+                if (disbursedLoans.isEmpty()) {
+                    throw new RuntimeException("No disbursed loan found for member - loan number required");
+                } else if (disbursedLoans.size() > 1) {
+                    throw new RuntimeException("Member has multiple disbursed loans - loan number required to identify which loan to repay");
+                } else {
+                    // Exactly 1 disbursed loan - auto-match it
+                    loan = disbursedLoans.get(0);
+                    System.out.println("[AUTO_MATCH] Member " + member.getMemberNumber() 
+                        + " has single disbursed loan " + loan.getLoanNumber() 
+                        + " - auto-matching repayment");
+                }
+            }
             
             // Validate loan belongs to this member
             if (!loan.getMember().getId().equals(member.getId())) {

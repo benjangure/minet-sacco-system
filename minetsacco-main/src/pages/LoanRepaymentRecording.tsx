@@ -263,7 +263,7 @@ const LoanRepaymentRecording = () => {
 
   const filteredLoans = loans.filter(l =>
     l.loanNumber.toLowerCase().includes(searchInput.toLowerCase()) ||
-    `${l.member.firstName} ${l.member.lastName}`.toLowerCase().includes(searchInput.toLowerCase()) ||
+    `${l.member.fullName || `${l.member.firstName} ${l.member.lastName}`}`.toLowerCase().includes(searchInput.toLowerCase()) ||
     l.member.memberNumber.toLowerCase().includes(searchInput.toLowerCase())
   );
 
@@ -329,7 +329,7 @@ const LoanRepaymentRecording = () => {
                         onClick={() => handleSelectLoan(loan)}
                       >
                         <TableCell className="font-medium">{loan.loanNumber}</TableCell>
-                        <TableCell>{loan.member.firstName} {loan.member.lastName}</TableCell>
+                        <TableCell>{loan.member.fullName || `${loan.member.firstName} ${loan.member.lastName}`}</TableCell>
                         <TableCell>{loan.member.employeeId}</TableCell>
                         <TableCell className="text-right font-semibold">
                           KES {loan.outstandingBalance.toLocaleString()}
@@ -355,7 +355,7 @@ const LoanRepaymentRecording = () => {
                   <p className="text-sm text-muted-foreground">Selected Loan</p>
                   <p className="text-lg font-semibold">Loan #{selectedLoan.loanNumber}</p>
                   <p className="text-sm text-muted-foreground">
-                    {selectedLoan.member.firstName} {selectedLoan.member.lastName}
+                    {selectedLoan.member.fullName || `${selectedLoan.member.firstName} ${selectedLoan.member.lastName}`}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Employee ID: {selectedLoan.member.employeeId}

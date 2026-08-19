@@ -21,133 +21,110 @@ export const InstallPrompt = () => {
 
   useEffect(() => {
     // Check if app is already installed
-    const checkInstalled = () => {
-      // Check if running in standalone mode (installed)
-      if (window.matchMedia('(display-mode: standalone)').matches) {
-        setIsInstalled(true);
-        return true;
-      }
-      
-      // Check navigator.standalone for iOS
-      if ((window.navigator as any).standalone === true) {
-        setIsInstalled(true);
-        return true;
-      }
-      
-      return false;
-    };
+    const isAlreadyInstalled =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true;
 
-    // Detect platform
-    const detectPlatform = () => {
-      const userAgent = window.navigator.userAgent.toLowerCase();
-      const isIOS = /iphone|ipad|ipod/.test(userAgent);
-      const isAndroid = /android/.test(userAgent);
-      const isDesktop = !isIOS && !isAndroid;
-
-      if (isIOS) {
-        setPlatform('ios');
-      } else if (isAndroid) {
-        setPlatform('android');
-      } else if (isDesktop) {
-        setPlatform('desktop');
-      }
-    };
-
-    // Check if already installed
-    if (checkInstalled()) {
-      console.log('[Install Prompt] App is already installed');
+    if (isAlreadyInstalled) {
+      setIsInstalled(true);
       return;
     }
 
-    detectPlatform();
+    // Detect platform synchronously
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const detectedIOS = /iphone|ipad|ipod/.test(userAgent);
+    const detectedAndroid = /android/.test(userAgent);
+    const detectedDesktop = !detectedIOS && !detectedAndroid;
 
-    // Check if prompt was previously dismissed
+    const detectedPlatform: 'ios' | 'android' | 'desktop' | 'unknown' = detectedIOS
+      ? 'ios'
+      : detectedAndroid
+      ? 'android'
+      : detectedDesktop
+      ? 'desktop'
+      : 'unknown';
+
+    setPlatform(detectedPlatform);
+
+    // Check if prompt was previously dismissed within 7 days
     const promptDismissed = localStorage.getItem('pwa-install-prompt-dismissed');
     const dismissedAt = promptDismissed ? parseInt(promptDismissed) : 0;
     const daysSinceDismissed = (Date.now() - dismissedAt) / (1000 * 60 * 60 * 24);
-
-    // Don't show prompt if dismissed within last 7 days
     if (promptDismissed && daysSinceDismissed < 7) {
-      // Silently skip - don't log to console
       return;
     }
 
-    // Listen for the beforeinstallprompt event
+    // iOS: show manual install instructions after a short delay
+    if (detectedIOS) {
+      const timer = setTimeout(() => {
+        setShowPrompt(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+
+    // Android / Desktop: listen for browser's beforeinstallprompt event.
+    // Also set a fallback timer for desktop — Chrome only fires beforeinstallprompt
+    // when PWA criteria are met, so first-time visitors may never see it otherwise.
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
     const handleBeforeInstallPrompt = (e: Event) => {
-      console.log('[Install Prompt] beforeinstallprompt event fired');
-      
-      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
-      
-      // Store the event so it can be triggered later
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      
-      // Show the custom install prompt
+      // Clear fallback timer — native prompt will handle it
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       setShowPrompt(true);
     };
 
-    // Listen for app installed event
     const handleAppInstalled = () => {
-      console.log('[Install Prompt] App was installed');
       setIsInstalled(true);
       setShowPrompt(false);
       setDeferredPrompt(null);
-      
-      // Clear dismissed flag
       localStorage.removeItem('pwa-install-prompt-dismissed');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // For iOS, show manual install instructions after a delay
-    if (platform === 'ios' && !isInstalled) {
-      const timer = setTimeout(() => {
+    // Desktop fallback: show prompt after 4 seconds if beforeinstallprompt never fired
+    if (detectedDesktop) {
+      fallbackTimer = setTimeout(() => {
         setShowPrompt(true);
-      }, 3000); // Show after 3 seconds
-      
-      return () => clearTimeout(timer);
+      }, 4000);
     }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
     };
-  }, [platform]);
+  }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) {
-      console.log('[Install Prompt] No deferred prompt available');
-      return;
-    }
-
-    console.log('[Install Prompt] Showing install prompt');
-
-    // Show the install prompt
-    deferredPrompt.prompt();
-
-    // Wait for the user to respond to the prompt
-    const { outcome } = await deferredPrompt.userChoice;
-    
-    console.log(`[Install Prompt] User response: ${outcome}`);
-
-    if (outcome === 'accepted') {
-      console.log('[Install Prompt] User accepted the install prompt');
-      setShowPrompt(false);
+    if (deferredPrompt) {
+      // Native browser install prompt available — use it
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setShowPrompt(false);
+      } else {
+        handleDismiss();
+      }
+      setDeferredPrompt(null);
     } else {
-      console.log('[Install Prompt] User dismissed the install prompt');
-      handleDismiss();
+      // No native prompt — open browser install instructions in a new tab
+      // Chrome: chrome://settings/manageProfile won't work cross-origin,
+      // so guide user via the omnibox install icon instead
+      alert(
+        'To install:\n\n' +
+        '1. Click the install icon (⊕) in your browser address bar, OR\n' +
+        '2. Open the browser menu (⋮) → "Install Minet SACCO"\n\n' +
+        'If you don\'t see the option, try using Google Chrome.'
+      );
     }
-
-    // Clear the deferred prompt
-    setDeferredPrompt(null);
   };
 
   const handleDismiss = () => {
-    console.log('[Install Prompt] User dismissed the prompt');
     setShowPrompt(false);
-    
-    // Store dismissal timestamp
     localStorage.setItem('pwa-install-prompt-dismissed', Date.now().toString());
   };
 
@@ -204,7 +181,65 @@ export const InstallPrompt = () => {
     );
   }
 
-  // Android/Desktop installation with native prompt
+  // Android/Desktop installation
+  // Android: Download APK
+  // Desktop: Install PWA
+  if (platform === 'android') {
+    return (
+      <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:max-w-md z-50 animate-in slide-in-from-bottom duration-500">
+        <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg border-0">
+          <div className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 flex-1">
+                <div className="bg-white/20 p-2 rounded-lg flex-shrink-0">
+                  <Smartphone className="h-6 w-6" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-lg mb-1">
+                    Install Mobile App
+                  </h3>
+                  <p className="text-sm text-white/90 mb-3">
+                    Download the native Android app for the best experience
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => {
+                        // Download APK from server
+                        window.location.href = 'http://10.39.60.15:8090/minet-sacco.apk';
+                      }}
+                      className="bg-white text-red-600 hover:bg-white/90 font-semibold"
+                      size="sm"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download App
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={handleDismiss}
+                      className="text-white hover:bg-white/20"
+                      size="sm"
+                    >
+                      Maybe Later
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/20 flex-shrink-0"
+                onClick={handleDismiss}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Desktop: Install PWA
   return (
     <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:max-w-md z-50 animate-in slide-in-from-bottom duration-500">
       <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg border-0">

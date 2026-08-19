@@ -18,8 +18,9 @@ const API_BASE_URL = getApiBaseUrl();
 interface Member {
   id: number;
   memberNumber: string;
-  firstName: string;
-  lastName: string;
+  fullName: string;
+  firstName?: string; // Legacy field - for fallback
+  lastName?: string; // Legacy field - for fallback  
   status: string;
 }
 
@@ -28,8 +29,9 @@ interface Transaction {
   account: {
     member: {
       memberNumber: string;
-      firstName: string;
-      lastName: string;
+      fullName?: string;
+      firstName?: string; // Legacy field - for fallback
+      lastName?: string; // Legacy field - for fallback
     };
   };
   transactionType: string;
@@ -47,7 +49,11 @@ const transactionTypeColors: Record<string, string> = {
   LOAN_DEFAULT_DEBIT: "bg-red-200 text-red-900",
 };
 
-const MemberTransactionHistory = () => {
+interface MemberTransactionHistoryProps {
+  memberMode?: boolean;
+}
+
+const MemberTransactionHistory = ({ memberMode = false }: MemberTransactionHistoryProps) => {
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -60,15 +66,28 @@ const MemberTransactionHistory = () => {
   const { session, role } = useAuth();
   const { refreshKey } = useRefresh();
 
-  // Check if user has access
-  const canAccessTransactionHistory = ["ADMIN", "TREASURER", "LOAN_OFFICER", "CREDIT_COMMITTEE", "AUDITOR"].includes(role || "");
+  // Determine if this is admin route or member route
+  const isAdminRoute = !memberMode && window.location.pathname === '/member-transaction-history';
+  const isMemberRoute = memberMode || window.location.pathname === '/member/transaction-history';
 
   useEffect(() => {
-    if (!canAccessTransactionHistory) {
-      return;
+    if (isMemberRoute && session?.memberId) {
+      // For member route, auto-load current member's data
+      const memberInfo = {
+        id: session.memberId,
+        memberNumber: session.memberNumber || "",
+        fullName: session.fullName || `${session.firstName || ''} ${session.lastName || ''}`.trim(),
+        firstName: session.firstName,
+        lastName: session.lastName,
+        status: "ACTIVE"
+      };
+      setSelectedMember(memberInfo);
+      fetchTransactionsForMember(session.memberId);
+    } else if (isAdminRoute && session?.token) {
+      // For admin route, fetch all members for selection
+      fetchMembers();
     }
-    fetchMembers();
-  }, [session, refreshKey]);
+  }, [session, refreshKey, isMemberRoute, isAdminRoute]);
 
   const fetchMembers = async () => {
     try {
@@ -174,8 +193,7 @@ const MemberTransactionHistory = () => {
 
   const filteredMembers = members.filter(m =>
     m.memberNumber.toLowerCase().includes(searchInput.toLowerCase()) ||
-    m.firstName.toLowerCase().includes(searchInput.toLowerCase()) ||
-    m.lastName.toLowerCase().includes(searchInput.toLowerCase())
+    (m.fullName || `${m.firstName || ''} ${m.lastName || ''}`).toLowerCase().includes(searchInput.toLowerCase())
   );
 
   const calculateTotals = () => {
@@ -192,30 +210,20 @@ const MemberTransactionHistory = () => {
     return { deposits, withdrawals, loanDisbursements };
   };
 
-  if (!canAccessTransactionHistory) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
-            <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
-            <p className="text-muted-foreground">Only Admin, Treasurer, Loan Officer, Credit Committee, and Auditor can access this page.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const totals = calculateTotals();
 
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-foreground">Member Transaction History</h1>
-        <p className="text-muted-foreground">View all transactions for a member</p>
+        <h1 className="text-3xl font-bold text-foreground">
+          {isMemberRoute ? "My Transaction History" : "Member Transaction History"}
+        </h1>
+        <p className="text-muted-foreground">
+          {isMemberRoute ? "View all your transactions" : "View all transactions for a member"}
+        </p>
       </div>
 
-      {!selectedMember && (
+      {!selectedMember && isAdminRoute && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-base">Select Member</CardTitle>
@@ -255,7 +263,7 @@ const MemberTransactionHistory = () => {
                         onClick={() => handleSelectMember(member)}
                       >
                         <TableCell className="font-medium">
-                          {member.firstName} {member.lastName}
+                          {member.fullName || `${member.firstName || ''} ${member.lastName || ''}`.trim()}
                         </TableCell>
                         <TableCell>{member.memberNumber}</TableCell>
                         <TableCell>
@@ -279,13 +287,17 @@ const MemberTransactionHistory = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Selected Member</p>
-                  <p className="text-lg font-semibold">{selectedMember.firstName} {selectedMember.lastName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {isMemberRoute ? "My Account" : "Selected Member"}
+                  </p>
+                  <p className="text-lg font-semibold">{selectedMember.fullName || `${selectedMember.firstName || ''} ${selectedMember.lastName || ''}`.trim()}</p>
                   <p className="text-sm text-muted-foreground">{selectedMember.memberNumber}</p>
                 </div>
-                <Button variant="outline" onClick={handleChangeMember}>
-                  Change Member
-                </Button>
+                {isAdminRoute && (
+                  <Button variant="outline" onClick={handleChangeMember}>
+                    Change Member
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

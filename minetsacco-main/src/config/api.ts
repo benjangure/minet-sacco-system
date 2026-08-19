@@ -6,9 +6,9 @@
 import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
 
-// For APK/iOS: Render production backend URL
+// For APK/iOS: Production backend URL pointing to your server
 const DEFAULT_NATIVE_BACKEND_URL =
-  import.meta.env.VITE_NATIVE_BACKEND_URL || 'https://minetsacco-backend-docker.onrender.com';
+  import.meta.env.VITE_NATIVE_BACKEND_URL || 'http://10.39.60.15:9090';
 
 const getDefaultBackendUrl = (): string => {
   if (Capacitor.isNativePlatform()) {
@@ -22,7 +22,7 @@ const DEFAULT_BACKEND_URL = getDefaultBackendUrl();
 
 export const getBackendUrl = (): string => {
   if (!Capacitor.isNativePlatform()) {
-    return import.meta.env.VITE_API_URL || 'http://localhost:9090';
+    return import.meta.env.VITE_API_URL || 'http://10.39.60.15:9090';
   }
   const stored = localStorage.getItem('backendUrl');
   return stored || DEFAULT_BACKEND_URL;
@@ -48,31 +48,40 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000, // 15 second timeout to prevent 30s+ hangs
+  timeout: 30000, // Increase to 30 seconds for slower network
 });
 
 export const getAuthToken = (): string | null => {
-  // Try session object first (where AuthContext stores token)
-  let token = localStorage.getItem('token');
-  if (!token) {
-    const sessionStr = localStorage.getItem('session');
-    if (sessionStr) {
-      try {
-        const session = JSON.parse(sessionStr);
-        if (session.token && typeof session.token === 'string') {
-          token = session.token;
-        }
-      } catch (e) {
-        console.error('Failed to parse session:', e);
+  // Determine which session key to use based on current URL
+  const isMemberPortal = window.location.pathname.startsWith('/member');
+  const sessionKey = isMemberPortal ? 'member_session' : 'session';
+  
+  // ALWAYS use the appropriate session key based on portal type
+  // Do NOT fall back to 'token' key to avoid confusion
+  const sessionStr = localStorage.getItem(sessionKey);
+  if (sessionStr) {
+    try {
+      const session = JSON.parse(sessionStr);
+      if (session.token && typeof session.token === 'string') {
+        return session.token;
       }
+    } catch (e) {
+      console.error('Failed to parse session:', e);
     }
   }
-  return token;
+  
+  // Fallback: Also check the 'token' key directly (for native apps)
+  const directToken = localStorage.getItem('token');
+  if (directToken) {
+    return directToken;
+  }
+  
+  return null;
 };
 
 api.interceptors.request.use((config) => {
   const token = getAuthToken();
-
+  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -85,8 +94,11 @@ let isRedirecting = false;
 
 // Response interceptor to handle session expiry
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
   (error) => {
+    
     // Check if error is 401 (Unauthorized) - 403 can be permission issue, not session expiry
     if (error.response && error.response.status === 401) {
       // Only redirect if user was actually logged in (has a token) and we're not already redirecting
@@ -123,8 +135,11 @@ api.interceptors.response.use(
         
         if ((isMemberPortal || isStaffPortal) && isSessionExpiry) {
           isRedirecting = true;
-          localStorage.removeItem('token');
-          localStorage.removeItem('session');
+          
+          // Clear the appropriate session key
+          const sessionKey = isMemberPortal ? 'member_session' : 'session';
+          localStorage.removeItem(sessionKey);
+          localStorage.removeItem('token'); // Legacy cleanup
 
           // Redirect to appropriate login page
           if (isMemberPortal) {

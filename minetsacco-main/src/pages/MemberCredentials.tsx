@@ -155,13 +155,54 @@ export default function MemberCredentials() {
   };
 
   const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    toast({
-      title: "Copied",
-      description: `${field === "username" ? "Username" : "Password"} copied to clipboard`,
-    });
-    setTimeout(() => setCopiedField(null), 2000);
+    // Try modern clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopiedField(field);
+        toast({
+          title: "Copied",
+          description: `${field === "username" ? "Username" : "Password"} copied to clipboard`,
+        });
+        setTimeout(() => setCopiedField(null), 2000);
+      }).catch((err) => {
+        console.error('Clipboard API failed:', err);
+        fallbackCopyToClipboard(text, field);
+      });
+    } else {
+      // Fallback for non-HTTPS contexts
+      fallbackCopyToClipboard(text, field);
+    }
+  };
+
+  const fallbackCopyToClipboard = (text: string, field: string) => {
+    // Create a temporary textarea
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+      document.execCommand('copy');
+      setCopiedField(field);
+      toast({
+        title: "Copied",
+        description: `${field === "username" ? "Username" : "Password"} copied to clipboard`,
+      });
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Fallback copy failed:', err);
+      toast({
+        title: "Copy Failed",
+        description: "Please manually select and copy the text",
+        variant: "destructive",
+      });
+    }
+    
+    textArea.remove();
   };
 
   const handleSearch = () => {
@@ -340,7 +381,12 @@ export default function MemberCredentials() {
                     <div className="flex gap-2">
                       <Input
                         type={showPassword ? "text" : "password"}
-                        value={password}
+                        value={
+                          // If password looks like a BCrypt hash, show the default password instead
+                          password.startsWith('$2a$') || password.startsWith('$2b$') 
+                            ? 'Minet@2026' 
+                            : password
+                        }
                         readOnly
                         className="font-mono"
                       />
@@ -361,7 +407,12 @@ export default function MemberCredentials() {
                         type="button"
                         size="icon"
                         variant="outline"
-                        onClick={() => copyToClipboard(password, "password")}
+                        onClick={() => copyToClipboard(
+                          password.startsWith('$2a$') || password.startsWith('$2b$') 
+                            ? 'Minet@2026' 
+                            : password,
+                          "password"
+                        )}
                         className="shrink-0"
                       >
                         {copiedField === "password" ? (

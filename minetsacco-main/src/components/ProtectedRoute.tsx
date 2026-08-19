@@ -11,21 +11,24 @@ interface ProtectedRouteProps {
 export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { session, loading } = useAuth();
   const [memberTokenValid, setMemberTokenValid] = useState<boolean | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [hasChecked, setHasChecked] = useState(false);
 
   useEffect(() => {
+    // Prevent infinite loop - only check once
+    if (hasChecked) return;
+    
     // For member routes, check if token is available in storage
     if (requiredRole === 'MEMBER') {
       let token = localStorage.getItem('token');
       
       if (!token) {
-        const sessionStr = localStorage.getItem('session');
+        const sessionStr = localStorage.getItem('member_session');
         if (sessionStr) {
           try {
             const parsedSession = JSON.parse(sessionStr);
             token = parsedSession.token;
           } catch (e) {
-            console.error('Failed to parse session:', e);
+            console.error('Failed to parse member session:', e);
           }
         }
       }
@@ -38,7 +41,6 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
           
           if (normalizedTokenRole === 'MEMBER') {
             setMemberTokenValid(true);
-            setRetryCount(0);
           } else {
             setMemberTokenValid(false);
           }
@@ -47,20 +49,13 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
           setMemberTokenValid(false);
         }
       } else {
-        // Token not found - if we haven't retried yet, retry in 100ms (for race condition on initial login)
-        if (retryCount < 1) {
-          console.debug('DEBUG: ProtectedRoute - Token not found, retrying in 100ms (retry count:', retryCount, ')');
-          const timeout = setTimeout(() => {
-            setRetryCount(prev => prev + 1);
-          }, 100);
-          return () => clearTimeout(timeout);
-        } else {
-          console.debug('DEBUG: ProtectedRoute - Token not found after retry, marking invalid');
-          setMemberTokenValid(false);
-        }
+        // No token found
+        setMemberTokenValid(false);
       }
+      
+      setHasChecked(true);
     }
-  }, [requiredRole, retryCount]);
+  }, [requiredRole, hasChecked]);
 
   // Show loading spinner while checking auth
   if (loading || (requiredRole === 'MEMBER' && memberTokenValid === null)) {

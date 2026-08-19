@@ -265,13 +265,12 @@ public class BulkValidationService {
         
         // ========== MANDATORY FIELDS ==========
         
-        // Validate first name (REQUIRED)
-        if (item.getFirstName() == null || item.getFirstName().trim().isEmpty()) {
-            errors.add("Row " + rowNumber + ": First name is required");
-        } else if (item.getFirstName().length() > 50) {
-            errors.add("Row " + rowNumber + ": First name must be max 50 characters (current: " + item.getFirstName().length() + ")");
+        // Validate full name (REQUIRED)
+        if (item.getFullName() == null || item.getFullName().trim().isEmpty()) {
+            errors.add("Row " + rowNumber + ": Full name is required");
+        } else if (item.getFullName().length() > 150) {
+            errors.add("Row " + rowNumber + ": Full name must be max 150 characters (current: " + item.getFullName().length() + ")");
         }
-        
         // Validate employee ID (REQUIRED)
         if (item.getEmployeeId() == null || item.getEmployeeId().trim().isEmpty()) {
             errors.add("Row " + rowNumber + ": Employee ID is required");
@@ -287,12 +286,6 @@ public class BulkValidationService {
         
         // ========== OPTIONAL FIELDS (Can be edited later) ==========
         
-        // Validate last name (optional)
-        if (item.getLastName() != null && !item.getLastName().trim().isEmpty()) {
-            if (item.getLastName().length() > 50) {
-                errors.add("Row " + rowNumber + ": Last name must be max 50 characters (current: " + item.getLastName().length() + ")");
-            }
-        }
         
         // Validate phone (optional)
         if (item.getPhone() != null && !item.getPhone().trim().isEmpty()) {

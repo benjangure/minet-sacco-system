@@ -171,14 +171,23 @@ public class ExcelParserService {
                 BulkMemberItem item = new BulkMemberItem();
                 item.setRowNumber(rowNumber++);
                 
-                item.setFirstName(getCellValueAsString(row.getCell(0)));
-                item.setLastName(getCellValueAsString(row.getCell(1)));
-                item.setEmail(getCellValueAsString(row.getCell(2)));
-                item.setPhone(getCellValueAsString(row.getCell(3)));
-                item.setNationalId(getCellValueAsString(row.getCell(4)));
+                // Parse Full Name (col 0) - split into first name and generate full name
+                String fullName = getCellValueAsString(row.getCell(0));
+                if (fullName != null && !fullName.trim().isEmpty()) {
+                    fullName = fullName.trim();
+                    item.setFullName(fullName);
+                    
+                    // Extract first name (first word of full name)
+                    String[] nameParts = fullName.split("\\s+", 2);
+                    item.setFirstName(nameParts[0]);
+                }
+                
+                item.setEmail(getCellValueAsString(row.getCell(1)));
+                item.setPhone(getCellValueAsString(row.getCell(2)));
+                item.setNationalId(getCellValueAsString(row.getCell(3)));
                 
                 // Parse date of birth - handle Excel date cells and multiple formats
-                Cell dobCell = row.getCell(5);
+                Cell dobCell = row.getCell(4);
                 if (dobCell != null) {
                     java.time.LocalDate parsedDate = parseDateCell(dobCell);
                     if (parsedDate != null) {
@@ -186,18 +195,18 @@ public class ExcelParserService {
                     }
                 }
                 
-                item.setDepartment(getCellValueAsString(row.getCell(6)));
-                item.setEmployeeId(getCellValueAsString(row.getCell(7)));
-                item.setEmployer(getCellValueAsString(row.getCell(8)));
-                item.setBank(getCellValueAsString(row.getCell(9)));
-                item.setBankAccount(getCellValueAsString(row.getCell(10)));
-                item.setBankBranch(getCellValueAsString(row.getCell(11)));
-                item.setNextOfKin(getCellValueAsString(row.getCell(12)));
-                item.setNokPhone(getCellValueAsString(row.getCell(13)));
-                item.setNokRelationship(getCellValueAsString(row.getCell(14)));
+                item.setDepartment(getCellValueAsString(row.getCell(5)));
+                item.setEmployeeId(getCellValueAsString(row.getCell(6)));
+                item.setEmployer(getCellValueAsString(row.getCell(7)));
+                item.setBank(getCellValueAsString(row.getCell(8)));
+                item.setBankAccount(getCellValueAsString(row.getCell(9)));
+                item.setBankBranch(getCellValueAsString(row.getCell(10)));
+                item.setNextOfKin(getCellValueAsString(row.getCell(11)));
+                item.setNokPhone(getCellValueAsString(row.getCell(12)));
+                item.setNokRelationship(getCellValueAsString(row.getCell(13)));
 
                 // Parse date joined (optional - defaults to today if blank)
-                Cell dateJoinedCell = row.getCell(15);
+                Cell dateJoinedCell = row.getCell(14);
                 if (dateJoinedCell != null) {
                     java.time.LocalDate parsedDateJoined = parseDateCell(dateJoinedCell);
                     if (parsedDateJoined != null) {
@@ -205,13 +214,13 @@ public class ExcelParserService {
                     }
                 }
 
-                // Opening savings balance (col 16, optional - defaults to 0 if blank)
-                item.setOpeningSavingsBalance(getCellValueAsBigDecimal(row.getCell(16)));
+                // Opening savings balance (col 15, optional - defaults to 0 if blank)
+                item.setOpeningSavingsBalance(getCellValueAsBigDecimal(row.getCell(15)));
 
-                // Opening shares balance (col 17, optional - defaults to 3000 if blank)
-                item.setOpeningSharesBalance(getCellValueAsBigDecimal(row.getCell(17)));
+                // Opening shares balance (col 16, optional - defaults to 3000 if blank)
+                item.setOpeningSharesBalance(getCellValueAsBigDecimal(row.getCell(16)));
                 
-                if (item.getFirstName() != null && !item.getFirstName().trim().isEmpty()) {
+                if (item.getFullName() != null && !item.getFullName().trim().isEmpty()) {
                     items.add(item);
                 }
             }

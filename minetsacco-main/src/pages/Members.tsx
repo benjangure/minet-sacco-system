@@ -1074,7 +1074,7 @@ const Members = () => {
               ) : members.map(member => (
                 <TableRow key={member.id}>
                   <TableCell className="font-mono text-sm">{member.employeeId || member.memberNumber || "—"}</TableCell>
-                  <TableCell className="font-medium">{member.firstName} {member.lastName}</TableCell>
+                  <TableCell className="font-medium">{member.fullName || member.firstName}</TableCell>
                   <TableCell>{member.phone}</TableCell>
                   <TableCell>{member.department || "—"}</TableCell>
                   <TableCell>

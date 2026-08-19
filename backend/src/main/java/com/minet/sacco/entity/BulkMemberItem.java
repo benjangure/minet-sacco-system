@@ -17,8 +17,11 @@ public class BulkMemberItem {
     @JsonIgnoreProperties({"items", "memberItems", "loanItems", "disbursementItems", "uploadedBy", "approvedBy"})
     private BulkBatch batch;
 
-    @Column(name = "item_row_number", nullable = false)
+    @Column(name = "row_number", nullable = false)
     private Integer rowNumber;
+
+    @Column(name = "full_name", length = 150)
+    private String fullName;
 
     private String firstName;
     private String lastName;
@@ -65,6 +68,8 @@ public class BulkMemberItem {
     public void setBatch(BulkBatch batch) { this.batch = batch; }
     public Integer getRowNumber() { return rowNumber; }
     public void setRowNumber(Integer rowNumber) { this.rowNumber = rowNumber; }
+    public String getFullName() { return fullName; }
+    public void setFullName(String fullName) { this.fullName = fullName; }
     public String getFirstName() { return firstName; }
     public void setFirstName(String firstName) { this.firstName = firstName; }
     public String getLastName() { return lastName; }

@@ -56,8 +56,8 @@ export default function MemberLoanBalances() {
   const fetchMemberInfo = async () => {
     try {
       const response = await api.get('/member/dashboard');
-      if (response.data && response.data.firstName) {
-        setMemberFirstName(response.data.firstName);
+      if (response.data && (response.data.fullName || response.data.firstName)) {
+        setMemberFirstName(response.data.fullName || response.data.firstName);
       }
     } catch (err) {
       console.error('Error fetching member info:', err);

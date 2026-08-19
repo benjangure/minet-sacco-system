@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Eye, CheckCircle, XCircle, AlertCircle, FileSpreadsheet, FileDown, Info } from "lucide-react";
+import { Upload, Eye, CheckCircle, XCircle, AlertCircle, FileSpreadsheet, FileDown, Info, Check } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
@@ -1027,8 +1027,7 @@ export default function BulkProcessing() {
         case "MEMBER_REGISTRATION":
           data = [
             {
-              "First Name": "John",
-              "Last Name": "Doe",
+              "Full Name": "John Doe",
               "Email": "john.doe@email.com",
               "Phone": "0712345678",
               "National ID": "12345678",
@@ -1047,8 +1046,7 @@ export default function BulkProcessing() {
               "Opening Shares Balance": "3000",
             },
             {
-              "First Name": "Jane",
-              "Last Name": "Smith",
+              "Full Name": "Jane Smith",
               "Email": "jane.smith@email.com",
               "Phone": "0723456789",
               "National ID": "23456789",
@@ -1067,8 +1065,7 @@ export default function BulkProcessing() {
               "Opening Shares Balance": "3000",
             },
             {
-              "First Name": "Peter",
-              "Last Name": "Kamau",
+              "Full Name": "Peter Kamau",
               "Email": "peter.kamau@email.com",
               "Phone": "0734567890",
               "National ID": "34567890",
@@ -1254,7 +1251,17 @@ export default function BulkProcessing() {
 
 
   const canApproveBatch = (batch: BulkBatch) => {
-    if (batch.status !== "PENDING" || batch.uploadedByUsername === user?.username) {
+    if (batch.status !== "PENDING") {
+      return false;
+    }
+
+    // For MONTHLY_CONTRIBUTIONS, allow self-approval (routine transactions)
+    if (batch.batchType === "MONTHLY_CONTRIBUTIONS") {
+      return user?.role === "TREASURER";
+    }
+
+    // For other batches, enforce maker-checker (no self-approval)
+    if (batch.uploadedByUsername === user?.username) {
       return false;
     }
 
@@ -1263,7 +1270,7 @@ export default function BulkProcessing() {
       return user?.role === "CREDIT_COMMITTEE";
     }
 
-    // Other batches (contributions, member registration) require TREASURER approval
+    // Other batches (member registration) require TREASURER approval
     return user?.role === "TREASURER";
   };
 
@@ -2254,8 +2261,22 @@ export default function BulkProcessing() {
                   </div>
               </Card>
 
-              {/* Batch-level approval removed - only individual item approval allowed */}
-              {selectedBatch.status === "PENDING" && (
+              {/* Batch-level approval for MONTHLY_CONTRIBUTIONS */}
+              {selectedBatch.status === "PENDING" && selectedBatch.batchType === "MONTHLY_CONTRIBUTIONS" && canApproveBatch(selectedBatch) && (
+                <div className="flex gap-2 mt-4 pt-4 border-t">
+                  <Button
+                    onClick={() => handleApproveBatch(selectedBatch.id)}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={loading}
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    Approve Entire Batch ({selectedBatch.totalRecords} items)
+                  </Button>
+                </div>
+              )}
+
+              {/* Individual approval only for loan batches */}
+              {selectedBatch.status === "PENDING" && selectedBatch.batchType !== "MONTHLY_CONTRIBUTIONS" && (
                 <Alert className="border-blue-200 bg-blue-50">
                   <AlertCircle className="h-4 w-4 text-blue-600" />
                   <AlertDescription className="text-blue-800">

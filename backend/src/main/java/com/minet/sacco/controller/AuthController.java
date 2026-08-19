@@ -271,4 +271,178 @@ public class AuthController {
     public ResponseEntity<?> healthCheck() {
         return ResponseEntity.ok(new ApiResponse<>(true, "Backend is healthy", null));
     }
+
+    /**
+     * Reset a member's password back to their national ID
+     * Sets first_login = true so they must change it on next login
+     * 
+     * Usage: POST /api/auth/admin/reset-member-password
+     * Body: { "username": "13121" }
+     * 
+     * No authentication required for initial setup
+     */
+    @PostMapping("/admin/reset-member-password")
+    public ResponseEntity<?> resetMemberPassword(@RequestBody java.util.Map<String, String> request) {
+        try {
+            String username = request.get("username");
+            if (username == null || username.isBlank()) {
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, "Username is required", null)
+                );
+            }
+            
+            System.out.println("=== Resetting password for member: " + username + " ===");
+            
+            // Find user
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new Exception("User not found with username: " + username));
+            
+            // Verify it's a member
+            if (user.getRole() != User.Role.MEMBER) {
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, "Only member accounts can be reset with this endpoint", null)
+                );
+            }
+            
+            // Get member to find national_id
+            com.minet.sacco.entity.Member member = memberRepository.findById(user.getMemberId())
+                    .orElseThrow(() -> new Exception("Member record not found"));
+            
+            // Use national_id as new password, fallback to member_number
+            String newPassword = member.getNationalId() != null && !member.getNationalId().isBlank()
+                ? member.getNationalId()
+                : member.getMemberNumber();
+            
+            // Reset password
+            user.setPassword(passwordEncoder.encode(newPassword));
+            user.setFirstLogin(true);
+            user.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(user);
+            
+            System.out.println("✓ Password reset for " + username + " to national ID: " + newPassword);
+            
+            var result = new java.util.HashMap<String, Object>();
+            result.put("username", username);
+            result.put("memberName", member.getFullName());
+            result.put("newPassword", newPassword);
+            result.put("firstLogin", true);
+            
+            return ResponseEntity.ok(new ApiResponse<>(true, 
+                "Password reset successfully to national ID. Member must change password on first login.", 
+                result));
+            
+        } catch (Exception e) {
+            System.err.println("ERROR resetting password: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(
+                new ApiResponse<>(false, "Failed to reset password: " + e.getMessage(), null)
+            );
+        }
+    }
+
+    /**
+     * One-time admin endpoint to create user accounts for all members
+     * Creates missing user accounts with BCrypt-encoded passwords
+     * 
+     * Usage: POST /api/auth/admin/initialize-member-users
+     * No authentication required for initial setup
+     * 
+     * This should be called once, then the endpoint can be removed or secured
+     */
+    @PostMapping("/admin/initialize-member-users")
+    public ResponseEntity<?> initializeMemberUsers() {
+        try {
+            System.out.println("=== Starting Member User Account Initialization ===");
+            
+            // Get all members
+            var allMembers = memberRepository.findAll();
+            System.out.println("Found " + allMembers.size() + " total members");
+            
+            int created = 0;
+            int updated = 0;
+            int skipped = 0;
+            java.util.List<String> errors = new java.util.ArrayList<>();
+            
+            for (var member : allMembers) {
+                String username = member.getMemberNumber();
+                
+                if (username == null || username.isBlank()) {
+                    skipped++;
+                    continue;
+                }
+                
+                try {
+                    // Check if user already exists
+                    var existingUser = userRepository.findByUsername(username);
+                    
+                    if (existingUser.isPresent()) {
+                        // User exists - check if needs linking to member
+                        User user = existingUser.get();
+                        if (user.getMemberId() == null) {
+                            // Link user to member and update password
+                            String password = member.getNationalId() != null && !member.getNationalId().isBlank() 
+                                ? member.getNationalId() 
+                                : member.getMemberNumber();
+                            user.setPassword(passwordEncoder.encode(password));
+                            user.setMemberId(member.getId());
+                            user.setUpdatedAt(LocalDateTime.now());
+                            userRepository.save(user);
+                            updated++;
+                            System.out.println("Updated user: " + username);
+                        }
+                        // If already linked, skip
+                    } else {
+                        // Create new user account
+                        User user = new User();
+                        user.setUsername(username);
+                        user.setEmail(member.getEmail() != null && !member.getEmail().isBlank()
+                            ? member.getEmail()
+                            : username + "@minet.sacco");
+                        
+                        // Use national_id as password, fallback to member_number
+                        String password = member.getNationalId() != null && !member.getNationalId().isBlank() 
+                            ? member.getNationalId() 
+                            : member.getMemberNumber();
+                        user.setPassword(passwordEncoder.encode(password));
+                        
+                        user.setRole(User.Role.MEMBER);
+                        user.setMemberId(member.getId());
+                        user.setEnabled(true);
+                        user.setFirstLogin(true);
+                        user.setCreatedAt(LocalDateTime.now());
+                        
+                        userRepository.save(user);
+                        created++;
+                        System.out.println("Created user: " + username);
+                    }
+                } catch (Exception e) {
+                    errors.add("Failed to process member " + username + ": " + e.getMessage());
+                    System.err.println("ERROR processing member " + username + ": " + e.getMessage());
+                }
+            }
+            
+            System.out.println("=== Initialization Complete ===");
+            System.out.println("Created: " + created);
+            System.out.println("Updated: " + updated);
+            System.out.println("Skipped: " + skipped);
+            System.out.println("Errors: " + errors.size());
+            
+            var result = new java.util.HashMap<String, Object>();
+            result.put("success", true);
+            result.put("created", created);
+            result.put("updated", updated);
+            result.put("skipped", skipped);
+            result.put("totalMembers", allMembers.size());
+            result.put("errors", errors);
+            result.put("message", "Successfully created " + created + " user accounts, updated " + updated + " accounts");
+            
+            return ResponseEntity.ok(new ApiResponse<>(true, "Initialization complete", result));
+        } catch (Exception e) {
+            System.err.println("FATAL ERROR during member user initialization: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(
+                new ApiResponse<>(false, "Initialization failed: " + e.getMessage(), null)
+            );
+        }
+    }
 }

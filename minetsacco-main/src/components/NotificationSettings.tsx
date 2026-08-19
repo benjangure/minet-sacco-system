@@ -146,15 +146,34 @@ export const NotificationSettings = () => {
   };
 
   if (!isSupported) {
+    const isHTTPS = window.location.protocol === 'https:';
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const needsHTTPS = !isHTTPS && !isLocalhost;
+
     return (
       <Card className="border-amber-200 bg-amber-50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-amber-900">
             <BellOff className="h-5 w-5" />
-            Push Notifications Not Supported
+            Push Notifications Not Available
           </CardTitle>
-          <CardDescription className="text-amber-700">
-            Your browser does not support push notifications. Please use a modern browser like Chrome, Firefox, Edge, or Safari.
+          <CardDescription className="text-amber-700 space-y-2">
+            {needsHTTPS ? (
+              <>
+                <p>Push notifications require a secure connection (HTTPS).</p>
+                <p className="text-sm">
+                  <strong>Current URL:</strong> {window.location.protocol}//{window.location.host}
+                </p>
+                <p className="text-sm">
+                  <strong>Quick fix:</strong> Access via <code className="bg-amber-100 px-1 rounded">http://localhost:{window.location.port || '5173'}</code> instead.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>Your browser does not support push notifications.</p>
+                <p className="text-sm">Please use Chrome, Firefox, Edge, or Safari.</p>
+              </>
+            )}
           </CardDescription>
         </CardHeader>
       </Card>

@@ -42,6 +42,7 @@ interface Loan {
     id: number;
     memberNumber: string;
     firstName: string;
+    fullName?: string;
     lastName: string;
   };
   loanProduct: {
@@ -75,6 +76,7 @@ interface Loan {
       id: number;
       memberNumber: string;
       firstName: string;
+      fullName?: string;
       lastName: string;
     };
     status: string;
@@ -104,6 +106,7 @@ interface Member {
   memberNumber: string;
   employeeId?: string;
   firstName: string;
+  fullName?: string;
   lastName: string;
   status: string;
 }
@@ -2067,7 +2070,7 @@ const Loans = () => {
                 <TableRow key={loan.id} onClick={(e) => e.stopPropagation()}>
                   <TableCell className="font-mono text-sm">{loan.loanNumber || "—"}</TableCell>
                   <TableCell className="font-medium">
-                    {loan.member?.firstName} {loan.member?.lastName}
+                    {loan.member?.fullName || `${loan.member?.firstName} ${loan.member?.lastName}`}
                   </TableCell>
                   <TableCell>{loan.loanProduct?.name}</TableCell>
                   <TableCell>KES {loan.amount.toLocaleString()}</TableCell>

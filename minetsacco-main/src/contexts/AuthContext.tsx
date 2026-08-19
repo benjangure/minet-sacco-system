@@ -11,12 +11,20 @@ interface User {
   username: string;
   email: string;
   role: AppRole;
+  firstName?: string;
+  fullName?: string;
 }
 
 interface Session {
   role: string;
   token: string;
   user: User;
+  // Member-specific fields (for member sessions)
+  memberId?: number;
+  memberNumber?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 interface AuthContextType {
@@ -29,6 +37,8 @@ interface AuthContextType {
   memberSignIn: (username: string, password: string) => Promise<{ error: Error | null; firstLogin?: boolean; username?: string; password?: string }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  memberSignOut: () => Promise<void>;  // NEW: Explicit member logout
+  staffSignOut: () => Promise<void>;   // NEW: Explicit staff logout
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedVersion !== APP_VERSION) {
       // Version mismatch, clear all sessions
       localStorage.removeItem("session");
+      localStorage.removeItem("member_session");
       localStorage.removeItem("token");
       localStorage.setItem("appVersion", APP_VERSION);
       setLoading(false);
@@ -59,7 +70,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     // Check for existing session in localStorage
-    const storedSession = localStorage.getItem("session");
+    // Determine which key to use based on current URL path
+    const isMemberPortal = window.location.pathname.startsWith('/member');
+    const sessionKey = isMemberPortal ? 'member_session' : 'session';
+    const storedSession = localStorage.getItem(sessionKey);
+    
     if (storedSession) {
       try {
         const parsedSession = JSON.parse(storedSession);
@@ -165,7 +180,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: username,
           role: (payload.role || "MEMBER") as AppRole,
         },
-        role: ""
+        role: "",
+        // Member-specific fields
+        memberId: data.memberId || payload.memberId,
+        memberNumber: data.memberNumber || payload.memberNumber,
+        fullName: data.fullName || payload.fullName,
+        firstName: data.firstName || payload.firstName,
+        lastName: data.lastName || payload.lastName,
       };
 
       console.log('DEBUG: memberSignIn - setting session for user:', payload.sub);
@@ -179,13 +200,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatar_url: null,
       });
 
-      // Store under "session" (used by AuthContext's own restore logic)
+      // Store under "member_session" for member portal (separate from staff session)
       // AND under "token" (used by MemberSettings.tsx, notificationService.ts,
       // and other member-portal pages that read the raw token directly)
-      localStorage.setItem("session", JSON.stringify(sessionData));
+      localStorage.setItem("member_session", JSON.stringify(sessionData));
       localStorage.setItem("token", data.token);
 
-      console.log('DEBUG: memberSignIn - session saved to localStorage');
+      console.log('DEBUG: memberSignIn - member session saved to localStorage');
 
       // Initialize push notifications after successful login
       try {
@@ -257,20 +278,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    // Determine which portal we're on - check URL before any state changes
+    const currentPath = window.location.pathname;
+    const isMemberPortal = currentPath.startsWith('/member');
+    
+    console.log('LOGOUT DEBUG:', {
+      currentPath,
+      isMemberPortal,
+      sessionBefore: localStorage.getItem('session') ? 'exists' : 'null',
+      memberSessionBefore: localStorage.getItem('member_session') ? 'exists' : 'null'
+    });
+    
     setSession(null);
     setUser(null);
     setRole(null);
     setProfile(null);
+    
+    // Clear ONLY the appropriate session - DO NOT CLEAR BOTH
+    if (isMemberPortal) {
+      // Member portal logout - only clear member_session
+      localStorage.removeItem("member_session");
+      console.log('LOGOUT: Cleared member_session');
+    } else {
+      // Staff portal logout - only clear session
+      localStorage.removeItem("session");
+      console.log('LOGOUT: Cleared session');
+    }
+    localStorage.removeItem("token"); // Legacy cleanup
+    
+    console.log('LOGOUT DEBUG AFTER:', {
+      sessionAfter: localStorage.getItem('session') ? 'exists' : 'null',
+      memberSessionAfter: localStorage.getItem('member_session') ? 'exists' : 'null'
+    });
+    
+    // Navigate to the appropriate login page
+    const loginPath = isMemberPortal ? '/member/login' : '/login';
+    
+    // Force a small delay to ensure localStorage is cleared before redirect
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Use window.location.replace for synchronous navigation
+    window.location.replace(loginPath);
+  };
+
+  // HARDCODED: Member portal logout - ALWAYS clears member_session
+  const memberSignOut = async () => {
+    console.log('MEMBER LOGOUT: Clearing member_session only');
+    
+    setSession(null);
+    setUser(null);
+    setRole(null);
+    setProfile(null);
+    
+    // ONLY clear member session
+    localStorage.removeItem("member_session");
+    localStorage.removeItem("token");
+    
+    await new Promise(resolve => setTimeout(resolve, 100));
+    window.location.replace('/member/login');
+  };
+
+  // HARDCODED: Staff portal logout - ALWAYS clears session
+  const staffSignOut = async () => {
+    console.log('STAFF LOGOUT: Clearing session only');
+    
+    setSession(null);
+    setUser(null);
+    setRole(null);
+    setProfile(null);
+    
+    // ONLY clear staff session
     localStorage.removeItem("session");
     localStorage.removeItem("token");
-    // Clear browser history and navigate to login
-    navigate("/login", { replace: true });
-    // Clear the history stack to prevent back button from returning to previous pages
-    window.history.replaceState(null, "", "/login");
+    
+    await new Promise(resolve => setTimeout(resolve, 100));
+    window.location.replace('/login');
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, role, profile, loading, signIn, memberSignIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ session, user, role, profile, loading, signIn, memberSignIn, signUp, signOut, memberSignOut, staffSignOut }}>
       {children}
     </AuthContext.Provider>
   );

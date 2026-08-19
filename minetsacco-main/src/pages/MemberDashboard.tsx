@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRefresh } from '@/contexts/RefreshContext';
-import api from '@/config/api';
+import { useAuth } from '@/contexts/AuthContext';
+import api, { getApiBaseUrl } from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Wallet, TrendingUp, DollarSign, Plus, HandshakeIcon, FileText, Send, Upload, Eye, ArrowUp } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, Plus, HandshakeIcon, FileText, Send, Upload, Eye, ArrowUp, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import MemberLayout from '@/components/MemberLayout';
 import GuarantorApprovalDialog from '@/components/GuarantorApprovalDialog';
@@ -16,6 +17,7 @@ import DepositRequestForm from '@/components/DepositRequestForm';
 import MpesaTransaction from '@/components/MpesaTransaction';
 import MemberNotificationsView from '@/components/MemberNotificationsView';
 import MemberReportsView from '@/components/MemberReportsView';
+import MemberTransactionHistory from '@/pages/MemberTransactionHistory';
 import NotificationPrompt from '@/components/NotificationPrompt';
 import { API_BASE_URL } from '@/config/api';
 import { downloadAndOpenFile } from '@/utils/downloadHelper';
@@ -28,6 +30,7 @@ interface Dashboard {
   memberNumber: string;
   firstName: string;
   lastName: string;
+  fullName: string;
   savingsBalance: number;
   sharesBalance: number;
   totalBalance: number;
@@ -282,6 +285,7 @@ export default function MemberDashboard() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { refreshKey } = useRefresh();
+  const { memberSignOut } = useAuth();
 
   useEffect(() => {
     // Check if tab is specified in URL
@@ -295,41 +299,59 @@ export default function MemberDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    // Run all independent fetches in parallel — no reason to wait for each other
-    Promise.all([
-      fetchDashboard(),
-      fetchUnreadNotifications(),
-      fetchEligibility(),
-      fetchActiveLoans(),
-      fetchPendingGuarantees(),
-      fetchTopUpRequests(),
-    ]);
+    // Fetch dashboard first, then others
+    fetchDashboard().then(() => {
+      // Run other fetches in parallel after dashboard succeeds
+      Promise.all([
+        fetchUnreadNotifications(),
+        fetchEligibility(),
+        fetchActiveLoans(),
+        fetchPendingGuarantees(),
+        fetchTopUpRequests(),
+      ]).catch(err => {
+        console.error('Error in parallel fetches:', err);
+      });
+    }).catch(err => {
+      console.error('Dashboard fetch failed:', err);
+    });
   }, [refreshKey]);
 
   const fetchDashboard = async () => {
     try {
-      // Get token from session object first (where AuthContext stores it)
+      // Get token from member_session object (where member login stores it)
       let token = localStorage.getItem('token');
       if (!token) {
-        const sessionStr = localStorage.getItem('session');
-        if (sessionStr) {
+        // Check member_session first (for member portal)
+        const memberSessionStr = localStorage.getItem('member_session');
+        if (memberSessionStr) {
           try {
-            const session = JSON.parse(sessionStr);
+            const session = JSON.parse(memberSessionStr);
             token = session.token;
           } catch (e) {
-            console.error('Failed to parse session:', e);
+            console.error('Failed to parse member_session:', e);
+          }
+        }
+        
+        // Fallback to session (for staff portal)
+        if (!token) {
+          const sessionStr = localStorage.getItem('session');
+          if (sessionStr) {
+            try {
+              const session = JSON.parse(sessionStr);
+              token = session.token;
+            } catch (e) {
+              console.error('Failed to parse session:', e);
+            }
           }
         }
       }
 
       if (!token) {
-        console.log('DEBUG: No token found, redirecting to member login');
         navigate('/member');
         return;
       }
 
       const response = await api.get('/member/dashboard');
-
       setDashboard(response.data);
       setError('');
     } catch (err: any) {
@@ -337,6 +359,7 @@ export default function MemberDashboard() {
       setError('Failed to load dashboard');
       if (err.response?.status === 401) {
         localStorage.removeItem('token');
+        localStorage.removeItem('member_session');
         localStorage.removeItem('session');
         navigate('/member');
       }
@@ -346,12 +369,8 @@ export default function MemberDashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('session');  // ✅ Also remove session
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('memberId');
-    localStorage.removeItem('username');
-    navigate('/member');
+    // Use the explicit member logout function
+    memberSignOut();
   };
 
   const toggleLoanExpansion = (loanId: number) => {
@@ -705,23 +724,24 @@ export default function MemberDashboard() {
   }
 
   return (
-    <MemberLayout memberName={dashboard?.firstName || 'Member'} onLogout={handleLogout} unreadNotifications={unreadNotifications}>
+    <MemberLayout memberName={dashboard?.fullName || dashboard?.firstName || 'Member'} onLogout={handleLogout} unreadNotifications={unreadNotifications}>
       {/* Desktop Notification Prompt - shows once per session */}
       <NotificationPrompt />
       
       <div className="space-y-4 w-full max-w-7xl mx-auto">
         <div className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground">Welcome, {dashboard?.firstName}!</h1>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground">Welcome, {dashboard?.fullName || dashboard?.firstName}!</h1>
           <p className="text-sm sm:text-base text-muted-foreground">Member #{dashboard?.memberNumber}</p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="hidden lg:grid w-full grid-cols-7 bg-primary/10 h-auto">
+          <TabsList className="hidden lg:grid w-full grid-cols-8 bg-primary/10 h-auto">
             <TabsTrigger value="home" data-tab="home" className="text-xs lg:text-sm py-2">Home</TabsTrigger>
             <TabsTrigger value="transact" data-tab="transact" className="text-xs lg:text-sm py-2">Transact</TabsTrigger>
             <TabsTrigger value="account" data-tab="account" className="text-xs lg:text-sm py-2">My Account</TabsTrigger>
             <TabsTrigger value="loans" data-tab="loans" className="text-xs lg:text-sm py-2">Loans</TabsTrigger>
             <TabsTrigger value="deposits" data-tab="deposits" className="text-xs lg:text-sm py-2">Deposits</TabsTrigger>
+            <TabsTrigger value="transaction-history" data-tab="transaction-history" className="text-xs lg:text-sm py-2">Transactions</TabsTrigger>
             <TabsTrigger value="reports" data-tab="reports" className="text-xs lg:text-sm py-2">Reports</TabsTrigger>
             <TabsTrigger value="notifications" data-tab="notifications" className="text-xs lg:text-sm py-2">Notifications</TabsTrigger>
           </TabsList>
@@ -761,7 +781,7 @@ export default function MemberDashboard() {
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
                                 <p className="font-semibold text-sm truncate">
-                                  {guarantee.loan?.member?.firstName} {guarantee.loan?.member?.lastName}
+                                  {guarantee.loan?.member?.fullName || `${guarantee.loan?.member?.firstName || ''} ${guarantee.loan?.member?.lastName || ''}`.trim()}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   Member: {guarantee.loan?.member?.memberNumber}
@@ -1730,6 +1750,11 @@ export default function MemberDashboard() {
           {/* DEPOSITS TAB */}
           <TabsContent value="deposits" className="space-y-4">
             <MemberDepositsView />
+          </TabsContent>
+
+          {/* TRANSACTION HISTORY TAB */}
+          <TabsContent value="transaction-history" className="space-y-4">
+            <MemberTransactionHistory memberMode={true} />
           </TabsContent>
 
           {/* REPORTS TAB */}

@@ -261,6 +261,12 @@ const Index = () => {
 
   // Get user's first name from session
   const getUserFirstName = () => {
+    if (session?.user?.fullName) {
+      return session.user.fullName;
+    }
+    if (session?.user?.firstName) {
+      return session.user.firstName;
+    }
     if (session?.user?.username) {
       return session.user.username.charAt(0).toUpperCase() + session.user.username.slice(1);
     }

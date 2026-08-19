@@ -36,7 +36,7 @@ export default function MemberLogin() {
     hasCheckedSession.current = true;
 
     // If already logged in with valid token, redirect to dashboard
-    const sessionStr = localStorage.getItem('session');
+    const sessionStr = localStorage.getItem('member_session');
     if (sessionStr) {
       try {
         const session = JSON.parse(sessionStr);
@@ -144,11 +144,12 @@ export default function MemberLogin() {
         }
       }
       console.log('DEBUG: Current URL before navigate:', window.location.href);
-      console.log('DEBUG: About to call navigate("/member/dashboard", { replace: true })');
+      console.log('DEBUG: Using window.location.href to avoid infinite loop');
       
-      // No delay needed - session is already written and validated
-      navigate('/member/dashboard', { replace: true });
-      console.log('DEBUG: Navigate called, current URL is now:', window.location.href);
+      // Use window.location.href instead of navigate() to prevent infinite reload loop
+      // This performs a full page navigation, breaking the React Router cycle
+      window.location.href = '/member/dashboard';
+      console.log('DEBUG: Redirect initiated to:', window.location.href);
     } catch (err: any) {
       console.error('Login error:', err);
       
