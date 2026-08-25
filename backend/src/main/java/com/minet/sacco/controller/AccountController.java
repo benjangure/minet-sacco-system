@@ -2,6 +2,7 @@ package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.DepositRequest;
+import com.minet.sacco.dto.ShareTransferRequest;
 import com.minet.sacco.dto.WithdrawalRequest;
 import com.minet.sacco.entity.Account;
 import com.minet.sacco.entity.Transaction;
@@ -80,6 +81,19 @@ public class AccountController {
             @PathVariable String accountType) {
         BigDecimal balance = accountService.getBalance(memberId, Account.AccountType.valueOf(accountType));
         return ResponseEntity.ok(ApiResponse.success("Balance retrieved successfully", balance));
+    }
+
+    @PostMapping("/transfer-shares")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<List<Transaction>>> transferShares(
+            @Valid @RequestBody ShareTransferRequest request,
+            Authentication authentication) {
+        User user = userService.getUserByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        List<Transaction> transactions = accountService.transferShares(request, user);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Share transfer completed successfully. " + transactions.size() + " transaction(s) created.",
+                transactions));
     }
 }
 

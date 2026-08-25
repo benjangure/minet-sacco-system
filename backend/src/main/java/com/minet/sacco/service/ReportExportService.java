@@ -2129,4 +2129,258 @@ public class ReportExportService {
         }
         return baos.toByteArray();
     }
+
+    // =========================================================================
+    // MEMBER CONTRIBUTIONS REPORT — EXCEL
+    // =========================================================================
+
+    /**
+     * Export a member's full contribution / transaction history to Excel.
+     */
+    public byte[] exportMemberContributionsToExcel(com.minet.sacco.dto.MemberContributionsReportDTO report) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+
+            // ── Style helpers ────────────────────────────────────────────────
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            Font whiteFont = workbook.createFont();
+            whiteFont.setColor(IndexedColors.WHITE.getIndex());
+            whiteFont.setBold(true);
+            headerStyle.setFont(whiteFont);
+
+            CellStyle boldStyle = workbook.createCellStyle();
+            Font boldFont = workbook.createFont();
+            boldFont.setBold(true);
+            boldStyle.setFont(boldFont);
+
+            CellStyle amountStyle = workbook.createCellStyle();
+            DataFormat fmt = workbook.createDataFormat();
+            amountStyle.setDataFormat(fmt.getFormat("#,##0.00"));
+
+            // ── Sheet 1: Summary ─────────────────────────────────────────────
+            Sheet summary = workbook.createSheet("Summary");
+
+            int r = 0;
+            Row titleRow = summary.createRow(r++);
+            org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue(COMPANY_NAME + " — MEMBER CONTRIBUTIONS REPORT");
+            titleCell.setCellStyle(boldStyle);
+            summary.addMergedRegion(new CellRangeAddress(0, 0, 0, 4));
+
+            r++; // blank
+            createLabelValueRow(summary, r++, "Member Number", report.getMemberNumber(), boldStyle);
+            createLabelValueRow(summary, r++, "Member Name",   report.getMemberName(),   boldStyle);
+            createLabelValueRow(summary, r++, "Email",         report.getEmail(),         boldStyle);
+            createLabelValueRow(summary, r++, "Phone",         report.getPhone(),         boldStyle);
+
+            if (report.getStartDate() != null || report.getEndDate() != null) {
+                String period = (report.getStartDate() != null ? report.getStartDate().format(DATE_FORMATTER) : "—")
+                        + " to "
+                        + (report.getEndDate() != null ? report.getEndDate().format(DATE_FORMATTER) : "—");
+                createLabelValueRow(summary, r++, "Period", period, boldStyle);
+            }
+            if (report.getAccountTypeFilter() != null) {
+                createLabelValueRow(summary, r++, "Account Type Filter", report.getAccountTypeFilter(), boldStyle);
+            }
+            createLabelValueRow(summary, r++, "Generated At",
+                    report.getGeneratedAt() != null ? report.getGeneratedAt().format(DATETIME_FORMATTER) : "", boldStyle);
+
+            r++; // blank
+            Row totalsHeader = summary.createRow(r++);
+            totalsHeader.createCell(0).setCellValue("TOTALS");
+            totalsHeader.getCell(0).setCellStyle(boldStyle);
+
+            createAmountRow(summary, r++, "Total Deposited (KES)",    report.getTotalDeposited(),  amountStyle, boldStyle);
+            createAmountRow(summary, r++, "Total Withdrawn (KES)",    report.getTotalWithdrawn(),  amountStyle, boldStyle);
+            createAmountRow(summary, r++, "Net Contribution (KES)",   report.getNetContribution(), amountStyle, boldStyle);
+
+            r++; // blank
+            if (report.getAccountSummaries() != null && !report.getAccountSummaries().isEmpty()) {
+                Row accHeader = summary.createRow(r++);
+                String[] accCols = {"Account Type", "Current Balance (KES)", "Total Deposited (KES)", "Total Withdrawn (KES)", "Transactions"};
+                for (int c = 0; c < accCols.length; c++) {
+                    org.apache.poi.ss.usermodel.Cell cell = accHeader.createCell(c);
+                    cell.setCellValue(accCols[c]);
+                    cell.setCellStyle(headerStyle);
+                }
+                for (com.minet.sacco.dto.MemberContributionsReportDTO.AccountSummary acc : report.getAccountSummaries()) {
+                    Row row = summary.createRow(r++);
+                    row.createCell(0).setCellValue(acc.getAccountType() != null ? acc.getAccountType() : "");
+                    org.apache.poi.ss.usermodel.Cell balCell = row.createCell(1);
+                    balCell.setCellValue(toDouble(acc.getCurrentBalance()));
+                    balCell.setCellStyle(amountStyle);
+                    org.apache.poi.ss.usermodel.Cell depCell = row.createCell(2);
+                    depCell.setCellValue(toDouble(acc.getTotalDeposited()));
+                    depCell.setCellStyle(amountStyle);
+                    org.apache.poi.ss.usermodel.Cell wdrCell = row.createCell(3);
+                    wdrCell.setCellValue(toDouble(acc.getTotalWithdrawn()));
+                    wdrCell.setCellStyle(amountStyle);
+                    row.createCell(4).setCellValue(acc.getTransactionCount());
+                }
+            }
+
+            for (int c = 0; c < 5; c++) summary.autoSizeColumn(c);
+
+            // ── Sheet 2: Transactions ─────────────────────────────────────────
+            Sheet txSheet = workbook.createSheet("Transactions");
+
+            Row txHeader = txSheet.createRow(0);
+            String[] txCols = {"Date", "Account Type", "Transaction Type", "Amount (KES)", "Description", "Processed By"};
+            for (int c = 0; c < txCols.length; c++) {
+                org.apache.poi.ss.usermodel.Cell cell = txHeader.createCell(c);
+                cell.setCellValue(txCols[c]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            int txRow = 1;
+            if (report.getEntries() != null) {
+                for (com.minet.sacco.dto.MemberContributionsReportDTO.ContributionEntry entry : report.getEntries()) {
+                    Row row = txSheet.createRow(txRow++);
+                    row.createCell(0).setCellValue(
+                            entry.getTransactionDate() != null ? entry.getTransactionDate().format(DATETIME_FORMATTER) : "");
+                    row.createCell(1).setCellValue(entry.getAccountType() != null ? entry.getAccountType() : "");
+                    row.createCell(2).setCellValue(entry.getTransactionType() != null ? entry.getTransactionType() : "");
+                    org.apache.poi.ss.usermodel.Cell amtCell = row.createCell(3);
+                    amtCell.setCellValue(toDouble(entry.getAmount()));
+                    amtCell.setCellStyle(amountStyle);
+                    row.createCell(4).setCellValue(entry.getDescription() != null ? entry.getDescription() : "");
+                    row.createCell(5).setCellValue(entry.getProcessedBy() != null ? entry.getProcessedBy() : "");
+                }
+            }
+
+            for (int c = 0; c < txCols.length; c++) txSheet.autoSizeColumn(c);
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            workbook.write(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    // =========================================================================
+    // MEMBER CONTRIBUTIONS REPORT — PDF
+    // =========================================================================
+
+    /**
+     * Export a member's full contribution / transaction history to PDF.
+     */
+    public byte[] exportMemberContributionsToPdf(com.minet.sacco.dto.MemberContributionsReportDTO report) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc);
+
+            // ── Header ────────────────────────────────────────────────────────
+            addReportHeader(document, "MEMBER CONTRIBUTIONS REPORT");
+
+            document.add(new Paragraph("Member:  " + report.getMemberName()
+                    + "  (" + report.getMemberNumber() + ")").setFontSize(11));
+            if (report.getEmail() != null)
+                document.add(new Paragraph("Email:   " + report.getEmail()).setFontSize(10));
+            if (report.getPhone() != null)
+                document.add(new Paragraph("Phone:   " + report.getPhone()).setFontSize(10));
+            if (report.getStartDate() != null || report.getEndDate() != null) {
+                String period = (report.getStartDate() != null ? report.getStartDate().format(DATE_FORMATTER) : "—")
+                        + " to "
+                        + (report.getEndDate() != null ? report.getEndDate().format(DATE_FORMATTER) : "—");
+                document.add(new Paragraph("Period:  " + period).setFontSize(10));
+            }
+            if (report.getAccountTypeFilter() != null)
+                document.add(new Paragraph("Account Type: " + report.getAccountTypeFilter()).setFontSize(10));
+            document.add(new Paragraph("Generated: "
+                    + (report.getGeneratedAt() != null ? report.getGeneratedAt().format(DATETIME_FORMATTER) : ""))
+                    .setFontSize(10).setFontColor(ColorConstants.GRAY));
+            document.add(new Paragraph(""));
+
+            // ── Overall Totals ────────────────────────────────────────────────
+            document.add(new Paragraph("SUMMARY").setBold().setFontSize(12));
+            Table totalsTable = new Table(2);
+            totalsTable.setWidth(350);
+            addSummaryRow(totalsTable, "Total Deposited (KES):",  "KES " + formatCurrency(report.getTotalDeposited()));
+            addSummaryRow(totalsTable, "Total Withdrawn (KES):",  "KES " + formatCurrency(report.getTotalWithdrawn()));
+            addSummaryRow(totalsTable, "Net Contribution (KES):", "KES " + formatCurrency(report.getNetContribution()));
+            document.add(totalsTable);
+            document.add(new Paragraph(""));
+
+            // ── Per-account breakdown ─────────────────────────────────────────
+            if (report.getAccountSummaries() != null && !report.getAccountSummaries().isEmpty()) {
+                document.add(new Paragraph("ACCOUNT BREAKDOWN").setBold().setFontSize(12));
+                Table accTable = new Table(5);
+                addHeaderCell(accTable, "Account Type");
+                addHeaderCell(accTable, "Balance (KES)");
+                addHeaderCell(accTable, "Deposited (KES)");
+                addHeaderCell(accTable, "Withdrawn (KES)");
+                addHeaderCell(accTable, "Txns");
+                for (com.minet.sacco.dto.MemberContributionsReportDTO.AccountSummary acc : report.getAccountSummaries()) {
+                    accTable.addCell(new Cell().add(new Paragraph(acc.getAccountType() != null ? acc.getAccountType() : "").setFontSize(9)));
+                    accTable.addCell(new Cell().add(new Paragraph(formatCurrency(acc.getCurrentBalance())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                    accTable.addCell(new Cell().add(new Paragraph(formatCurrency(acc.getTotalDeposited())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                    accTable.addCell(new Cell().add(new Paragraph(formatCurrency(acc.getTotalWithdrawn())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                    accTable.addCell(new Cell().add(new Paragraph(String.valueOf(acc.getTransactionCount())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
+                }
+                document.add(accTable);
+                document.add(new Paragraph(""));
+            }
+
+            // ── Transaction detail ────────────────────────────────────────────
+            document.add(new Paragraph("TRANSACTION HISTORY").setBold().setFontSize(12));
+            if (report.getEntries() == null || report.getEntries().isEmpty()) {
+                document.add(new Paragraph("No transactions found for the selected criteria.").setFontSize(10));
+            } else {
+                Table txTable = new Table(6);
+                addHeaderCell(txTable, "Date");
+                addHeaderCell(txTable, "Account");
+                addHeaderCell(txTable, "Type");
+                addHeaderCell(txTable, "Amount (KES)");
+                addHeaderCell(txTable, "Description");
+                addHeaderCell(txTable, "Processed By");
+
+                for (com.minet.sacco.dto.MemberContributionsReportDTO.ContributionEntry entry : report.getEntries()) {
+                    txTable.addCell(new Cell().add(new Paragraph(
+                            entry.getTransactionDate() != null ? entry.getTransactionDate().format(DATETIME_FORMATTER) : "").setFontSize(8)));
+                    txTable.addCell(new Cell().add(new Paragraph(
+                            entry.getAccountType() != null ? entry.getAccountType() : "").setFontSize(8)));
+                    txTable.addCell(new Cell().add(new Paragraph(
+                            entry.getTransactionType() != null ? entry.getTransactionType() : "").setFontSize(8)));
+                    txTable.addCell(new Cell().add(new Paragraph(
+                            formatCurrency(entry.getAmount())).setFontSize(8).setTextAlignment(TextAlignment.RIGHT)));
+                    txTable.addCell(new Cell().add(new Paragraph(
+                            entry.getDescription() != null ? entry.getDescription() : "").setFontSize(8)));
+                    txTable.addCell(new Cell().add(new Paragraph(
+                            entry.getProcessedBy() != null ? entry.getProcessedBy() : "").setFontSize(8)));
+                }
+                document.add(txTable);
+            }
+
+            document.close();
+        } catch (Exception e) {
+            throw new Exception("Failed to generate member contributions PDF: " + e.getMessage(), e);
+        }
+        return baos.toByteArray();
+    }
+
+    // ── Private helpers shared by the new export methods ─────────────────────
+
+    private void createLabelValueRow(Sheet sheet, int rowNum, String label, String value, CellStyle labelStyle) {
+        Row row = sheet.createRow(rowNum);
+        org.apache.poi.ss.usermodel.Cell lbl = row.createCell(0);
+        lbl.setCellValue(label + ":");
+        lbl.setCellStyle(labelStyle);
+        row.createCell(1).setCellValue(value != null ? value : "");
+    }
+
+    private void createAmountRow(Sheet sheet, int rowNum, String label, BigDecimal amount,
+                                 CellStyle amountStyle, CellStyle labelStyle) {
+        Row row = sheet.createRow(rowNum);
+        org.apache.poi.ss.usermodel.Cell lbl = row.createCell(0);
+        lbl.setCellValue(label);
+        lbl.setCellStyle(labelStyle);
+        org.apache.poi.ss.usermodel.Cell val = row.createCell(1);
+        val.setCellValue(toDouble(amount));
+        val.setCellStyle(amountStyle);
+    }
 }

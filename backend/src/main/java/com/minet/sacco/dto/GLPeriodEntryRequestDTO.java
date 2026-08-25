@@ -9,6 +9,7 @@ public class GLPeriodEntryRequestDTO {
   private Integer periodYear;
   private String description;
   private String entryReason; // ACCRUAL, ADJUSTMENT, ALLOCATION, RECLASSIFICATION
+  private Boolean isDebit;   // optional override; if null, inferred from account normalBalance
   
   public GLPeriodEntryRequestDTO() {}
   
@@ -29,4 +30,7 @@ public class GLPeriodEntryRequestDTO {
   
   public String getEntryReason() { return entryReason; }
   public void setEntryReason(String entryReason) { this.entryReason = entryReason; }
+
+  public Boolean getIsDebit() { return isDebit; }
+  public void setIsDebit(Boolean isDebit) { this.isDebit = isDebit; }
 }

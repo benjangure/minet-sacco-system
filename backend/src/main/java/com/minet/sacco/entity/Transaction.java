@@ -38,7 +38,8 @@ public class Transaction {
     private User createdBy;
 
     public enum TransactionType {
-        DEPOSIT, WITHDRAWAL, LOAN_DISBURSEMENT, LOAN_REPAYMENT, INTEREST, LOAN_DEFAULT_DEBIT
+        DEPOSIT, WITHDRAWAL, LOAN_DISBURSEMENT, LOAN_REPAYMENT, INTEREST,
+        LOAN_DEFAULT_DEBIT, ENTRANCE_FEE, BANK_CHARGE, SHARE_TRANSFER
     }
 
     @PrePersist

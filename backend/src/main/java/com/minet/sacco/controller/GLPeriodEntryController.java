@@ -158,7 +158,13 @@ public class GLPeriodEntryController {
         entry = new GLManualEntry();
         entry.setGlAccount(account);
         entry.setAmount(request.getAmount());
-        entry.setIsDebit(true); // Default to debit; can be adjusted as needed
+        // Infer isDebit from the account's normalBalance instead of always defaulting to true.
+        // ASSET and EXPENSE accounts normally carry a debit balance; all others credit.
+        boolean debitByDefault = account.getNormalBalance() != null
+            ? account.getNormalBalance() == GLAccount.NormalBalance.DEBIT
+            : (account.getAccountType() == GLAccount.AccountType.ASSET
+               || account.getAccountType() == GLAccount.AccountType.EXPENSE);
+        entry.setIsDebit(request.getIsDebit() != null ? request.getIsDebit() : debitByDefault);
         entry.setDescription(request.getDescription());
         entry.setEntryReason(GLManualEntry.EntryReason.valueOf(request.getEntryReason()));
         entry.setCreatedByUser(currentUser);

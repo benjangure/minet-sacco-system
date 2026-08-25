@@ -471,7 +471,7 @@ export default function GLConfiguration() {
       case "DRAFT":
         return "bg-gray-200 text-gray-800";
       case "POSTED":
-        return "bg-blue-200 text-blue-800";
+        return "bg-accent text-accent-foreground";
       case "APPROVED":
         return "bg-green-200 text-green-800";
       case "LOCKED":

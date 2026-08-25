@@ -113,4 +113,20 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
     List<Loan> findByMemberIdAndStatusIn(Long memberId, java.util.List<Loan.Status> statuses);
 
     List<Loan> findByMemberIdAndLoanProductId(Long memberId, Long loanProductId);
+
+    /**
+     * Sum of outstanding balances for loans disbursed ON OR BEFORE a specific date.
+     * Used for date-aware balance sheet asset calculations.
+     */
+    @Query("SELECT COALESCE(SUM(l.outstandingBalance), 0) FROM Loan l " +
+           "WHERE l.status IN ('DISBURSED') " +
+           "AND l.disbursementDate <= :asOfDate")
+    BigDecimal sumOutstandingBalanceAsOf(@Param("asOfDate") LocalDateTime asOfDate);
+
+    @Query("SELECT COALESCE(SUM(l.outstandingBalance), 0) FROM Loan l " +
+           "WHERE l.status = 'DISBURSED' " +
+           "AND l.loanProduct.id = :loanProductId " +
+           "AND l.disbursementDate <= :asOfDate")
+    BigDecimal sumOutstandingBalanceAsOfByProduct(@Param("asOfDate") LocalDateTime asOfDate,
+                                                   @Param("loanProductId") Integer loanProductId);
 }

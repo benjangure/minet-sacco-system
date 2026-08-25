@@ -1,6 +1,7 @@
 package com.minet.sacco.controller;
 
 import com.minet.sacco.dto.ApiResponse;
+import com.minet.sacco.dto.MemberContributionsReportDTO;
 import com.minet.sacco.dto.ProfitLossReportDTO;
 import com.minet.sacco.dto.WithdrawalMonitoringReportDTO;
 import com.minet.sacco.dto.GuarantorReportDTO;
@@ -18,6 +19,7 @@ import com.minet.sacco.service.MonthlyContributionTrackingService;
 import com.minet.sacco.service.GLCalculationService;
 import com.minet.sacco.service.BalanceSheetService;
 import com.minet.sacco.service.ExitedMemberLoanReportService;
+import com.minet.sacco.service.AccountService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -63,6 +65,9 @@ public class ReportsController {
 
     @Autowired
     private ExitedMemberLoanReportService exitedMemberLoanReportService;
+
+    @Autowired
+    private AccountService accountService;
 
     // ===== CASHBOOK ENDPOINTS =====
     @GetMapping("/cashbook")
@@ -135,15 +140,18 @@ public class ReportsController {
     // ===== TRIAL BALANCE ENDPOINTS =====
     @GetMapping("/trial-balance")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
-    @org.springframework.cache.annotation.Cacheable(value = "trialBalanceReportAPI", key = "#memberNumber + '-' + #accountType", unless = "#result == null")
-    public ResponseEntity<ApiResponse<ReportsService.TrialBalanceReport>> getTrialBalance(
-            @RequestParam(required = false) String memberNumber,
-            @RequestParam(required = false) String accountType) {
-        
-        ReportsService.TrialBalanceReport report = reportsService.generateTrialBalance(memberNumber, accountType);
-        return ResponseEntity.ok()
-                .cacheControl(org.springframework.http.CacheControl.maxAge(5, java.util.concurrent.TimeUnit.MINUTES))
-                .body(ApiResponse.success("Trial balance report generated successfully", report));
+    public ResponseEntity<ApiResponse<com.minet.sacco.dto.TrialBalanceDTO>> getTrialBalance(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate,
+            @RequestParam(required = false) Integer periodMonth,
+            @RequestParam(required = false) Integer periodYear) {
+
+        if (asOfDate == null) asOfDate = LocalDate.now();
+        if (periodMonth == null) periodMonth = asOfDate.getMonthValue();
+        if (periodYear == null) periodYear = asOfDate.getYear();
+
+        com.minet.sacco.dto.TrialBalanceDTO report =
+                glCalculationService.generateTrialBalance(asOfDate, periodMonth, periodYear);
+        return ResponseEntity.ok(ApiResponse.success("Trial balance report generated successfully", report));
     }
 
     @GetMapping("/trial-balance/export/excel")
@@ -189,8 +197,17 @@ public class ReportsController {
     // ===== BALANCE SHEET ENDPOINTS =====
     @GetMapping("/balance-sheet")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
-    public ResponseEntity<ApiResponse<ReportsService.BalanceSheetReport>> getBalanceSheet() {
-        ReportsService.BalanceSheetReport report = reportsService.generateBalanceSheet();
+    public ResponseEntity<ApiResponse<com.minet.sacco.dto.BalanceSheetDTO>> getBalanceSheet(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate,
+            @RequestParam(required = false) Integer periodMonth,
+            @RequestParam(required = false) Integer periodYear) {
+
+        if (asOfDate == null) asOfDate = LocalDate.now();
+        if (periodMonth == null) periodMonth = asOfDate.getMonthValue();
+        if (periodYear == null) periodYear = asOfDate.getYear();
+
+        com.minet.sacco.dto.BalanceSheetDTO report =
+                balanceSheetService.generateBalanceSheet(asOfDate, periodMonth, periodYear);
         return ResponseEntity.ok(ApiResponse.success("Balance sheet report generated successfully", report));
     }
 
@@ -685,6 +702,70 @@ public class ReportsController {
         
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=exited_members_outstanding_loans_" + LocalDate.now() + ".pdf")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(pdfFile);
+    }
+
+    // ===== MEMBER CONTRIBUTIONS REPORT ENDPOINTS =====
+
+    /**
+     * Fetch (JSON) a member's full contribution / transaction history.
+     * Accessible to ADMIN, TREASURER, TELLER, LOAN_OFFICER, AUDITOR, and CUSTOMER_SUPPORT.
+     */
+    @GetMapping("/member-contributions/{memberId}")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_TREASURER','ROLE_TELLER','ROLE_AUDITOR','ROLE_LOAN_OFFICER','ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<MemberContributionsReportDTO>> getMemberContributionsReport(
+            @PathVariable String memberId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String accountType) {
+
+        MemberContributionsReportDTO report =
+                accountService.getMemberContributionsReport(memberId, startDate, endDate, accountType);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Member contributions report generated successfully", report));
+    }
+
+    @GetMapping("/member-contributions/{memberId}/export/excel")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_TREASURER','ROLE_TELLER','ROLE_AUDITOR','ROLE_LOAN_OFFICER','ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<byte[]> exportMemberContributionsExcel(
+            @PathVariable String memberId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String accountType) throws Exception {
+
+        MemberContributionsReportDTO report =
+                accountService.getMemberContributionsReport(memberId, startDate, endDate, accountType);
+        byte[] excelFile = reportExportService.exportMemberContributionsToExcel(report);
+
+        String filename = "member_contributions_"
+                + (report.getMemberNumber() != null ? report.getMemberNumber() : memberId)
+                + "_" + LocalDate.now() + ".xlsx";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(excelFile);
+    }
+
+    @GetMapping("/member-contributions/{memberId}/export/pdf")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_TREASURER','ROLE_TELLER','ROLE_AUDITOR','ROLE_LOAN_OFFICER','ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<byte[]> exportMemberContributionsPdf(
+            @PathVariable String memberId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String accountType) throws Exception {
+
+        MemberContributionsReportDTO report =
+                accountService.getMemberContributionsReport(memberId, startDate, endDate, accountType);
+        byte[] pdfFile = reportExportService.exportMemberContributionsToPdf(report);
+
+        String filename = "member_contributions_"
+                + (report.getMemberNumber() != null ? report.getMemberNumber() : memberId)
+                + "_" + LocalDate.now() + ".pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(pdfFile);
     }

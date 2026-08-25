@@ -1,5 +1,6 @@
 package com.minet.sacco.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -17,6 +18,7 @@ public class GLManualEntry implements Serializable {
   
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "gl_account_id", nullable = false)
+  @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "calculationConfig", "calculationConfigJson"})
   private GLAccount glAccount;
   
   @Column(nullable = false)
@@ -41,10 +43,12 @@ public class GLManualEntry implements Serializable {
   
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "created_by_user_id", nullable = false)
+  @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password", "roles"})
   private User createdByUser;
   
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "approved_by_user_id")
+  @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password", "roles"})
   private User approvedByUser;
   
   @Column(nullable = false, updatable = false)

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useTransactionsSubscription } from "@/hooks/useWebSocket";
-import { Plus, Search, AlertCircle } from "lucide-react";
+import { Plus, Search, AlertCircle, ArrowLeftRight } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { getApiBaseUrl } from "../config/api";
@@ -151,6 +151,93 @@ const Savings = () => {
     description: "",
   });
 
+  // ── Transfer Shares state ──────────────────────────────────────────────────
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferModalSearch, setTransferModalSearch] = useState("");
+  const [transferToSearch, setTransferToSearch] = useState("");
+  const [transferForm, setTransferForm] = useState({
+    fromMemberId: "",
+    toMemberId: "",
+    amount: "",
+    description: "",
+  });
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
+
+  // Unique members for the transfer dropdowns — declared after groupedAccounts below
+
+  const handleTransferShares = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!transferForm.fromMemberId || !transferForm.toMemberId || !transferForm.amount) {
+      toast({ title: "Error", description: "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+
+    if (transferForm.fromMemberId === transferForm.toMemberId) {
+      toast({ title: "Error", description: "Source and destination member cannot be the same", variant: "destructive" });
+      return;
+    }
+
+    const amount = parseFloat(transferForm.amount);
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: "Error", description: "Please enter a valid amount greater than zero", variant: "destructive" });
+      return;
+    }
+
+    // Show the source member's shares balance for a quick sanity check
+    const fromMember = accounts.filter(a => a.accountType === "SHARES")
+      .find(a => a.member?.id.toString() === transferForm.fromMemberId);
+    if (fromMember && amount > fromMember.balance) {
+      toast({
+        title: "Insufficient Shares",
+        description: `Source member only has KES ${fromMember.balance.toLocaleString()} in shares. Cannot transfer KES ${amount.toLocaleString()}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setTransferSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/accounts/transfer-shares`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.token}`,
+        },
+        body: JSON.stringify({
+          fromMemberId: parseInt(transferForm.fromMemberId),
+          toMemberId: parseInt(transferForm.toMemberId),
+          amount,
+          description: transferForm.description || "Share transfer",
+        }),
+      });
+
+      if (response.ok) {
+        const fromAcct = accounts.find(a => a.accountType === "SHARES" && a.member?.id.toString() === transferForm.fromMemberId);
+        const toAcct   = accounts.find(a => a.accountType === "SHARES" && a.member?.id.toString() === transferForm.toMemberId);
+        const fromName = fromAcct ? (fromAcct.member.fullName || `${fromAcct.member.firstName} ${fromAcct.member.lastName}`) : transferForm.fromMemberId;
+        const toName   = toAcct   ? (toAcct.member.fullName   || `${toAcct.member.firstName} ${toAcct.member.lastName}`)     : transferForm.toMemberId;
+
+        toast({
+          title: "Transfer Successful",
+          description: `KES ${amount.toLocaleString()} in shares transferred from ${fromName} to ${toName}. Audit log recorded.`,
+        });
+        setTransferOpen(false);
+        setTransferForm({ fromMemberId: "", toMemberId: "", amount: "", description: "" });
+        setTransferModalSearch("");
+        setTransferToSearch("");
+        fetchData();
+      } else {
+        const error = await response.json().catch(() => ({ message: "Transfer failed" }));
+        toast({ title: "Transfer Failed", description: error.message || "An error occurred", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Share transfer failed. Please try again.", variant: "destructive" });
+    } finally {
+      setTransferSubmitting(false);
+    }
+  };
+
   const handleTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -262,6 +349,9 @@ const Savings = () => {
 
   const groupedAccountsList = Object.values(groupedAccounts);
 
+  // Alias for the transfer dropdowns
+  const memberList = groupedAccountsList;
+
   const filteredAccounts = groupedAccountsList.filter(a =>
     !search || 
     `${a.member?.fullName || `${a.member?.firstName} ${a.member?.lastName}`} ${a.member?.memberNumber}`.toLowerCase().includes(search.toLowerCase())
@@ -283,10 +373,204 @@ const Savings = () => {
           <p className="text-muted-foreground">Manage member shares, deposits, and withdrawals</p>
         </div>
         {canProcessTransactions && (
-          <Dialog open={depositOpen} onOpenChange={(open) => { setDepositOpen(open); if (!open) setModalSearch(""); }}>
-            <DialogTrigger asChild>
-              <Button><Plus className="mr-2 h-4 w-4" />New Transaction</Button>
-            </DialogTrigger>
+          <div className="flex gap-2">
+            {/* ── Transfer Shares Dialog ────────────────────────────────── */}
+            <Dialog open={transferOpen} onOpenChange={(open) => {
+              setTransferOpen(open);
+              if (!open) {
+                setTransferModalSearch("");
+                setTransferToSearch("");
+              }
+            }}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <ArrowLeftRight className="mr-2 h-4 w-4" />
+                  Transfer Shares
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Transfer Shares Between Members</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleTransferShares} className="space-y-4">
+                  {/* From member */}
+                  <div className="space-y-2">
+                    <Label>From Member (Source) *</Label>
+                    <Select
+                      value={transferForm.fromMemberId}
+                      onValueChange={v => setTransferForm({ ...transferForm, fromMemberId: v })}
+                      disabled={loading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={loading ? "Loading..." : "Select source member"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <div className="px-2 py-1.5 sticky top-0 bg-white z-10">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <input
+                              className="w-full pl-8 pr-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                              placeholder="Search by name or member no..."
+                              value={transferModalSearch}
+                              onChange={e => setTransferModalSearch(e.target.value)}
+                              onKeyDown={e => e.stopPropagation()}
+                            />
+                          </div>
+                        </div>
+                        {memberList
+                          .filter(m => {
+                            if (!transferModalSearch) return true;
+                            const name = m.member.fullName || `${m.member.firstName} ${m.member.lastName}`;
+                            return (
+                              name.toLowerCase().includes(transferModalSearch.toLowerCase()) ||
+                              (m.member.memberNumber || "").toLowerCase().includes(transferModalSearch.toLowerCase())
+                            );
+                          })
+                          .map(m => {
+                            const name = m.member.fullName || `${m.member.firstName} ${m.member.lastName}`;
+                            return (
+                              <SelectItem
+                                key={m.member.id}
+                                value={m.member.id.toString()}
+                                disabled={m.member.id.toString() === transferForm.toMemberId}
+                              >
+                                {m.member.memberNumber} — {name}
+                                {m.sharesBalance > 0
+                                  ? ` (Shares: KES ${m.sharesBalance.toLocaleString()})`
+                                  : " (No shares)"}
+                              </SelectItem>
+                            );
+                          })}
+                      </SelectContent>
+                    </Select>
+                    {transferForm.fromMemberId && (() => {
+                      const m = memberList.find(x => x.member.id.toString() === transferForm.fromMemberId);
+                      return m ? (
+                        <p className="text-xs text-muted-foreground">
+                          Available shares balance: <span className="font-semibold text-blue-600">KES {m.sharesBalance.toLocaleString()}</span>
+                        </p>
+                      ) : null;
+                    })()}
+                  </div>
+
+                  {/* To member */}
+                  <div className="space-y-2">
+                    <Label>To Member (Destination) *</Label>
+                    <Select
+                      value={transferForm.toMemberId}
+                      onValueChange={v => setTransferForm({ ...transferForm, toMemberId: v })}
+                      disabled={loading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={loading ? "Loading..." : "Select destination member"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <div className="px-2 py-1.5 sticky top-0 bg-white z-10">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <input
+                              className="w-full pl-8 pr-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                              placeholder="Search by name or member no..."
+                              value={transferToSearch}
+                              onChange={e => setTransferToSearch(e.target.value)}
+                              onKeyDown={e => e.stopPropagation()}
+                            />
+                          </div>
+                        </div>
+                        {memberList
+                          .filter(m => {
+                            if (!transferToSearch) return true;
+                            const name = m.member.fullName || `${m.member.firstName} ${m.member.lastName}`;
+                            return (
+                              name.toLowerCase().includes(transferToSearch.toLowerCase()) ||
+                              (m.member.memberNumber || "").toLowerCase().includes(transferToSearch.toLowerCase())
+                            );
+                          })
+                          .map(m => {
+                            const name = m.member.fullName || `${m.member.firstName} ${m.member.lastName}`;
+                            return (
+                              <SelectItem
+                                key={m.member.id}
+                                value={m.member.id.toString()}
+                                disabled={m.member.id.toString() === transferForm.fromMemberId}
+                              >
+                                {m.member.memberNumber} — {name}
+                                {` (Shares: KES ${m.sharesBalance.toLocaleString()})`}
+                              </SelectItem>
+                            );
+                          })}
+                      </SelectContent>
+                    </Select>
+                    {transferForm.toMemberId && (() => {
+                      const m = memberList.find(x => x.member.id.toString() === transferForm.toMemberId);
+                      return m ? (
+                        <p className="text-xs text-muted-foreground">
+                          Current shares balance: <span className="font-semibold text-blue-600">KES {m.sharesBalance.toLocaleString()}</span>
+                        </p>
+                      ) : null;
+                    })()}
+                  </div>
+
+                  {/* Amount */}
+                  <div className="space-y-2">
+                    <Label>Amount (KES) *</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0.00"
+                      value={transferForm.amount}
+                      onChange={e => setTransferForm({ ...transferForm, amount: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-2">
+                    <Label>Reason / Description</Label>
+                    <Input
+                      placeholder="e.g., Share inheritance transfer"
+                      value={transferForm.description}
+                      onChange={e => setTransferForm({ ...transferForm, description: e.target.value })}
+                    />
+                  </div>
+
+                  {/* Summary preview */}
+                  {transferForm.fromMemberId && transferForm.toMemberId && transferForm.amount && (
+                    <Alert className="bg-amber-50 border-amber-200">
+                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-xs text-amber-800">
+                        This will transfer <strong>KES {parseFloat(transferForm.amount || "0").toLocaleString()}</strong> in shares from{" "}
+                        <strong>
+                          {(() => {
+                            const m = memberList.find(x => x.member.id.toString() === transferForm.fromMemberId);
+                            return m ? (m.member.fullName || `${m.member.firstName} ${m.member.lastName}`) : "—";
+                          })()}
+                        </strong>{" "}
+                        to{" "}
+                        <strong>
+                          {(() => {
+                            const m = memberList.find(x => x.member.id.toString() === transferForm.toMemberId);
+                            return m ? (m.member.fullName || `${m.member.firstName} ${m.member.lastName}`) : "—";
+                          })()}
+                        </strong>
+                        . This action is irreversible and will be recorded in the audit log.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Button type="submit" className="w-full" disabled={transferSubmitting}>
+                    {transferSubmitting ? "Processing..." : "Confirm Share Transfer"}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            {/* ── New Transaction Dialog ────────────────────────────────── */}
+            <Dialog open={depositOpen} onOpenChange={(open) => { setDepositOpen(open); if (!open) setModalSearch(""); }}>
+              <DialogTrigger asChild>
+                <Button><Plus className="mr-2 h-4 w-4" />New Transaction</Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Process Transaction</DialogTitle></DialogHeader>
               <form onSubmit={handleTransaction} className="space-y-4">
@@ -398,6 +682,7 @@ const Savings = () => {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         )}
       </div>
 
