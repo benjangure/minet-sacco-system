@@ -12,29 +12,62 @@ export interface Notification {
   createdAt: string;
 }
 
+/**
+ * Determine whether the current active session is a member session.
+ * 
+ * Logic (in priority order):
+ * 1. If `session` key has a staff role → staff, regardless of member_session
+ * 2. If `member_session` key has a valid token and no staff session → member
+ * 3. URL path /member/* → member
+ * 4. Default → staff
+ */
+const isActiveMemberSession = (): boolean => {
+  // Staff session takes priority — if it exists and has a non-MEMBER role, this is staff
+  try {
+    const staffSession = localStorage.getItem('session');
+    if (staffSession) {
+      const parsed = JSON.parse(staffSession);
+      const role: string = parsed.role || parsed.user?.role || '';
+      if (role && role !== 'MEMBER') {
+        return false; // Definitely staff
+      }
+    }
+  } catch (_) {}
+
+  // Member session present and no overriding staff role → member
+  try {
+    const memberSession = localStorage.getItem('member_session');
+    if (memberSession) {
+      const parsed = JSON.parse(memberSession);
+      if (parsed.token) return true;
+    }
+  } catch (_) {}
+
+  // URL fallback
+  return window.location.pathname.startsWith('/member');
+};
+
+// Reliable path detection based on active session role
+const getNotificationsPath = (): string =>
+  isActiveMemberSession() ? '/member/notifications' : '/notifications';
+
 const getAuthHeaders = () => {
-  let token = null;
+  // Pick the correct session key based on the active session role
+  const sessionKey = isActiveMemberSession() ? 'member_session' : 'session';
+  let token: string | null = null;
 
   try {
-    const session = localStorage.getItem('session');
-    if (session) {
-      const parsedSession = JSON.parse(session);
-      token = parsedSession.token;
-    }
-  } catch (e) {
-    console.warn('Failed to parse session from localStorage');
-  }
+    const raw = localStorage.getItem(sessionKey);
+    if (raw) token = JSON.parse(raw)?.token ?? null;
+  } catch (_) {}
 
-  if (!token) {
-    token = localStorage.getItem('token');
-  }
+  // Fallback: raw token key
+  if (!token) token = localStorage.getItem('token');
 
-  if (!token) {
-    console.warn('No token found in localStorage');
-  }
+  if (!token) console.warn('No token found in localStorage');
 
   return {
-    'Authorization': `Bearer ${token}`,
+    Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   };
 };
@@ -42,36 +75,39 @@ const getAuthHeaders = () => {
 let isRedirecting = false;
 
 const handleAuthError = (response: Response) => {
-  // Handle both 401 (Unauthorized) and 403 (Forbidden) as session expiry
-  if (response.status === 401 || response.status === 403) {
+  // Only treat 401 as session expiry — 403 is a permissions error, not auth failure
+  if (response.status === 401) {
     const currentPath = window.location.pathname;
     const isMemberPortal = currentPath.startsWith('/member');
-    const isStaffPortal = !isMemberPortal && (
-      currentPath.startsWith('/dashboard') ||
-      currentPath.startsWith('/loans') ||
-      currentPath.startsWith('/members') ||
-      currentPath.startsWith('/transactions') ||
-      currentPath.startsWith('/reports') ||
-      currentPath.startsWith('/settings') ||
-      currentPath.startsWith('/user-management')
-    );
-    
+
     // Don't redirect if already on a login page
     const isLoginPage = currentPath === '/login' || currentPath === '/member/login';
     if (isLoginPage) {
       throw new Error('Authentication required');
     }
-    
+
     let hasToken = false;
 
     try {
-      const session = localStorage.getItem('session');
-      if (session) {
-        const parsedSession = JSON.parse(session);
+      const memberSession = localStorage.getItem('member_session');
+      if (memberSession) {
+        const parsedSession = JSON.parse(memberSession);
         hasToken = !!parsedSession.token;
       }
     } catch (e) {
-      // Failed to parse session
+      // Failed to parse member_session
+    }
+
+    if (!hasToken) {
+      try {
+        const session = localStorage.getItem('session');
+        if (session) {
+          const parsedSession = JSON.parse(session);
+          hasToken = !!parsedSession.token;
+        }
+      } catch (e) {
+        // Failed to parse session
+      }
     }
 
     if (!hasToken) {
@@ -83,20 +119,21 @@ const handleAuthError = (response: Response) => {
       isRedirecting = true;
       localStorage.removeItem('token');
       localStorage.removeItem('session');
+      localStorage.removeItem('member_session');
       localStorage.removeItem('userRole');
-      
+
       // Redirect to appropriate login page
       if (isMemberPortal) {
         window.location.href = '/member/login';
-      } else if (isStaffPortal) {
+      } else {
         window.location.href = '/login';
       }
-      
+
       // Reset redirect flag after a short delay
       setTimeout(() => {
         isRedirecting = false;
       }, 1000);
-      
+
       console.warn('Session expired. Redirecting to login page.');
       throw new Error('Session expired. Please login again.');
     } else if (!hasToken) {
@@ -108,27 +145,6 @@ const handleAuthError = (response: Response) => {
 
 const getApiBaseUrlDynamic = (): string => {
   return getApiBaseUrl();
-};
-
-// Reliable path detection based on user role and current URL
-const getNotificationsPath = (): string => {
-  // Check if user is a member by looking at their role
-  try {
-    const session = localStorage.getItem('session');
-    if (session) {
-      const parsedSession = JSON.parse(session);
-      const role = parsedSession.role || parsedSession.user?.role;
-      // If role is MEMBER, use member endpoint
-      if (role === 'MEMBER') {
-        return '/member/notifications';
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to parse session for role detection');
-  }
-  
-  // Default to staff notifications endpoint
-  return '/notifications';
 };
 
 export const notificationService = {
@@ -160,15 +176,15 @@ export const notificationService = {
         method: 'GET',
         headers: getAuthHeaders(),
       });
+      // 400 means the backend couldn't find the user record — not an auth failure,
+      // just silently return 0 rather than logging noise.
+      if (response.status === 400) return 0;
       const handledResponse = handleAuthError(response);
-      if (!handledResponse.ok) {
-        console.warn('Notifications API not available or user not authenticated');
-        return 0;
-      }
+      if (!handledResponse.ok) return 0;
       const data = await handledResponse.json();
       return typeof data.data === 'number' ? data.data : 0;
     } catch (error) {
-      console.warn('Failed to fetch notification count:', error);
+      // Silently fail — notification count is non-critical
       return 0;
     }
   },

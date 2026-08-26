@@ -32,13 +32,27 @@ class WebSocketService {
       try {
         // Extract base URL without /api
         const wsBaseUrl = API_BASE_URL.replace('/api', '');
-        
+
+        // Retrieve JWT from whichever session key is active
+        let token: string | null = null;
+        try {
+          const ms = localStorage.getItem('member_session');
+          if (ms) token = JSON.parse(ms)?.token ?? null;
+        } catch (_) {}
+        if (!token) {
+          try {
+            const ss = localStorage.getItem('session');
+            if (ss) token = JSON.parse(ss)?.token ?? null;
+          } catch (_) {}
+        }
+        if (!token) token = localStorage.getItem('token');
+
         this.client = new Client({
           webSocketFactory: () => new SockJS(`${wsBaseUrl}/ws`),
-          
-          connectHeaders: {
-            // Add auth headers if needed
-          },
+
+          // Pass JWT in STOMP CONNECT frame so the broker can authorise
+          // user-specific /queue/... subscriptions.
+          connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
           
           debug: (str) => {
             console.log('[WebSocket Debug]:', str);

@@ -38,7 +38,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Register WebSocket endpoint that clients will connect to
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*", "http://192.168.*:*")
+                .setAllowedOriginPatterns(
+                    "http://localhost:*",
+                    "http://127.0.0.1:*",
+                    "http://192.168.*:*",
+                    "http://10.*:*",          // LAN / corporate network (e.g. 10.39.60.x)
+                    "https://localhost",       // Capacitor Android WebView
+                    "capacitor://localhost",   // Capacitor iOS / older Android
+                    "ionic://localhost"
+                )
                 .withSockJS();  // Enable SockJS fallback for browsers that don't support WebSocket
     }
 }

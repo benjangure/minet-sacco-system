@@ -45,13 +45,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Use patterns instead of specific origins to allow any localhost port
         configuration.setAllowedOriginPatterns(Arrays.asList(
             "http://localhost:*",
             "http://127.0.0.1:*",
             "http://192.168.*:*",
             "http://10.*:*",
-            "capacitor://localhost",
+            "https://localhost",        // Capacitor Android WebView (androidScheme: https)
+            "capacitor://localhost",    // Capacitor iOS / older Android
             "ionic://localhost"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
@@ -75,6 +75,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/debug/**").permitAll()
                         .requestMatchers("/api/email/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        // SockJS handshake uses plain HTTP GET — must be permit-all so the
+                        // browser can upgrade without sending a custom Authorization header
+                        .requestMatchers("/ws/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Eye, CheckCircle, XCircle, DollarSign, AlertCircle, Users } from "lucide-react";
+import { Plus, Search, Eye, CheckCircle, XCircle, DollarSign, AlertCircle, Users, FileText, Printer } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import GuarantorDetailsModal from "@/components/GuarantorDetailsModal";
@@ -19,6 +19,7 @@ import LoanTopUpReviewSection from "@/components/LoanTopUpReviewSection";
 import { useLoansSubscription, useTopUpsSubscription } from "@/hooks/useWebSocket";
 
 import { API_BASE_URL } from "@/config/api";
+import { generateLoanPdf, printLoanPdf } from "@/utils/loanPdfGenerator";
 
 const loanStatusColors: Record<string, string> = {
   PENDING: "bg-blue-100 text-blue-800",
@@ -242,6 +243,83 @@ const Loans = () => {
   const canCreateLoans = role === "LOAN_OFFICER" || role === "TELLER";
   const canApproveLoans = role === "CREDIT_COMMITTEE";
   const canDisburseLoans = role === "TREASURER";
+
+  // PDF generation state
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+
+  // Generate and download a loan offer / disbursement letter PDF
+  const handleDownloadLoanPdf = async (loan: Loan) => {
+    if (pdfGenerating) return;
+    setPdfGenerating(true);
+    try {
+      // Fetch the rich guarantor list (with frozenPledge, guaranteeAmount, etc.)
+      let richGuarantors: any[] = [];
+      try {
+        const res = await fetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
+          headers: { Authorization: `Bearer ${session?.token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          richGuarantors = data.data || [];
+        }
+      } catch {
+        // fall back to inline guarantors on the loan object
+        richGuarantors = loan.guarantors || [];
+      }
+      const generatedBy =
+        session?.user?.fullName ||
+        session?.user?.firstName ||
+        session?.user?.username ||
+        undefined;
+      await generateLoanPdf(loan as any, richGuarantors, generatedBy);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      toast({
+        title: "PDF Error",
+        description: "Failed to generate the loan document. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  // Print handler – opens PDF in new tab and triggers browser print dialog
+  const [printGenerating, setPrintGenerating] = useState(false);
+
+  const handlePrintLoanPdf = async (loan: Loan) => {
+    if (printGenerating) return;
+    setPrintGenerating(true);
+    try {
+      let richGuarantors: any[] = [];
+      try {
+        const res = await fetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
+          headers: { Authorization: `Bearer ${session?.token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          richGuarantors = data.data || [];
+        }
+      } catch {
+        richGuarantors = loan.guarantors || [];
+      }
+      const generatedBy =
+        session?.user?.fullName ||
+        session?.user?.firstName ||
+        session?.user?.username ||
+        undefined;
+      await printLoanPdf(loan as any, richGuarantors, generatedBy);
+    } catch (err) {
+      console.error("Print generation failed:", err);
+      toast({
+        title: "Print Error",
+        description: "Failed to prepare the print document. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setPrintGenerating(false);
+    }
+  };
 
   const fetchLoans = async () => {
     setLoading(true);
@@ -2561,6 +2639,38 @@ const Loans = () => {
                 <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setLoanDetailsOpen(false)}>
                   Close
                 </Button>
+                {(selectedLoanForDetails.status === "PENDING_TREASURER" ||
+                  selectedLoanForDetails.status === "APPROVED" ||
+                  selectedLoanForDetails.status === "DISBURSED") &&
+                  canDisburseLoans && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs border-primary text-primary hover:bg-primary hover:text-white"
+                    onClick={() => handleDownloadLoanPdf(selectedLoanForDetails)}
+                    disabled={pdfGenerating || printGenerating}
+                    title="Download Loan Offer / Disbursement Letter as PDF"
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-1" />
+                    {pdfGenerating ? "Generating…" : "Download PDF"}
+                  </Button>
+                )}
+                {(selectedLoanForDetails.status === "PENDING_TREASURER" ||
+                  selectedLoanForDetails.status === "APPROVED" ||
+                  selectedLoanForDetails.status === "DISBURSED") &&
+                  canDisburseLoans && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs border-green-600 text-green-700 hover:bg-green-600 hover:text-white"
+                    onClick={() => handlePrintLoanPdf(selectedLoanForDetails)}
+                    disabled={pdfGenerating || printGenerating}
+                    title="Print Loan Offer / Disbursement Letter"
+                  >
+                    <Printer className="h-3.5 w-3.5 mr-1" />
+                    {printGenerating ? "Preparing…" : "Print"}
+                  </Button>
+                )}
                 {selectedLoanForDetails.status === "APPROVED" && canDisburseLoans && (
                   <Button 
                     size="sm"

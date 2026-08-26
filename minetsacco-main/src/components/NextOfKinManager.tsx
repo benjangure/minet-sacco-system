@@ -44,31 +44,49 @@ export function NextOfKinManager({ memberId, onSave }: NextOfKinManagerProps) {
   const fetchNextOfKin = async () => {
     setLoading(true);
     try {
-      console.log('Fetching next of kin for member:', memberId);
+      // Use role-aware token selection: staff session takes priority over member_session
+      let token: string | null = null;
+      try {
+        const ss = localStorage.getItem('session');
+        if (ss) {
+          const parsed = JSON.parse(ss);
+          const role: string = parsed.role || parsed.user?.role || '';
+          // If this is a real staff session (not MEMBER role), use it
+          if (role && role !== 'MEMBER') token = parsed.token ?? null;
+        }
+      } catch (_) {}
+      // Fallback to member_session if no staff session found
+      if (!token) {
+        try {
+          const ms = localStorage.getItem('member_session');
+          if (ms) token = JSON.parse(ms)?.token ?? null;
+        } catch (_) {}
+      }
+      if (!token) token = localStorage.getItem('token');
+
+      if (!token) {
+        // No valid token — show empty form without an error toast
+        setNextOfKinList([createEmptyNextOfKin()]);
+        setLoading(false);
+        return;
+      }
+
       const response = await api.get(`/next-of-kin/member/${memberId}`);
-      console.log('Next of kin response:', response.data);
-      
       if (response.data.nextOfKin && response.data.nextOfKin.length > 0) {
         setNextOfKinList(response.data.nextOfKin);
       } else {
-        // Initialize with one empty entry
         setNextOfKinList([createEmptyNextOfKin()]);
       }
     } catch (error: any) {
-      console.error('Error fetching next of kin:', error);
-      console.error('Error response:', error.response?.data);
-      
-      // Initialize with one empty entry on error
-      setNextOfKinList([createEmptyNextOfKin()]);
-      
-      // Only show error if it's not a 404 (which means no data exists yet)
-      if (error.response?.status !== 404) {
+      // 404 = no records yet, 401 = auth mismatch — both are silent (empty form)
+      if (error.response?.status !== 404 && error.response?.status !== 401) {
         toast({
           title: 'Error',
           description: 'Failed to load next of kin data',
           variant: 'destructive',
         });
       }
+      setNextOfKinList([createEmptyNextOfKin()]);
     } finally {
       setLoading(false);
     }

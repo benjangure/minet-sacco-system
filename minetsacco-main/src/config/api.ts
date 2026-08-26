@@ -6,33 +6,38 @@
 import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
 
-// For APK/iOS: Production backend URL pointing to your server
-const DEFAULT_NATIVE_BACKEND_URL =
-  import.meta.env.VITE_NATIVE_BACKEND_URL || 'http://10.39.60.15:9090';
-
-const getDefaultBackendUrl = (): string => {
-  if (Capacitor.isNativePlatform()) {
-    return DEFAULT_NATIVE_BACKEND_URL;
-  }
-  // For web: uses .env.development (localhost:9090) or .env.production (Render URL)
-  return import.meta.env.VITE_API_URL || 'https://minetsacco-backend-docker.onrender.com';
-};
-
-const DEFAULT_BACKEND_URL = getDefaultBackendUrl();
+// The one true backend URL for this deployment
+const SERVER_BACKEND_URL = 'http://10.39.60.15:9090';
 
 export const getBackendUrl = (): string => {
-  if (!Capacitor.isNativePlatform()) {
-    return import.meta.env.VITE_API_URL || 'http://10.39.60.15:9090';
+  // Native Capacitor app (APK) — always use server backend
+  // Check isNativePlatform first, then fall back to hostname detection
+  if (Capacitor.isNativePlatform()) {
+    const stored = localStorage.getItem('backendUrl');
+    return stored || SERVER_BACKEND_URL;
   }
-  const stored = localStorage.getItem('backendUrl');
-  return stored || DEFAULT_BACKEND_URL;
+
+  // Capacitor WebView may report hostname as 'localhost' internally but
+  // the user-agent contains 'wv' (WebView). Also catch empty/blank hostnames.
+  const hostname = window.location.hostname;
+  const isWebView = /wv/.test(navigator.userAgent) || 
+                    hostname === '' || 
+                    hostname === 'null';
+
+  if (isWebView) {
+    return SERVER_BACKEND_URL;
+  }
+
+  // Web app on the production server (non-localhost)
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return SERVER_BACKEND_URL;
+  }
+
+  // Local development only
+  return import.meta.env.VITE_API_URL || 'http://localhost:9090';
 };
 
 export const setBackendUrl = (url: string): void => {
-  if (!Capacitor.isNativePlatform()) {
-    console.warn('Backend URL can only be changed for native APK platform.');
-    return;
-  }
   localStorage.setItem('backendUrl', url);
   api.defaults.baseURL = `${url}/api`;
 };
@@ -48,44 +53,54 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // Increase to 30 seconds for slower network
+  timeout: 30000,
 });
 
 export const getAuthToken = (): string | null => {
-  // Determine which session key to use based on current URL
-  const isMemberPortal = window.location.pathname.startsWith('/member');
-  const sessionKey = isMemberPortal ? 'member_session' : 'session';
-  
-  // ALWAYS use the appropriate session key based on portal type
-  // Do NOT fall back to 'token' key to avoid confusion
-  const sessionStr = localStorage.getItem(sessionKey);
-  if (sessionStr) {
-    try {
-      const session = JSON.parse(sessionStr);
-      if (session.token && typeof session.token === 'string') {
-        return session.token;
+  // Staff session always takes priority over member_session.
+  // A TREASURER or LOAN_OFFICER logging in on native should not pick up a
+  // stale member_session that happens to exist in localStorage.
+  try {
+    const staffStr = localStorage.getItem('session');
+    if (staffStr) {
+      const staffSession = JSON.parse(staffStr);
+      const role: string = staffSession.role || staffSession.user?.role || '';
+      // If the stored session is a real staff session (not MEMBER), use it.
+      if (role && role !== 'MEMBER' && staffSession.token) {
+        return staffSession.token;
       }
-    } catch (e) {
-      console.error('Failed to parse session:', e);
     }
+  } catch (_) {}
+
+  // Member session — used when on /member/* path or on native with no staff session
+  const isMemberContext = window.location.pathname.startsWith('/member');
+  // On native, fall through to member_session if no staff session found above
+  const tryMemberSession = isMemberContext || Capacitor.isNativePlatform();
+  if (tryMemberSession) {
+    try {
+      const memberStr = localStorage.getItem('member_session');
+      if (memberStr) {
+        const memberSession = JSON.parse(memberStr);
+        if (memberSession.token && typeof memberSession.token === 'string') {
+          return memberSession.token;
+        }
+      }
+    } catch (_) {}
   }
-  
-  // Fallback: Also check the 'token' key directly (for native apps)
-  const directToken = localStorage.getItem('token');
-  if (directToken) {
-    return directToken;
-  }
-  
-  return null;
+
+  // Fallback: raw 'token' key
+  return localStorage.getItem('token');
 };
+
+// Update the axios instance baseURL dynamically in case the module loaded
+// before Capacitor/window was fully ready
+api.defaults.baseURL = getApiBaseUrl();
 
 api.interceptors.request.use((config) => {
   const token = getAuthToken();
-  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-
   return config;
 });
 

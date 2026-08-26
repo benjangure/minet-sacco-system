@@ -10,20 +10,37 @@ export const NotificationBell: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Track consecutive failures — stop polling after 3 to avoid console noise
+  const failureCount = React.useRef(0);
+  const pollingDisabled = React.useRef(false);
   const { session, role } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check for staff session or member token
-    const staffSession = localStorage.getItem('session');
-    const memberToken = localStorage.getItem('token');
-    const token = staffSession ? JSON.parse(staffSession)?.token : memberToken;
-    
+    // Check member_session first, then staff session, then raw token
+    let token: string | null = null;
+    try {
+      const memberSession = localStorage.getItem('member_session');
+      if (memberSession) token = JSON.parse(memberSession)?.token;
+    } catch (_) {}
+    if (!token) {
+      try {
+        const staffSession = localStorage.getItem('session');
+        if (staffSession) token = JSON.parse(staffSession)?.token;
+      } catch (_) {}
+    }
+    if (!token) token = localStorage.getItem('token');
+
     if (token) {
+      // Reset failure tracking on session change
+      failureCount.current = 0;
+      pollingDisabled.current = false;
+
       loadUnreadCount();
-      // Poll for unread count every 10 seconds
       const interval = setInterval(() => {
-        loadUnreadCount();
+        if (!pollingDisabled.current) {
+          loadUnreadCount();
+        }
       }, 10000);
       return () => clearInterval(interval);
     }
@@ -33,8 +50,15 @@ export const NotificationBell: React.FC = () => {
     try {
       const count = await notificationService.getUnreadCount();
       setUnreadCount(count);
+      // Reset failure counter on success
+      failureCount.current = 0;
     } catch (error) {
-      console.error('Failed to load unread count:', error);
+      failureCount.current += 1;
+      // After 3 consecutive failures, stop polling — avoids console spam
+      // when the staff user account doesn't exist in the notifications DB
+      if (failureCount.current >= 3) {
+        pollingDisabled.current = true;
+      }
     }
   };
 
@@ -190,11 +214,20 @@ export const NotificationBell: React.FC = () => {
     return getNavigationPath(notification) !== null;
   };
 
-  // Don't render if no token (check both staff session and member token)
-  const staffSession = localStorage.getItem('session');
-  const memberToken = localStorage.getItem('token');
-  const token = staffSession ? JSON.parse(staffSession)?.token : memberToken;
-  
+  // Don't render if no token (check member_session, staff session, and raw token)
+  let token: string | null = null;
+  try {
+    const memberSession = localStorage.getItem('member_session');
+    if (memberSession) token = JSON.parse(memberSession)?.token;
+  } catch (_) {}
+  if (!token) {
+    try {
+      const staffSession = localStorage.getItem('session');
+      if (staffSession) token = JSON.parse(staffSession)?.token;
+    } catch (_) {}
+  }
+  if (!token) token = localStorage.getItem('token');
+
   if (!token) {
     return null;
   }
