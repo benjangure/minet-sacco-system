@@ -263,9 +263,10 @@ export default function MemberNotificationsView() {
                       </span>
                       {isClickable && <ExternalLink className="h-3 w-3 text-muted-foreground" />}
                     </div>
-                    <p className="text-sm font-medium text-foreground">
-                      {notification.message}
-                    </p>
+                    <div
+                      className="text-sm font-medium text-foreground notification-html-content"
+                      dangerouslySetInnerHTML={{ __html: notification.message }}
+                    />
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-xs text-muted-foreground">
                         {notification.type}

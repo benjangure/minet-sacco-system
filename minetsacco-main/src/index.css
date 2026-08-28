@@ -149,3 +149,26 @@
     @apply px-4 sm:px-6 lg:px-8;
   }
 }
+
+/* Notification HTML content styles */
+.notification-html-content p {
+  margin: 4px 0;
+}
+.notification-html-content ul,
+.notification-html-content ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+.notification-html-content li {
+  margin: 2px 0;
+}
+.notification-html-content strong {
+  font-weight: 600;
+}
+.notification-html-content div {
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-left: 3px solid #dc2626;
+  border-radius: 2px;
+}

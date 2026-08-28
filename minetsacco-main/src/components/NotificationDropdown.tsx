@@ -170,9 +170,10 @@ export default function NotificationDropdown({ unreadCount = 0, variant = 'defau
                         {formatTime(notification.createdAt)}
                       </span>
                     </div>
-                    <p className="text-sm text-foreground line-clamp-2">
-                      {truncateMessage(notification.message)}
-                    </p>
+                    <p
+                      className="text-sm text-foreground line-clamp-2"
+                      dangerouslySetInnerHTML={{ __html: truncateMessage(notification.message) }}
+                    />
                   </div>
                   <Button
                     variant="ghost"
