@@ -6,6 +6,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 import java.util.Arrays;
 import java.util.List;
+
 @Configuration
 public class CorsConfig {
     @Bean
@@ -14,12 +15,15 @@ public class CorsConfig {
         CorsConfiguration config = new CorsConfiguration();
         
         config.setAllowCredentials(true);
+        // Must stay in sync with SecurityConfig.corsConfigurationSource()
+        // SecurityConfig CORS runs first — both lists must match
         config.setAllowedOriginPatterns(List.of(
             "http://localhost:*",
-            "http://192.168.*",
-            "http://10.0.*",
-            "http://10.39.*",
-            "capacitor://localhost",
+            "http://127.0.0.1:*",
+            "http://192.168.*:*",
+            "http://10.*:*",
+            "https://localhost",        // Capacitor Android WebView (androidScheme: https)
+            "capacitor://localhost",    // Capacitor iOS / older Android
             "ionic://localhost",
             "http://localhost"
         ));

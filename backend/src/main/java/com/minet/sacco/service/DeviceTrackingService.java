@@ -108,16 +108,31 @@ public class DeviceTrackingService {
      */
     private void sendNewDeviceNotification(User user, UserDevice device) {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMM dd, yyyy 'at' hh:mm a"));
-        
-        String message = String.format(
-            "🔐 New login detected!\n\n" +
-            "Device: %s\n" +
-            "Browser: %s\n" +
-            "OS: %s\n" +
-            "IP Address: %s\n" +
-            "Location: %s\n" +
-            "Time: %s\n\n" +
-            "If this wasn't you, please secure your account immediately.",
+
+        // Build the rich HTML email body used by both paths below
+        String emailSubject = "🔐 New Device Login Alert - Minet SACCO";
+        String emailMessage = String.format(
+            "<p><strong>A new device just logged into your Minet SACCO account.</strong></p>" +
+            "<div style='background: #f9fafb; border-left: 4px solid #dc2626; padding: 16px; margin: 16px 0;'>" +
+            "<p><strong>Device Details:</strong></p>" +
+            "<ul style='margin: 8px 0; padding-left: 20px;'>" +
+            "<li><strong>Device:</strong> %s</li>" +
+            "<li><strong>Browser:</strong> %s</li>" +
+            "<li><strong>Operating System:</strong> %s</li>" +
+            "<li><strong>IP Address:</strong> %s</li>" +
+            "<li><strong>Location:</strong> %s</li>" +
+            "<li><strong>Time:</strong> %s</li>" +
+            "</ul>" +
+            "</div>" +
+            "<p><strong>Was this you?</strong></p>" +
+            "<p>If you recognize this activity, you can safely ignore this email.</p>" +
+            "<p><strong style='color: #dc2626;'>If you did NOT log in:</strong></p>" +
+            "<ol style='margin: 8px 0; padding-left: 20px;'>" +
+            "<li>Change your password immediately</li>" +
+            "<li>Contact our support team</li>" +
+            "<li>Review your account activity</li>" +
+            "</ol>" +
+            "<p style='margin-top: 16px;'><em>This is an automated security notification from Minet SACCO.</em></p>",
             device.getDeviceName() != null ? device.getDeviceName() : "Unknown Device",
             device.getBrowser() != null ? device.getBrowser() : "Unknown Browser",
             device.getOperatingSystem() != null ? device.getOperatingSystem() : "Unknown OS",
@@ -126,52 +141,20 @@ public class DeviceTrackingService {
             timestamp
         );
 
-        // Send in-app notification
         if (notificationService != null) {
+            // notificationService.notifyUser() saves the in-app notification AND sends the email
+            // internally — so we only call it once to avoid duplicate emails.
             notificationService.notifyUser(
                 user.getId(),
-                message,
+                emailMessage,
                 "SECURITY_ALERT",
                 null,
                 null,
                 "NEW_DEVICE_LOGIN"
             );
-        }
-
-        // Send email notification
-        if (emailNotificationService != null && user.getEmail() != null && !user.getEmail().isEmpty()) {
+        } else if (emailNotificationService != null && user.getEmail() != null && !user.getEmail().isEmpty()) {
+            // Fallback: notificationService is unavailable, send email directly
             try {
-                String emailSubject = "🔐 New Device Login Alert - Minet SACCO";
-                String emailMessage = String.format(
-                    "<p><strong>A new device just logged into your Minet SACCO account.</strong></p>" +
-                    "<div style='background: #f9fafb; border-left: 4px solid #dc2626; padding: 16px; margin: 16px 0;'>" +
-                    "<p><strong>Device Details:</strong></p>" +
-                    "<ul style='margin: 8px 0; padding-left: 20px;'>" +
-                    "<li><strong>Device:</strong> %s</li>" +
-                    "<li><strong>Browser:</strong> %s</li>" +
-                    "<li><strong>Operating System:</strong> %s</li>" +
-                    "<li><strong>IP Address:</strong> %s</li>" +
-                    "<li><strong>Location:</strong> %s</li>" +
-                    "<li><strong>Time:</strong> %s</li>" +
-                    "</ul>" +
-                    "</div>" +
-                    "<p><strong>Was this you?</strong></p>" +
-                    "<p>If you recognize this activity, you can safely ignore this email.</p>" +
-                    "<p><strong style='color: #dc2626;'>If you did NOT log in:</strong></p>" +
-                    "<ol style='margin: 8px 0; padding-left: 20px;'>" +
-                    "<li>Change your password immediately</li>" +
-                    "<li>Contact our support team</li>" +
-                    "<li>Review your account activity</li>" +
-                    "</ol>" +
-                    "<p style='margin-top: 16px;'><em>This is an automated security notification from Minet SACCO.</em></p>",
-                    device.getDeviceName() != null ? device.getDeviceName() : "Unknown Device",
-                    device.getBrowser() != null ? device.getBrowser() : "Unknown Browser",
-                    device.getOperatingSystem() != null ? device.getOperatingSystem() : "Unknown OS",
-                    device.getIpAddress() != null ? device.getIpAddress() : "Unknown",
-                    device.getLocation() != null ? device.getLocation() : "Unknown Location",
-                    timestamp
-                );
-                
                 emailNotificationService.sendNotificationEmail(
                     user.getEmail(),
                     emailSubject,

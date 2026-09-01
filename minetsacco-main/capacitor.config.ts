@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
     allowNavigation: [
-      '*' // Allow navigation to any domain for flexibility
+      '*'
     ]
   },
   plugins: {
@@ -22,7 +22,9 @@ const config: CapacitorConfig = {
     scheme: 'MinetSACCO'
   },
   android: {
-    allowMixedContent: false,
+    // allowMixedContent lets the native WebView call http:// backend
+    // while still loading the app assets over the internal https scheme
+    allowMixedContent: true,
     captureInput: true
   }
 };

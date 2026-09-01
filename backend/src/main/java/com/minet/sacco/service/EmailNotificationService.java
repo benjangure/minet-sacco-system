@@ -23,6 +23,9 @@ public class EmailNotificationService {
     @Value("${spring.mail.from-name:Minet SACCO}")
     private String fromName;
 
+    @Value("${app.frontend.url:http://localhost:3000}")
+    private String frontendUrl;
+
     public EmailNotificationService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
@@ -244,7 +247,8 @@ public class EmailNotificationService {
             </div>
 
             <div class="button-container">
-                <a href="http://localhost:3000" class="cta-button">
+                <a href=\"""" + frontendUrl + """
+\" class="cta-button">
                     View in Dashboard
                 </a>
             </div>
@@ -275,7 +279,8 @@ public class EmailNotificationService {
             <p style="margin: 0 0 16px 0;">Your trusted financial cooperative</p>
             
             <div class="footer-links">
-                <a href="http://localhost:3000" class="footer-link">Dashboard</a>
+                <a href=\"""" + frontendUrl + """
+\" class="footer-link">Dashboard</a>
                 <a href="mailto:support@minet.co.ke" class="footer-link">Support</a>
             </div>
 
@@ -322,6 +327,16 @@ public class EmailNotificationService {
                 <div class="notification-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="WHITE" stroke-width="2">
                         <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                </div>
+                """;
+        } else if (type.contains("SECURITY") || type.contains("DEVICE") || type.contains("LOGIN")) {
+            return """
+                <div class="notification-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="WHITE" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
                     </svg>
                 </div>
                 """;

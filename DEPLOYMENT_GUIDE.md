@@ -3,7 +3,7 @@
 **Date:** July 28, 2026  
 **Target Server:** 10.39.60.15 (Windows Server)  
 **Status:** ✅ Build Successful - Ready for Deployment
-
+.\mvnw.cmd spring-boot:run
 ---
 
 ## Build Status

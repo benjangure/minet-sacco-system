@@ -7,7 +7,7 @@
 A comprehensive SACCO (Savings and Credit Cooperative) management platform built with Spring Boot and React, featuring member portals, loan management, and financial tracking.
 
 ## 🌟 Features
-
+.\mvnw.cmd spring-boot:run
 ### Member Portal
 - 📊 Real-time dashboard with account summaries
 - 💰 Loan application and tracking

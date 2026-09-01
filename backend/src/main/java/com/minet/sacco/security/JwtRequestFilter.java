@@ -32,6 +32,13 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             final String requestTokenHeader = request.getHeader("Authorization");
             final String requestMethod = request.getMethod();
             final String requestPath = request.getRequestURI();
+            final String origin = request.getHeader("Origin");
+            final String host = request.getHeader("Host");
+
+            // Log every request with its origin — critical for CORS debugging
+            logger.info("REQUEST: " + requestMethod + " " + requestPath 
+                + " | Origin: " + origin 
+                + " | Host: " + host);
 
             String username = null;
             String jwtToken = null;
