@@ -9,6 +9,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import DepositApprovalPanel from "@/components/DepositApprovalPanel";
 
 import { getApiBaseUrl } from "../config/api";
+import { nativeFetch } from "@/utils/nativeHttp";
 const API_BASE_URL = getApiBaseUrl();
 
 const Index = () => {
@@ -43,13 +44,13 @@ const Index = () => {
         // PARALLEL FETCHING: Replace sequential awaits with Promise.all
         // This reduces dashboard load time from ~8 seconds to ~2 seconds
         const [membersRes, accountsRes, loansRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/members`, {
+          nativeFetch(`${API_BASE_URL}/members`, {
             headers: { "Authorization": `Bearer ${session.token}` },
           }).catch(() => null),
-          fetch(`${API_BASE_URL}/accounts`, {
+          nativeFetch(`${API_BASE_URL}/accounts`, {
             headers: { "Authorization": `Bearer ${session.token}` },
           }).catch(() => null),
-          fetch(`${API_BASE_URL}/loans`, {
+          nativeFetch(`${API_BASE_URL}/loans`, {
             headers: { "Authorization": `Bearer ${session.token}` },
           }).catch(() => null)
         ]);
@@ -70,10 +71,10 @@ const Index = () => {
         
         if (session.role === 'TELLER' || session.role === 'ADMIN') {
           roleSpecificFetches.push(
-            fetch(`${API_BASE_URL}/kyc-documents/pending`, {
+            nativeFetch(`${API_BASE_URL}/kyc-documents/pending`, {
               headers: { "Authorization": `Bearer ${session.token}` },
             }).catch(() => null),
-            fetch(`${API_BASE_URL}/kyc-documents/incomplete-members`, {
+            nativeFetch(`${API_BASE_URL}/kyc-documents/incomplete-members`, {
               headers: { "Authorization": `Bearer ${session.token}` },
             }).catch(() => null)
           );
@@ -81,7 +82,7 @@ const Index = () => {
         
         if (session.role === 'CUSTOMER_SUPPORT') {
           roleSpecificFetches.push(
-            fetch(`${API_BASE_URL}/kyc-documents/my-uploads`, {
+            nativeFetch(`${API_BASE_URL}/kyc-documents/my-uploads`, {
               headers: { "Authorization": `Bearer ${session.token}` },
             }).catch(() => null)
           );
@@ -89,7 +90,7 @@ const Index = () => {
         
         if (session.role === 'TREASURER' || session.role === 'ADMIN') {
           roleSpecificFetches.push(
-            fetch(`${API_BASE_URL}/bulk/loan-items/approved`, {
+            nativeFetch(`${API_BASE_URL}/bulk/loan-items/approved`, {
               headers: { "Authorization": `Bearer ${session.token}` },
             }).catch(() => null)
           );
@@ -97,7 +98,7 @@ const Index = () => {
         
         if (session.role === 'TELLER' || session.role === 'ADMIN') {
           roleSpecificFetches.push(
-            fetch(`${API_BASE_URL}/teller/deposit-requests/pending`, {
+            nativeFetch(`${API_BASE_URL}/teller/deposit-requests/pending`, {
               headers: { "Authorization": `Bearer ${session.token}` },
             }).catch(() => null)
           );
@@ -160,7 +161,7 @@ const Index = () => {
         // PERFORMANCE OPTIMIZATION: Fetch ALL repayments in ONE bulk call instead of 100+ individual calls
         // This reduces dashboard load time from 30+ seconds to ~2 seconds
         try {
-          const bulkRepaymentsRes = await fetch(`${API_BASE_URL}/loans/bulk/repayments`, {
+          const bulkRepaymentsRes = await nativeFetch(`${API_BASE_URL}/loans/bulk/repayments`, {
             headers: { "Authorization": `Bearer ${session.token}` },
           });
           

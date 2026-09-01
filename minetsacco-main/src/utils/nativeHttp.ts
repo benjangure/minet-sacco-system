@@ -6,7 +6,7 @@
 import { Capacitor, CapacitorHttp, HttpResponse } from '@capacitor/core';
 
 interface FetchOptions {
-  method: string;
+  method?: string;
   headers?: Record<string, string>;
   body?: string;
 }
@@ -21,7 +21,9 @@ interface NativeHttpResponse {
 /**
  * Wrapper around fetch that uses CapacitorHttp on Android for better SSL/network handling
  */
-export async function nativeFetch(url: string, options: FetchOptions = { method: 'GET' }): Promise<NativeHttpResponse> {
+export async function nativeFetch(url: string, options: FetchOptions = {}): Promise<NativeHttpResponse> {
+  const method = options.method || 'GET';
+
   // On Android, use CapacitorHttp for better network/SSL handling
   if (Capacitor.getPlatform() === 'android') {
     try {
@@ -29,7 +31,7 @@ export async function nativeFetch(url: string, options: FetchOptions = { method:
       
       const response: HttpResponse = await CapacitorHttp.request({
         url: url,
-        method: options.method,
+        method: method,
         headers: options.headers || {},
         data: options.body ? JSON.parse(options.body) : undefined,
       });
@@ -62,7 +64,7 @@ export async function nativeFetch(url: string, options: FetchOptions = { method:
 
   // For web and iOS, or if Android CapacitorHttp failed, use regular fetch
   console.log('[NativeHttp] Using regular fetch:', url);
-  const response = await fetch(url, options);
+  const response = await fetch(url, { ...options, method });
   
   return {
     ok: response.ok,

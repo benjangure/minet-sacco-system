@@ -60,7 +60,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check if app version has changed (forces logout on updates)
     const storedVersion = localStorage.getItem("appVersion");
     if (storedVersion !== APP_VERSION) {
-      // Version mismatch, clear all sessions
       localStorage.removeItem("session");
       localStorage.removeItem("member_session");
       localStorage.removeItem("token");
@@ -68,69 +67,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    
-    // Check for existing session in localStorage
-    // Determine which key to use based on current URL path
-    const isMemberPortal = window.location.pathname.startsWith('/member');
-    const sessionKey = isMemberPortal ? 'member_session' : 'session';
-    const storedSession = localStorage.getItem(sessionKey);
-    
-    if (storedSession) {
+
+    // Try to restore a valid session.
+    // In a Capacitor WebView, window.location.pathname is unreliable (not /member/*),
+    // so we try BOTH keys and use whichever one has a valid, non-expired token.
+    const candidateKeys = ['member_session', 'session'];
+
+    const isValidSession = (raw: string | null): boolean => {
+      if (!raw) return false;
       try {
-        const parsedSession = JSON.parse(storedSession);
-        
-        // Validate the token exists and is not empty
-        if (!parsedSession.token || typeof parsedSession.token !== 'string' || parsedSession.token.trim() === '') {
-          localStorage.removeItem("session");
-          setLoading(false);
-          return;
-        }
-        
-        // Try to validate the token by checking its structure
-        const tokenParts = parsedSession.token.split('.');
-        if (tokenParts.length !== 3) {
-          // Invalid JWT format
-          localStorage.removeItem("session");
-          setLoading(false);
-          return;
-        }
-        
-        // Try to decode and validate expiration if available
-        try {
-          const payload = JSON.parse(atob(tokenParts[1]));
-          
-          // If token has exp claim, check if it's expired
-          if (payload.exp) {
-            const expirationTime = payload.exp * 1000; // Convert to milliseconds
-            const currentTime = Date.now();
-            
-            if (currentTime > expirationTime) {
-              // Token is expired
-              localStorage.removeItem("session");
-              setLoading(false);
-              return;
-            }
-          }
-        } catch (e) {
-          // If we can't parse the token payload, it's invalid
-          localStorage.removeItem("session");
-          setLoading(false);
-          return;
-        }
-        
-        // Token appears valid, restore session
-        setSession(parsedSession);
-        setUser(parsedSession.user);
-        setRole(parsedSession.user.role);
-        setProfile({
-          full_name: parsedSession.user.username,
-          email: parsedSession.user.email,
-          avatar_url: null,
-        });
-      } catch (error) {
-        localStorage.removeItem("session");
+        const parsed = JSON.parse(raw);
+        if (!parsed.token || typeof parsed.token !== 'string') return false;
+        const parts = parsed.token.split('.');
+        if (parts.length !== 3) return false;
+        const payload = JSON.parse(atob(parts[1]));
+        if (payload.exp && Date.now() > payload.exp * 1000) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    let restoredKey: string | null = null;
+    let restoredSession: any = null;
+
+    for (const key of candidateKeys) {
+      const raw = localStorage.getItem(key);
+      if (isValidSession(raw)) {
+        restoredKey = key;
+        restoredSession = JSON.parse(raw!);
+        break;
+      } else if (raw) {
+        // Has a session but it's invalid/expired — clean it up
+        localStorage.removeItem(key);
+        localStorage.removeItem('token');
       }
     }
+
+    if (restoredSession) {
+      setSession(restoredSession);
+      setUser(restoredSession.user);
+      setRole(restoredSession.user.role);
+      setProfile({
+        full_name: restoredSession.user.username,
+        email: restoredSession.user.email,
+        avatar_url: null,
+      });
+    }
+
     setLoading(false);
   }, []);
 
@@ -180,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: username,
           role: (payload.role || "MEMBER") as AppRole,
         },
-        role: "",
+        role: (payload.role || "MEMBER"),
         // Member-specific fields
         memberId: data.memberId || payload.memberId,
         memberNumber: data.memberNumber || payload.memberNumber,
@@ -252,7 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: username,
           role: (payload.role || "ADMIN") as AppRole,
         },
-        role: ""
+        role: (payload.role || "ADMIN")
       };
 
       setSession(sessionData);

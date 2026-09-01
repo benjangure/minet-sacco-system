@@ -31,7 +31,6 @@ import org.springframework.beans.factory.annotation.Value;
 
 @RestController
 @RequestMapping("/api/member")
-@CrossOrigin
 public class MemberPortalController {
 
     @Value("${deposit.upload.directory:uploads/deposits}")

@@ -51,16 +51,15 @@ export default function MemberLogin() {
                 const expirationTime = payload.exp * 1000; // Convert to milliseconds
                 const currentTime = Date.now();
                 if (currentTime < expirationTime) {
-                  // Token is valid and not expired
-                  console.log('DEBUG: Valid session exists in localStorage, redirecting to dashboard');
-                  // Use window.location to avoid React Router infinite loop
-                  window.location.href = '/member/dashboard';
+                  // Token is valid and not expired — redirect to dashboard
+                  console.log('DEBUG: Valid session exists, redirecting to dashboard');
+                  navigate('/member/dashboard', { replace: true });
                   return;
                 }
               } else {
                 // No expiration claim, assume token is valid
                 console.log('DEBUG: Session exists (no expiry), redirecting to dashboard');
-                window.location.href = '/member/dashboard';
+                navigate('/member/dashboard', { replace: true });
                 return;
               }
             }
@@ -132,24 +131,18 @@ export default function MemberLogin() {
 
       // Normal login successful - redirect to dashboard
       console.log('DEBUG: Login successful, redirecting to member dashboard');
-      // Verify session is in localStorage before navigating
-      const sessionCheck = localStorage.getItem('session');
-      console.log('DEBUG: Session in localStorage before navigate:', sessionCheck ? 'YES' : 'NO');
-      if (sessionCheck) {
-        try {
-          const parsed = JSON.parse(sessionCheck);
-          console.log('DEBUG: Session has token:', parsed.token ? 'YES' : 'NO');
-        } catch (e) {
-          console.error('DEBUG: Failed to parse session:', e);
-        }
-      }
-      console.log('DEBUG: Current URL before navigate:', window.location.href);
-      console.log('DEBUG: Using window.location.href to avoid infinite loop');
-      
-      // Use window.location.href instead of navigate() to prevent infinite reload loop
-      // This performs a full page navigation, breaking the React Router cycle
-      window.location.href = '/member/dashboard';
-      console.log('DEBUG: Redirect initiated to:', window.location.href);
+
+      // Verify member_session was saved correctly
+      const sessionCheck = localStorage.getItem('member_session');
+      console.log('DEBUG: member_session in localStorage:', sessionCheck ? 'YES' : 'NO');
+
+      // Reset loading before navigating so the button doesn't stay stuck
+      // if navigation is delayed on Android WebView
+      setLoading(false);
+
+      // In Capacitor WebView, window.location.href with a relative path doesn't work.
+      // Use navigate() from React Router instead — it works correctly in all environments.
+      navigate('/member/dashboard', { replace: true });
     } catch (err: any) {
       console.error('Login error:', err);
       

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRefresh } from '@/contexts/RefreshContext';
 import { useAuth } from '@/contexts/AuthContext';
 import api, { getApiBaseUrl } from '@/config/api';
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -318,30 +319,32 @@ export default function MemberDashboard() {
 
   const fetchDashboard = async () => {
     try {
-      // Get token from member_session object (where member login stores it)
-      let token = localStorage.getItem('token');
-      if (!token) {
-        // Check member_session first (for member portal)
-        const memberSessionStr = localStorage.getItem('member_session');
-        if (memberSessionStr) {
-          try {
-            const session = JSON.parse(memberSessionStr);
-            token = session.token;
-          } catch (e) {
-            console.error('Failed to parse member_session:', e);
-          }
+      // Resolve token the same way login does — check member_session first,
+      // then the raw 'token' key, then the staff session as a last resort.
+      let token: string | null = null;
+
+      const memberSessionStr = localStorage.getItem('member_session');
+      if (memberSessionStr) {
+        try {
+          const parsed = JSON.parse(memberSessionStr);
+          token = parsed.token || null;
+        } catch (e) {
+          console.error('[Dashboard] Failed to parse member_session:', e);
         }
-        
-        // Fallback to session (for staff portal)
-        if (!token) {
-          const sessionStr = localStorage.getItem('session');
-          if (sessionStr) {
-            try {
-              const session = JSON.parse(sessionStr);
-              token = session.token;
-            } catch (e) {
-              console.error('Failed to parse session:', e);
-            }
+      }
+
+      if (!token) {
+        token = localStorage.getItem('token');
+      }
+
+      if (!token) {
+        const sessionStr = localStorage.getItem('session');
+        if (sessionStr) {
+          try {
+            const parsed = JSON.parse(sessionStr);
+            token = parsed.token || null;
+          } catch (e) {
+            console.error('[Dashboard] Failed to parse session:', e);
           }
         }
       }
@@ -351,18 +354,36 @@ export default function MemberDashboard() {
         return;
       }
 
-      const response = await api.get('/member/dashboard');
-      setDashboard(response.data);
+      // Use nativeFetch (CapacitorHttp on Android) — the same transport login
+      // uses — so CORS never blocks this call on the WebView.
+      const url = `${getApiBaseUrl()}/member/dashboard`;
+      console.log('[Dashboard] Fetching:', url);
+
+      const response = await nativeFetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setError('Session expired. Please log in again.');
+          localStorage.removeItem('token');
+          localStorage.removeItem('member_session');
+          localStorage.removeItem('session');
+          navigate('/member');
+          return;
+        }
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody?.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setDashboard(data);
       setError('');
     } catch (err: any) {
-      console.error('Error fetching dashboard:', err);
-      setError('Failed to load dashboard');
-      if (err.response?.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('member_session');
-        localStorage.removeItem('session');
-        navigate('/member');
-      }
+      console.error('[Dashboard] Error fetching dashboard:', err);
+      const message = err?.message || String(err);
+      setError(`Cannot reach server.\nCheck that backend is running on 10.39.60.15:9090.\nDetails: ${message}`);
     } finally {
       setLoading(false);
     }

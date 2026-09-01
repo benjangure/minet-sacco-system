@@ -1,6 +1,4 @@
 import { Navigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import { jwtDecode } from 'jwt-decode';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface ProtectedRouteProps {
@@ -8,76 +6,72 @@ interface ProtectedRouteProps {
   requiredRole?: string;
 }
 
+/**
+ * Checks whether a JWT token string belongs to a MEMBER role.
+ * Handles both "MEMBER" and "ROLE_MEMBER" claim formats.
+ */
+function isMemberToken(token: string): boolean {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1]));
+    // Check expiry
+    if (payload.exp && Date.now() > payload.exp * 1000) return false;
+    const role: string = (payload.role || '').replace('ROLE_', '');
+    return role === 'MEMBER';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve a member token from localStorage — checks 'token' key first,
+ * then parses 'member_session', matching the same priority order used
+ * by memberSignIn when it stores the session.
+ */
+function resolveMemberToken(): string | null {
+  const raw = localStorage.getItem('token');
+  if (raw) return raw;
+
+  try {
+    const sessionStr = localStorage.getItem('member_session');
+    if (sessionStr) {
+      const parsed = JSON.parse(sessionStr);
+      if (parsed?.token) return parsed.token;
+    }
+  } catch {}
+
+  return null;
+}
+
 export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { session, loading } = useAuth();
-  const [memberTokenValid, setMemberTokenValid] = useState<boolean | null>(null);
-  const [hasChecked, setHasChecked] = useState(false);
 
-  useEffect(() => {
-    // Prevent infinite loop - only check once
-    if (hasChecked) return;
-    
-    // For member routes, check if token is available in storage
-    if (requiredRole === 'MEMBER') {
-      let token = localStorage.getItem('token');
-      
-      if (!token) {
-        const sessionStr = localStorage.getItem('member_session');
-        if (sessionStr) {
-          try {
-            const parsedSession = JSON.parse(sessionStr);
-            token = parsedSession.token;
-          } catch (e) {
-            console.error('Failed to parse member session:', e);
-          }
-        }
-      }
-
-      if (token) {
-        try {
-          const decoded: any = jwtDecode(token);
-          const tokenRole = decoded.role || '';
-          const normalizedTokenRole = tokenRole.replace('ROLE_', '');
-          
-          if (normalizedTokenRole === 'MEMBER') {
-            setMemberTokenValid(true);
-          } else {
-            setMemberTokenValid(false);
-          }
-        } catch (e) {
-          console.error('Invalid token:', e);
-          setMemberTokenValid(false);
-        }
-      } else {
-        // No token found
-        setMemberTokenValid(false);
-      }
-      
-      setHasChecked(true);
-    }
-  }, [requiredRole, hasChecked]);
-
-  // Show loading spinner while checking auth
-  if (loading || (requiredRole === 'MEMBER' && memberTokenValid === null)) {
-    return <div className="flex min-h-screen items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
+  // Show spinner only while AuthContext is still restoring the session on first load
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
-  // For admin routes (no requiredRole specified), use AuthContext
-  if (!requiredRole) {
-    if (!session && !loading) return <Navigate to="/login" replace />;
-    return <>{children}</>;
-  }
-
-  // For member routes with requiredRole="MEMBER"
+  // Member portal routes — validate token directly from localStorage.
+  // This works immediately after login because memberSignIn writes to
+  // localStorage synchronously before navigate() is called.
   if (requiredRole === 'MEMBER') {
-    if (memberTokenValid !== true && !loading) {
-      console.debug('DEBUG: ProtectedRoute - Member token invalid, redirecting to member login');
+    const token = resolveMemberToken();
+    if (!token || !isMemberToken(token)) {
+      console.debug('[ProtectedRoute] No valid member token — redirecting to member login');
       return <Navigate to="/member/login" replace />;
     }
     return <>{children}</>;
   }
 
-  // For other role-based routes (if needed in future)
+  // Staff / admin routes — rely on AuthContext session
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
+
   return <>{children}</>;
 }
-
