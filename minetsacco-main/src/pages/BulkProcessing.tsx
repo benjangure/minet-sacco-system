@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -246,7 +247,7 @@ export default function BulkProcessing() {
 
   const fetchEnabledFunds = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/fund-configurations/enabled`, {
+      const response = await nativeFetch(`${API_BASE_URL}/fund-configurations/enabled`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -262,7 +263,7 @@ export default function BulkProcessing() {
 
   const fetchBatches = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/bulk/batches`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/batches`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -286,7 +287,7 @@ export default function BulkProcessing() {
 
   const fetchApprovedLoans = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/bulk/loan-items/approved`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/loan-items/approved`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -348,7 +349,7 @@ export default function BulkProcessing() {
     formData.append("batchType", batchType);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/bulk/upload`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/upload`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -424,7 +425,7 @@ export default function BulkProcessing() {
     setSelectedBatch(batch);
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/bulk/batches/${batch.id}/items`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/batches/${batch.id}/items`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -470,7 +471,7 @@ export default function BulkProcessing() {
     setLoading(true);
     setGuarantorValidationResult(null); // Clear old data first
     try {
-      const response = await fetch(`${API_BASE_URL}/bulk/loan-items/${loanItemId}/validate-guarantors`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/loan-items/${loanItemId}/validate-guarantors`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -504,7 +505,7 @@ export default function BulkProcessing() {
   const handleApproveLoanItem = async (itemId: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/bulk/loan-items/${itemId}/approve`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/loan-items/${itemId}/approve`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -536,7 +537,7 @@ export default function BulkProcessing() {
 
         // Refresh the batch items
         if (selectedBatch) {
-          const itemsResponse = await fetch(`${API_BASE_URL}/bulk/batches/${selectedBatch.id}/items`, {
+          const itemsResponse = await nativeFetch(`${API_BASE_URL}/bulk/batches/${selectedBatch.id}/items`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -576,7 +577,7 @@ export default function BulkProcessing() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/bulk/loan-items/${selectedLoanItemId}/reject?reason=${encodeURIComponent(loanItemRejectionReason)}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/loan-items/${selectedLoanItemId}/reject?reason=${encodeURIComponent(loanItemRejectionReason)}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -594,7 +595,7 @@ export default function BulkProcessing() {
         setSelectedLoanItemId(null);
         // Refresh the batch items
         if (selectedBatch) {
-          const itemsResponse = await fetch(`${API_BASE_URL}/bulk/batches/${selectedBatch.id}/items`, {
+          const itemsResponse = await nativeFetch(`${API_BASE_URL}/bulk/batches/${selectedBatch.id}/items`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -635,7 +636,7 @@ export default function BulkProcessing() {
     setLoading(true);
     try {
       const itemIds = Array.from(selectedLoanItemIds);
-      const response = await fetch(`${API_BASE_URL}/bulk/loan-items/bulk-approve`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/loan-items/bulk-approve`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -656,7 +657,7 @@ export default function BulkProcessing() {
 
         // Refresh the batch items
         if (selectedBatch) {
-          const itemsResponse = await fetch(`${API_BASE_URL}/bulk/batches/${selectedBatch.id}/items`, {
+          const itemsResponse = await nativeFetch(`${API_BASE_URL}/bulk/batches/${selectedBatch.id}/items`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -718,7 +719,7 @@ export default function BulkProcessing() {
     setLoading(true);
     try {
       const itemIds = Array.from(selectedDisbursementItemIds);
-      const response = await fetch(`${API_BASE_URL}/bulk/loan-items/bulk-disburse`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/loan-items/bulk-disburse`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -781,7 +782,7 @@ export default function BulkProcessing() {
   const handleApproveBatch = async (batchId: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/bulk/batches/${batchId}/approve`, {
+      const response = await nativeFetch(`${API_BASE_URL}/bulk/batches/${batchId}/approve`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -826,7 +827,7 @@ export default function BulkProcessing() {
 
     setLoading(true);
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/bulk/batches/${selectedBatch.id}/reject?reason=${encodeURIComponent(rejectionReason)}`,
         {
           method: "POST",
@@ -876,7 +877,7 @@ export default function BulkProcessing() {
 
     setLoading(true);
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/bulk/batches/${selectedBatch.id}?reason=${encodeURIComponent(deleteReason)}`,
         {
           method: "DELETE",

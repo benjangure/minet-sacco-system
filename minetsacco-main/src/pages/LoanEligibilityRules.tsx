@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -61,7 +62,7 @@ export default function LoanEligibilityRules() {
   const fetchRules = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loan-eligibility-rules`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loan-eligibility-rules`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -86,7 +87,7 @@ export default function LoanEligibilityRules() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loan-eligibility-rules`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loan-eligibility-rules`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

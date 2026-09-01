@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,7 @@ const KycUploadTracking = () => {
   const fetchMyUploadedDocuments = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/kyc-documents/my-uploads`, {
+      const response = await nativeFetch(`${API_BASE_URL}/kyc-documents/my-uploads`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -64,7 +65,7 @@ const KycUploadTracking = () => {
 
   const handleViewDocument = async (documentId: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/kyc-documents/${documentId}/download`, {
+      const response = await nativeFetch(`${API_BASE_URL}/kyc-documents/${documentId}/download`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
       if (!response.ok) {

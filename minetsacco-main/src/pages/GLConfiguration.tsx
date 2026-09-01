@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -109,7 +110,7 @@ export default function GLConfiguration() {
   const fetchAccounts = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/gl/account-configuration`, {
+      const response = await nativeFetch(`${API_BASE_URL}/gl/account-configuration`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -131,7 +132,7 @@ export default function GLConfiguration() {
 
   const fetchDataSources = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/gl/data-sources`, {
+      const response = await nativeFetch(`${API_BASE_URL}/gl/data-sources`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
@@ -183,7 +184,7 @@ export default function GLConfiguration() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/gl/account-configuration`, {
+      const response = await nativeFetch(`${API_BASE_URL}/gl/account-configuration`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -238,7 +239,7 @@ export default function GLConfiguration() {
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/gl/account-configuration/${editingAccount.id}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/gl/account-configuration/${editingAccount.id}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -268,7 +269,7 @@ export default function GLConfiguration() {
   const fetchPeriodEntries = async () => {
     setPeriodLoading(true);
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/gl/period-entry?periodMonth=${selectedMonth}&periodYear=${selectedYear}`,
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -315,7 +316,7 @@ export default function GLConfiguration() {
 
     try {
       for (const entry of entriesToSave) {
-        const response = await fetch(`${API_BASE_URL}/gl/period-entry`, {
+        const response = await nativeFetch(`${API_BASE_URL}/gl/period-entry`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -352,7 +353,7 @@ export default function GLConfiguration() {
     // Step 2: Re-fetch the period entries to get fresh entryIds after save
     let freshEntries: GLPeriodEntry[] = [];
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/gl/period-entry?periodMonth=${selectedMonth}&periodYear=${selectedYear}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -375,7 +376,7 @@ export default function GLConfiguration() {
 
     try {
       for (const id of draftIds) {
-        const response = await fetch(`${API_BASE_URL}/gl/period-entry/${id}/submit`, {
+        const response = await nativeFetch(`${API_BASE_URL}/gl/period-entry/${id}/submit`, {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -397,7 +398,7 @@ export default function GLConfiguration() {
 
   const handleApproveEntry = async (entryId: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/gl/period-entry/${entryId}/approve`, {
+      const response = await nativeFetch(`${API_BASE_URL}/gl/period-entry/${entryId}/approve`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -420,7 +421,7 @@ export default function GLConfiguration() {
   const handleRejectEntry = async (entryId: number) => {
     const reason = prompt("Enter rejection reason (optional):");
     try {
-      const response = await fetch(`${API_BASE_URL}/gl/period-entry/${entryId}/reject`, {
+      const response = await nativeFetch(`${API_BASE_URL}/gl/period-entry/${entryId}/reject`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -446,7 +447,7 @@ export default function GLConfiguration() {
 
   const handleLockEntry = async (entryId: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/gl/period-entry/${entryId}/lock`, {
+      const response = await nativeFetch(`${API_BASE_URL}/gl/period-entry/${entryId}/lock`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
       });

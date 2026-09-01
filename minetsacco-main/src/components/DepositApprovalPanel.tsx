@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -181,7 +182,7 @@ export default function DepositApprovalPanel({ open, onOpenChange, onApprovalCha
     if (!selectedRequest) return;
     
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/teller/deposit-requests/${selectedRequest.id}/receipt/download`,
         {
           headers: { Authorization: `Bearer ${session?.token}` }

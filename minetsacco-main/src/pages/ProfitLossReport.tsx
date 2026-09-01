@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,7 +80,7 @@ const ProfitLossReport = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/reports/profit-loss?startDate=${startDate}&endDate=${endDate}`,
         {
           headers: { Authorization: `Bearer ${session?.token}` },
@@ -123,7 +124,7 @@ const ProfitLossReport = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/reports/profit-loss/export/excel?startDate=${startDate}&endDate=${endDate}`,
         {
           headers: { Authorization: `Bearer ${session?.token}` },
@@ -172,7 +173,7 @@ const ProfitLossReport = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/reports/profit-loss/export/pdf?startDate=${startDate}&endDate=${endDate}`,
         {
           headers: { Authorization: `Bearer ${session?.token}` },

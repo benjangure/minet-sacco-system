@@ -221,11 +221,11 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <InstallPrompt />
       <BrowserRouter future={{
         v7_startTransition: true,
         v7_relativeSplatPath: true
       }}>
+        <InstallPrompt />
         <AuthProvider>
           <RefreshProvider>
             <AppRoutes />

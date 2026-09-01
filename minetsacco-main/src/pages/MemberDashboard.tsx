@@ -141,7 +141,7 @@ function MemberDepositsView() {
         }
       }
 
-      const response = await fetch(`${API_BASE_URL}/member/deposit-requests/${depositId}/receipt/download`, {
+      const response = await nativeFetch(`${API_BASE_URL}/member/deposit-requests/${depositId}/receipt/download`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {

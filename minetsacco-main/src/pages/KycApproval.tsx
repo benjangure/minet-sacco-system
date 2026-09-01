@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { nativeFetch } from "@/utils/nativeHttp";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -71,7 +72,7 @@ const KycApproval = () => {
 
   const fetchPendingDocuments = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/kyc-documents/pending`, {
+      const response = await nativeFetch(`${API_BASE_URL}/kyc-documents/pending`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -97,7 +98,7 @@ const KycApproval = () => {
 
   const fetchMembersWithIncompleteKyc = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/kyc-documents/incomplete-members`, {
+      const response = await nativeFetch(`${API_BASE_URL}/kyc-documents/incomplete-members`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -117,7 +118,7 @@ const KycApproval = () => {
   const handleVerifyDocument = async (documentId: number) => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/kyc-documents/${documentId}/verify`, {
+      const response = await nativeFetch(`${API_BASE_URL}/kyc-documents/${documentId}/verify`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${session?.token}` },
       });
@@ -159,7 +160,7 @@ const KycApproval = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/kyc-documents/${documentId}/reject?reason=${encodeURIComponent(rejectionReason)}`,
         {
           method: "PUT",
@@ -206,7 +207,7 @@ const KycApproval = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/kyc-documents/bulk-approve`, {
+      const response = await nativeFetch(`${API_BASE_URL}/kyc-documents/bulk-approve`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

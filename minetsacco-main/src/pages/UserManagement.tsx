@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -90,7 +91,7 @@ const UserManagement = () => {
       console.log("Auth token available:", !!session?.token);
       console.log("Current user role:", currentUserRole);
       
-      const response = await fetch(`${API_BASE_URL}/users`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users`, {
         headers: {
           "Authorization": `Bearer ${session?.token}`,
         },
@@ -162,7 +163,7 @@ const UserManagement = () => {
     if (!newUsername || !newEmail || !newPassword || !newRole) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/users`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -203,7 +204,7 @@ const UserManagement = () => {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/users/${selectedUser.id}/deactivate?reason=${encodeURIComponent(deactivateReason)}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users/${selectedUser.id}/deactivate?reason=${encodeURIComponent(deactivateReason)}`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${session?.token}`,
@@ -227,7 +228,7 @@ const UserManagement = () => {
 
   const handleReactivateUser = async (user: User) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/${user.id}/reactivate?reason=Admin reactivation`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users/${user.id}/reactivate?reason=Admin reactivation`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${session?.token}`,
@@ -249,7 +250,7 @@ const UserManagement = () => {
   const handleViewActivityLog = async (user: User) => {
     setSelectedUser(user);
     try {
-      const response = await fetch(`${API_BASE_URL}/users/${user.id}/activity-log`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users/${user.id}/activity-log`, {
         headers: {
           "Authorization": `Bearer ${session?.token}`,
         },
@@ -280,7 +281,7 @@ const UserManagement = () => {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/users/${selectedUser.id}/change-role?newRole=${encodeURIComponent(newRoleValue)}&reason=${encodeURIComponent(changeRoleReason)}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users/${selectedUser.id}/change-role?newRole=${encodeURIComponent(newRoleValue)}&reason=${encodeURIComponent(changeRoleReason)}`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${session?.token}`,

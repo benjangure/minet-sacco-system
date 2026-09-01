@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileCheck, AlertCircle, Loader2 } from "lucide-react";
@@ -86,7 +87,7 @@ export const KycDocumentUpload = ({
       formData.append("documentType", selectedDocType);
       formData.append("file", file);
 
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/kyc-documents/upload/${memberId}`,
         {
           method: "POST",

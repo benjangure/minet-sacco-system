@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,7 +69,7 @@ const CustomerSupportPortal = () => {
 
   const fetchMembers = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -83,7 +84,7 @@ const CustomerSupportPortal = () => {
   const fetchMyTickets = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/support/tickets/my-tickets`, {
+      const response = await nativeFetch(`${API_BASE_URL}/support/tickets/my-tickets`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -116,7 +117,7 @@ const CustomerSupportPortal = () => {
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/support/tickets`, {
+      const response = await nativeFetch(`${API_BASE_URL}/support/tickets`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -171,7 +172,7 @@ const CustomerSupportPortal = () => {
 
     setResetLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/support/members/${selectedMemberForReset.id}/reset-password`, {
+      const response = await nativeFetch(`${API_BASE_URL}/support/members/${selectedMemberForReset.id}/reset-password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

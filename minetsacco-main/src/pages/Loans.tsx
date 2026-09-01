@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -255,7 +256,7 @@ const Loans = () => {
       // Fetch the rich guarantor list (with frozenPledge, guaranteeAmount, etc.)
       let richGuarantors: any[] = [];
       try {
-        const res = await fetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
+        const res = await nativeFetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
           headers: { Authorization: `Bearer ${session?.token}` },
         });
         if (res.ok) {
@@ -293,7 +294,7 @@ const Loans = () => {
     try {
       let richGuarantors: any[] = [];
       try {
-        const res = await fetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
+        const res = await nativeFetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
           headers: { Authorization: `Bearer ${session?.token}` },
         });
         if (res.ok) {
@@ -336,7 +337,7 @@ const Loans = () => {
         return;
       }
       
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         headers: { "Authorization": `Bearer ${session.token}` },
       });
       
@@ -370,7 +371,7 @@ const Loans = () => {
 
   const fetchMembers = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members/status/ACTIVE`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/status/ACTIVE`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -384,7 +385,7 @@ const Loans = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/loan-products`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loan-products`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -463,7 +464,7 @@ const Loans = () => {
     try {
       const params = new URLSearchParams({ memberId, amount });
       guarantorIds.forEach(id => params.append("guarantorIds", String(id)));
-      const response = await fetch(`${API_BASE_URL}/loans/pre-check?${params}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/pre-check?${params}`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -484,7 +485,7 @@ const Loans = () => {
     }
     setGuarantorLookupLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/member/member-by-employee-id/${employeeId}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/member/member-by-employee-id/${employeeId}`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -513,7 +514,7 @@ const Loans = () => {
 
   const checkGuarantorEligibility = async (guarantorId: number, guaranteeAmount: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/validate-guarantor-eligibility?guarantorMemberId=${guarantorId}&guaranteeAmount=${guaranteeAmount}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/validate-guarantor-eligibility?guarantorMemberId=${guarantorId}&guaranteeAmount=${guaranteeAmount}`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
@@ -536,7 +537,7 @@ const Loans = () => {
     }
     setNokLookupLoading({...nokLookupLoading, [primaryGuarantorId]: true});
     try {
-      const response = await fetch(`${API_BASE_URL}/member/member-by-employee-id/${employeeId}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/member/member-by-employee-id/${employeeId}`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -585,7 +586,7 @@ const Loans = () => {
 
   const checkNokEligibility = async (nokId: number, guaranteeAmount: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/validate-guarantor-eligibility?guarantorMemberId=${nokId}&guaranteeAmount=${guaranteeAmount}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/validate-guarantor-eligibility?guarantorMemberId=${nokId}&guaranteeAmount=${guaranteeAmount}`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
@@ -645,7 +646,7 @@ const Loans = () => {
         nextOfKinGuaranteeAmount: nokGuarantorMap[guarantorId] ? guarantorAmountMap[guarantorId] : null
       }));
 
-      const response = await fetch(`${API_BASE_URL}/loans/apply`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/apply`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -686,7 +687,7 @@ const Loans = () => {
   const validateEligibilityBeforeApproval = async (loan: Loan) => {
     try {
       setValidatingLoan(loan);
-      const response = await fetch(`${API_BASE_URL}/loans/${loan.id}/validate-approval`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${loan.id}/validate-approval`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
 
@@ -753,7 +754,7 @@ const Loans = () => {
         url = `${API_BASE_URL}/loans/disburse/${loan.id}`;
       }
 
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -848,7 +849,7 @@ const Loans = () => {
 
     setPhaseASubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}/fields/update`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}/fields/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -905,7 +906,7 @@ const Loans = () => {
 
   const handleViewGuarantors = async (loan: Loan) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -941,7 +942,7 @@ const Loans = () => {
     // Load current guarantors
     const loadGuarantors = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
+        const response = await nativeFetch(`${API_BASE_URL}/loans/${loan.id}/guarantors`, {
           headers: { "Authorization": `Bearer ${session?.token}` },
         });
         if (response.ok) {
@@ -1103,7 +1104,7 @@ const Loans = () => {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/loans/${loanToEdit.id}/fields/update`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${loanToEdit.id}/fields/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1132,7 +1133,7 @@ const Loans = () => {
         // Fetch the UPDATED loan from backend before displaying
         if (selectedLoanForDetails && selectedLoanForDetails.id === loanToEdit.id) {
           try {
-            const loanResponse = await fetch(`${API_BASE_URL}/loans/${loanToEdit.id}`, {
+            const loanResponse = await nativeFetch(`${API_BASE_URL}/loans/${loanToEdit.id}`, {
               headers: { "Authorization": `Bearer ${session?.token}` },
             });
             if (loanResponse.ok) {
@@ -1161,7 +1162,7 @@ const Loans = () => {
     setReassignDialogOpen(true);
     setReassignLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/${loan.id}/reassign-guarantors-data`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${loan.id}/reassign-guarantors-data`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -1192,7 +1193,7 @@ const Loans = () => {
         guaranteeAmount: g.guaranteeAmount
       }));
 
-      const response = await fetch(`${API_BASE_URL}/loans/${loanForReassign.id}/reassign-guarantors`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${loanForReassign.id}/reassign-guarantors`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1228,7 +1229,7 @@ const Loans = () => {
 
     setDeleteSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/${loanToDelete.id}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${loanToDelete.id}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -1258,7 +1259,7 @@ const Loans = () => {
   const fetchTopUpHistory = async (loanId: number) => {
     setLoadingTopUpHistory(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/${loanId}/topup-history`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${loanId}/topup-history`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -1284,7 +1285,7 @@ const Loans = () => {
       return;
     }
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/${loanId}/topup-preview?amount=${amount}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${loanId}/topup-preview?amount=${amount}`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -1350,7 +1351,7 @@ const Loans = () => {
         guaranteeAmount: g.pledgeAmount
       }));
 
-      const response = await fetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}/add-topup`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}/add-topup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1400,7 +1401,7 @@ const Loans = () => {
         ...(editTopUpPurpose && { purpose: editTopUpPurpose })
       });
       
-      const response = await fetch(`${API_BASE_URL}/loans/topup/${topUpToEdit.id}?${params}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/topup/${topUpToEdit.id}?${params}`, {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${session?.token}`,
@@ -1436,7 +1437,7 @@ const Loans = () => {
 
     setDeleteTopUpSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/topup/${topUpToDelete.id}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/topup/${topUpToDelete.id}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${session?.token}`,
@@ -1502,7 +1503,7 @@ const Loans = () => {
       if (fullEditForm.principalRepaid !== "") params.append("principalRepaid", fullEditForm.principalRepaid);
       params.append("reason", fullEditForm.reason);
 
-      const response = await fetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}/update-financials?${params}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}/update-financials?${params}`, {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${session?.token}`,
@@ -1528,7 +1529,7 @@ const Loans = () => {
         
         // Fetch the UPDATED loan from backend before displaying
         try {
-          const loanResponse = await fetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}`, {
+          const loanResponse = await nativeFetch(`${API_BASE_URL}/loans/${selectedLoanForDetails.id}`, {
             headers: { "Authorization": `Bearer ${session?.token}` },
           });
           if (loanResponse.ok) {
@@ -3019,7 +3020,7 @@ const Loans = () => {
                     };
                   }
 
-                  const response = await fetch(url, {
+                  const response = await nativeFetch(url, {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",

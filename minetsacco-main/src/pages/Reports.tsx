@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -123,7 +124,7 @@ const Reports = () => {
       if (mcAccountType && mcAccountType !== "ALL") params.push(`accountType=${mcAccountType}`);
       if (params.length) url += `?${params.join("&")}`;
 
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${session?.token}` } });
+      const res = await nativeFetch(url, { headers: { Authorization: `Bearer ${session?.token}` } });
       if (res.ok) {
         const json = await res.json();
         setMcReportData(json.data || json);
@@ -228,7 +229,7 @@ const Reports = () => {
         if (params.length) url += `?${params.join("&")}`;
       }
 
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
 
@@ -340,7 +341,7 @@ const Reports = () => {
         if (params.length) url += `?${params.join("&")}`;
       }
 
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
 

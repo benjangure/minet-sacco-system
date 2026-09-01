@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -81,7 +82,7 @@ export default function GuarantorApprovals() {
   const fetchPendingRequests = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/member/guarantor-requests/pending`, {
+      const response = await nativeFetch(`${API_BASE_URL}/member/guarantor-requests/pending`, {
         headers: { 'Authorization': `Bearer ${session?.token}` }
       });
 
@@ -99,7 +100,7 @@ export default function GuarantorApprovals() {
 
   const checkEligibility = async (request: GuarantorRequest) => {
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/member/guarantor-eligibility/${session?.user?.id}/${request.loan.amount}`,
         { headers: { 'Authorization': `Bearer ${session?.token}` } }
       );
@@ -123,7 +124,7 @@ export default function GuarantorApprovals() {
 
     setSubmitting(true);
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/member/guarantor-requests/${selectedRequest.id}/approve`,
         {
           method: 'POST',
@@ -153,7 +154,7 @@ export default function GuarantorApprovals() {
 
     setSubmitting(true);
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/member/guarantor-requests/${selectedRequest.id}/reject?reason=${encodeURIComponent(rejectionReason)}`,
         {
           method: 'POST',

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Upload, FileText, Image, CheckCircle, Eye, X, Download, RefreshCw } from "lucide-react";
@@ -69,7 +70,7 @@ export function DocumentUpload({ memberId, token, documents, onUploadComplete, r
         const path = getDocumentPath(doc.type);
         if (path && isImageFile(path)) {
           try {
-            const response = await fetch(`${API_BASE_URL}/members/${memberId}/document/${doc.type}`, {
+            const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/document/${doc.type}`, {
               headers: { "Authorization": `Bearer ${token}` },
             });
             if (response.ok) {
@@ -104,7 +105,7 @@ export function DocumentUpload({ memberId, token, documents, onUploadComplete, r
     formData.append("documentType", documentType);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${memberId}/upload-document`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/upload-document`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -128,7 +129,7 @@ export function DocumentUpload({ memberId, token, documents, onUploadComplete, r
 
   const handlePreview = async (type: string, label: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${memberId}/document/${type}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/document/${type}`, {
         headers: {
           "Authorization": `Bearer ${token}`,
         },
@@ -150,7 +151,7 @@ export function DocumentUpload({ memberId, token, documents, onUploadComplete, r
 
   const handleDownload = async (type: string, label: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${memberId}/document/${type}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/document/${type}`, {
         headers: {
           "Authorization": `Bearer ${token}`,
         },

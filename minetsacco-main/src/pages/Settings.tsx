@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ const Settings = () => {
       }
 
       try {
-        const response = await fetch(`${API_BASE_URL}/users/profile/me`, {
+        const response = await nativeFetch(`${API_BASE_URL}/users/profile/me`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -105,7 +106,7 @@ const Settings = () => {
 
     setProfileLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/users/profile/me`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users/profile/me`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -163,7 +164,7 @@ const Settings = () => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/users/change-password`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users/change-password`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

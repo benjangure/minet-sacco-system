@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle, Settings, Lock, Eye, EyeOff } from 'lucide-react';
 import { getBackendUrl, setBackendUrl } from '@/config/api';
+import { nativeFetch } from '@/utils/nativeHttp';
 import MemberLayout from '@/components/MemberLayout';
 import NotificationSettings from '@/components/NotificationSettings';
 import { useToast } from '@/hooks/use-toast';
@@ -62,7 +63,7 @@ export default function MemberSettings() {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/users/profile/me`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users/profile/me`, {
         headers: {
           "Authorization": `Bearer ${token}`,
         },
@@ -100,7 +101,7 @@ export default function MemberSettings() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${tempUrl}/api/auth/member/login`, {
+      const response = await nativeFetch(`${tempUrl}/api/auth/member/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: 'test', password: 'test' })
@@ -151,7 +152,7 @@ export default function MemberSettings() {
 
     setProfileLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/users/profile/me`, {
+      const response = await nativeFetch(`${API_BASE_URL}/users/profile/me`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -221,7 +222,7 @@ export default function MemberSettings() {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/member/change-password`, {
+      const response = await nativeFetch(`${API_BASE_URL}/member/change-password`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

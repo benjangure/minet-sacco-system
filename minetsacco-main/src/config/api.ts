@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
+import { getPlatformAdapter } from '@/utils/capacitorAxiosAdapter';
 
 // The one true backend URL for this deployment
 const SERVER_BACKEND_URL = 'http://10.39.60.15:9090';
@@ -54,6 +55,8 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 30000,
+  // On Android use CapacitorHttp to bypass WebView CORS; elsewhere use default
+  adapter: getPlatformAdapter(),
 });
 
 export const getAuthToken = (): string | null => {

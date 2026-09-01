@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,7 +51,7 @@ export default function FundConfiguration() {
   const fetchFunds = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/fund-configurations`, {
+      const response = await nativeFetch(`${API_BASE_URL}/fund-configurations`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -108,7 +109,7 @@ export default function FundConfiguration() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/fund-configurations/${editingFund.id}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/fund-configurations/${editingFund.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -154,7 +155,7 @@ export default function FundConfiguration() {
   const handleToggleFund = async (fund: Fund) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/fund-configurations/${fund.id}/toggle`, {
+      const response = await nativeFetch(`${API_BASE_URL}/fund-configurations/${fund.id}/toggle`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

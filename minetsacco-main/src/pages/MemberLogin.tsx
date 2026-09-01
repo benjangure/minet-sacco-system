@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { nativeFetch } from '@/utils/nativeHttp';
 import { jwtDecode } from 'jwt-decode';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -180,7 +181,7 @@ export default function MemberLogin() {
     setTestingConnection(true);
     try {
       // Test the health check endpoint (no authentication required)
-      const response = await fetch(`${tempUrl}/api/auth/health`, {
+      const response = await nativeFetch(`${tempUrl}/api/auth/health`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });

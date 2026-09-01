@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,7 @@ const OverCommittedGuarantors = () => {
   const fetchReport = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/reports/over-committed-guarantors`, {
+      const response = await nativeFetch(`${API_BASE_URL}/reports/over-committed-guarantors`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
 
@@ -88,7 +89,7 @@ const OverCommittedGuarantors = () => {
 
   const fetchExitedLoansReport = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/reports/exited-members-outstanding-loans`, {
+      const response = await nativeFetch(`${API_BASE_URL}/reports/exited-members-outstanding-loans`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
 
@@ -119,7 +120,7 @@ const OverCommittedGuarantors = () => {
     
     try {
       setExportingExcel(true);
-      const response = await fetch(`${API_BASE_URL}/reports/over-committed-guarantors/export/excel`, {
+      const response = await nativeFetch(`${API_BASE_URL}/reports/over-committed-guarantors/export/excel`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
 
@@ -149,7 +150,7 @@ const OverCommittedGuarantors = () => {
     
     try {
       setExportingPdf(true);
-      const response = await fetch(`${API_BASE_URL}/reports/over-committed-guarantors/export/pdf`, {
+      const response = await nativeFetch(`${API_BASE_URL}/reports/over-committed-guarantors/export/pdf`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
 
@@ -179,7 +180,7 @@ const OverCommittedGuarantors = () => {
     
     try {
       setExportingExcel(true);
-      const response = await fetch(`${API_BASE_URL}/reports/exited-members-outstanding-loans/export/excel`, {
+      const response = await nativeFetch(`${API_BASE_URL}/reports/exited-members-outstanding-loans/export/excel`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
 
@@ -209,7 +210,7 @@ const OverCommittedGuarantors = () => {
     
     try {
       setExportingPdf(true);
-      const response = await fetch(`${API_BASE_URL}/reports/exited-members-outstanding-loans/export/pdf`, {
+      const response = await nativeFetch(`${API_BASE_URL}/reports/exited-members-outstanding-loans/export/pdf`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       });
 

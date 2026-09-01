@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,7 +119,7 @@ const Members = () => {
       // Add cache-busting timestamp
       url += `?_t=${Date.now()}`;
 
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         headers: {
           "Authorization": `Bearer ${session?.token}`,
         },
@@ -307,7 +308,7 @@ const Members = () => {
     }
     
     try {
-      const response = await fetch(`${API_BASE_URL}/members`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -358,7 +359,7 @@ const Members = () => {
 
   const handleApproveMember = async (memberId: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${memberId}/approve`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/approve`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${session?.token}`,
@@ -385,7 +386,7 @@ const Members = () => {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${memberId}/reject`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/reject`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -410,7 +411,7 @@ const Members = () => {
 
   const handleActivateMember = async (memberId: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${memberId}/activate`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/activate`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${session?.token}`,
@@ -431,7 +432,7 @@ const Members = () => {
 
   const handleReactivateMember = async (memberId: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${memberId}/reactivate`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/reactivate`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${session?.token}`,
@@ -455,7 +456,7 @@ const Members = () => {
     if (!editingMember) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${editingMember.id}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${editingMember.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -958,7 +959,7 @@ const Members = () => {
 
                     setExitLoading(true);
                     try {
-                      const response = await fetch(`${API_BASE_URL}/members/${exitDialog.id}/exit`, {
+                      const response = await nativeFetch(`${API_BASE_URL}/members/${exitDialog.id}/exit`, {
                         method: "POST",
                         headers: {
                           "Content-Type": "application/json",
@@ -1131,7 +1132,7 @@ const Members = () => {
                             setExitImpact(null);
                             // Fetch impact analysis
                             try {
-                              const response = await fetch(`${API_BASE_URL}/members/${member.id}/exit-impact`, {
+                              const response = await nativeFetch(`${API_BASE_URL}/members/${member.id}/exit-impact`, {
                                 headers: { "Authorization": `Bearer ${session?.token}` }
                               });
                               if (response.ok) {

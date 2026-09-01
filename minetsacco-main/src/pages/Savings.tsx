@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,7 +77,7 @@ const Savings = () => {
 
   const fetchActiveMembers = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members/status/ACTIVE`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/status/ACTIVE`, {
         headers: {
           "Authorization": `Bearer ${session?.token}`,
         },
@@ -93,7 +94,7 @@ const Savings = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/accounts`, {
+      const response = await nativeFetch(`${API_BASE_URL}/accounts`, {
         headers: {
           "Authorization": `Bearer ${session?.token}`,
         },
@@ -198,7 +199,7 @@ const Savings = () => {
 
     setTransferSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/accounts/transfer-shares`, {
+      const response = await nativeFetch(`${API_BASE_URL}/accounts/transfer-shares`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -268,7 +269,7 @@ const Savings = () => {
       : `${API_BASE_URL}/accounts/withdraw`;
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await nativeFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

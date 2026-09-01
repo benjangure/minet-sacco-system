@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { nativeFetch } from '@/utils/nativeHttp';
 import {
   Dialog,
   DialogContent,
@@ -121,7 +122,7 @@ export const GuarantorReassignmentDialog: React.FC<GuarantorReassignmentDialogPr
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/loans/${loan.id}/reassign-guarantors`,
         {
           method: 'POST',

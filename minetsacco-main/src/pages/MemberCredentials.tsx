@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,7 +69,7 @@ export default function MemberCredentials() {
     }
     
     try {
-      const response = await fetch(`${API_BASE_URL}/member-credentials`, {
+      const response = await nativeFetch(`${API_BASE_URL}/member-credentials`, {
         headers: {
           "Authorization": `Bearer ${session.token}`,
           "Content-Type": "application/json",
@@ -122,7 +123,7 @@ export default function MemberCredentials() {
     }
     
     try {
-      const response = await fetch(`${API_BASE_URL}/member-credentials/${credential.id}/password`, {
+      const response = await nativeFetch(`${API_BASE_URL}/member-credentials/${credential.id}/password`, {
         headers: {
           "Authorization": `Bearer ${session.token}`,
           "Content-Type": "application/json",

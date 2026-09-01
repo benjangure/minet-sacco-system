@@ -13,6 +13,7 @@ import { Search, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { getApiBaseUrl } from "../config/api";
+import { nativeFetch } from "@/utils/nativeHttp";
 const API_BASE_URL = getApiBaseUrl();
 
 interface Member {
@@ -91,7 +92,7 @@ const MemberTransactionHistory = ({ memberMode = false }: MemberTransactionHisto
 
   const fetchMembers = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -117,7 +118,7 @@ const MemberTransactionHistory = ({ memberMode = false }: MemberTransactionHisto
         url += "?" + params.toString();
       }
 
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
 
@@ -152,7 +153,7 @@ const MemberTransactionHistory = ({ memberMode = false }: MemberTransactionHisto
   const fetchTransactionsForMember = async (memberId: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/members/${memberId}/transactions`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members/${memberId}/transactions`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
 

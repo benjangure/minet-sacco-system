@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -59,7 +60,7 @@ const KycDocumentUpload = () => {
   const fetchMembers = async () => {
     if (!session?.token) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/members`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members`, {
         headers: { Authorization: `Bearer ${session.token}` },
       });
       if (response.ok) {
@@ -81,7 +82,7 @@ const KycDocumentUpload = () => {
   const fetchMemberDocuments = async () => {
     if (!session?.token || !selectedMemberId) return;
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/kyc-documents/member/${selectedMemberId}`,
         {
           headers: { Authorization: `Bearer ${session.token}` },
@@ -151,7 +152,7 @@ const KycDocumentUpload = () => {
       formData.append("documentType", selectedDocType);
       formData.append("file", file);
 
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/kyc-documents/upload/${selectedMemberId}`,
         {
           method: "POST",
@@ -444,7 +445,7 @@ const KycDocumentUpload = () => {
                             onClick={async () => {
                               if (confirm("Are you sure you want to delete this document?")) {
                                 try {
-                                  const response = await fetch(
+                                  const response = await nativeFetch(
                                     `${API_BASE_URL}/kyc-documents/${doc.id}`,
                                     {
                                       method: "DELETE",

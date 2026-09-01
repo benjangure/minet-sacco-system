@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '../config/api';
+import { nativeFetch } from '../utils/nativeHttp';
 
 const getAuthHeaders = () => {
   let token = null;
@@ -75,7 +76,7 @@ const glManualEntryService = {
   // Get all GL accounts for dropdown
   getGLAccounts: async (): Promise<GLAccount[]> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/accounts`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/accounts`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -91,7 +92,7 @@ const glManualEntryService = {
   // Create a new manual entry
   createManualEntry: async (entry: GLManualEntryRequest): Promise<GLManualEntry> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/manual-entries`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/manual-entries`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(entry),
@@ -108,7 +109,7 @@ const glManualEntryService = {
   // Get all pending entries
   getPendingEntries: async (): Promise<GLManualEntry[]> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/pending`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/pending`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -124,7 +125,7 @@ const glManualEntryService = {
   // Get all manual entries
   getAllEntries: async (): Promise<GLManualEntry[]> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/manual-entries`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/manual-entries`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -140,7 +141,7 @@ const glManualEntryService = {
   // Get entries by account
   getEntriesByAccount: async (accountId: number): Promise<GLManualEntry[]> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/account/${accountId}`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/account/${accountId}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -156,7 +157,7 @@ const glManualEntryService = {
   // Approve an entry
   approveEntry: async (entryId: number): Promise<GLManualEntry> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/${entryId}/approve`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/${entryId}/approve`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({}),
@@ -173,7 +174,7 @@ const glManualEntryService = {
   // Reject an entry
   rejectEntry: async (entryId: number): Promise<GLManualEntry> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/${entryId}/reject`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/${entryId}/reject`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({}),
@@ -189,7 +190,7 @@ const glManualEntryService = {
 
   approvePeriodEntry: async (entryId: number): Promise<GLManualEntry> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/period-entry/${entryId}/approve`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/period-entry/${entryId}/approve`, {
         method: 'PUT',
         headers: getAuthHeaders(),
       });
@@ -204,7 +205,7 @@ const glManualEntryService = {
 
   rejectPeriodEntry: async (entryId: number, rejectReason = ''): Promise<GLManualEntry> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/period-entry/${entryId}/reject`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/period-entry/${entryId}/reject`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ rejectReason }),
@@ -221,7 +222,7 @@ const glManualEntryService = {
   // Delete an entry
   deleteEntry: async (entryId: number): Promise<void> => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/${entryId}`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}/gl/manual-entries/${entryId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });

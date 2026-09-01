@@ -1,9 +1,12 @@
 /**
  * Install Prompt Component
  * Displays a banner prompting users to install the PWA on their device
+ * Only shown on member portal routes (/member/*)
  */
 
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import { X, Download, Smartphone } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -17,10 +20,26 @@ export const InstallPrompt = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [platform, setPlatform] = useState<'ios' | 'android' | 'desktop' | 'unknown'>('unknown');
+  const location = useLocation();
+
+  // Detect platform once at render time (not as state — avoids async mismatch)
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const platform: 'ios' | 'android' | 'desktop' = /iphone|ipad|ipod/.test(userAgent)
+    ? 'ios'
+    : /android/.test(userAgent)
+    ? 'android'
+    : 'desktop';
+
+  // Only show on member portal routes
+  const isMemberPortal = location.pathname.startsWith('/member');
 
   useEffect(() => {
-    // Check if app is already installed
+    // Never show inside the native Capacitor app — it's already installed
+    if (Capacitor.isNativePlatform()) {
+      return;
+    }
+
+    // Check if app is already installed as PWA
     const isAlreadyInstalled =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true;
@@ -29,22 +48,6 @@ export const InstallPrompt = () => {
       setIsInstalled(true);
       return;
     }
-
-    // Detect platform synchronously
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const detectedIOS = /iphone|ipad|ipod/.test(userAgent);
-    const detectedAndroid = /android/.test(userAgent);
-    const detectedDesktop = !detectedIOS && !detectedAndroid;
-
-    const detectedPlatform: 'ios' | 'android' | 'desktop' | 'unknown' = detectedIOS
-      ? 'ios'
-      : detectedAndroid
-      ? 'android'
-      : detectedDesktop
-      ? 'desktop'
-      : 'unknown';
-
-    setPlatform(detectedPlatform);
 
     // Check if prompt was previously dismissed within 7 days
     const promptDismissed = localStorage.getItem('pwa-install-prompt-dismissed');
@@ -55,22 +58,32 @@ export const InstallPrompt = () => {
     }
 
     // iOS: show manual install instructions after a short delay
-    if (detectedIOS) {
+    if (platform === 'ios') {
       const timer = setTimeout(() => {
         setShowPrompt(true);
       }, 3000);
       return () => clearTimeout(timer);
     }
 
-    // Android / Desktop: listen for browser's beforeinstallprompt event.
-    // Also set a fallback timer for desktop — Chrome only fires beforeinstallprompt
-    // when PWA criteria are met, so first-time visitors may never see it otherwise.
+    // Android: show the APK download banner after a short delay.
+    // We don't rely on beforeinstallprompt here — that's for PWA install.
+    // The Android branch shows a native APK download prompt instead.
+    if (platform === 'android') {
+      const timer = setTimeout(() => {
+        setShowPrompt(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+
+    // Desktop: listen for browser's beforeinstallprompt (fires on HTTPS only).
+    // Also show a manual-instructions banner after a delay as a fallback for
+    // HTTP deployments where beforeinstallprompt never fires (e.g. LAN IP).
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      // Clear fallback timer — native prompt will handle it
+      // Native prompt available — cancel the fallback timer, use the real prompt
       if (fallbackTimer) clearTimeout(fallbackTimer);
       setShowPrompt(true);
     };
@@ -85,12 +98,10 @@ export const InstallPrompt = () => {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // Desktop fallback: show prompt after 4 seconds if beforeinstallprompt never fired
-    if (detectedDesktop) {
-      fallbackTimer = setTimeout(() => {
-        setShowPrompt(true);
-      }, 4000);
-    }
+    // Fallback: show manual instructions banner after 4s if native prompt hasn't fired
+    fallbackTimer = setTimeout(() => {
+      setShowPrompt(true);
+    }, 4000);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -101,7 +112,7 @@ export const InstallPrompt = () => {
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
-      // Native browser install prompt available — use it
+      // Native browser install prompt available (HTTPS) — use it
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
@@ -110,17 +121,9 @@ export const InstallPrompt = () => {
         handleDismiss();
       }
       setDeferredPrompt(null);
-    } else {
-      // No native prompt — open browser install instructions in a new tab
-      // Chrome: chrome://settings/manageProfile won't work cross-origin,
-      // so guide user via the omnibox install icon instead
-      alert(
-        'To install:\n\n' +
-        '1. Click the install icon (⊕) in your browser address bar, OR\n' +
-        '2. Open the browser menu (⋮) → "Install Minet SACCO"\n\n' +
-        'If you don\'t see the option, try using Google Chrome.'
-      );
     }
+    // No else — when there's no native prompt the banner already shows
+    // step-by-step instructions inline, so no alert needed
   };
 
   const handleDismiss = () => {
@@ -128,8 +131,8 @@ export const InstallPrompt = () => {
     localStorage.setItem('pwa-install-prompt-dismissed', Date.now().toString());
   };
 
-  // Don't show if already installed or prompt is hidden
-  if (isInstalled || !showPrompt) {
+  // Don't show if already installed, prompt is hidden, or not on member portal
+  if (isInstalled || !showPrompt || !isMemberPortal) {
     return null;
   }
 
@@ -198,21 +201,34 @@ export const InstallPrompt = () => {
                   <h3 className="font-semibold text-lg mb-1">
                     Install Mobile App
                   </h3>
-                  <p className="text-sm text-white/90 mb-3">
-                    Download the native Android app for the best experience
+                  <p className="text-sm text-white/90 mb-2">
+                    To install the Android app, open this link in Chrome and allow the download when prompted:
                   </p>
+                  <div className="text-sm bg-white/10 p-2 rounded-lg mb-3 break-all font-mono">
+                    http://10.39.60.15:8090/minet-sacco.apk
+                  </div>
+                  <div className="text-xs text-white/80 mb-3 bg-white/10 p-2 rounded-lg">
+                    <p className="font-medium mb-1">If Chrome blocks the download:</p>
+                    <ol className="list-decimal list-inside space-y-1">
+                      <li>Tap the download notification → <strong>Download anyway</strong></li>
+                      <li>Or open Chrome menu → Downloads → tap the file</li>
+                      <li>Enable <strong>Install unknown apps</strong> in Android Settings if prompted</li>
+                    </ol>
+                  </div>
                   <div className="flex gap-2">
-                    <Button
-                      onClick={() => {
-                        // Download APK from server
-                        window.location.href = 'http://10.39.60.15:8090/minet-sacco.apk';
-                      }}
-                      className="bg-white text-red-600 hover:bg-white/90 font-semibold"
-                      size="sm"
+                    <a
+                      href="/minet-sacco.apk"
+                      download="minet-sacco.apk"
+                      className="inline-flex"
                     >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download App
-                    </Button>
+                      <Button
+                        className="bg-white text-red-600 hover:bg-white/90 font-semibold"
+                        size="sm"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download App
+                      </Button>
+                    </a>
                     <Button
                       variant="ghost"
                       onClick={handleDismiss}
@@ -253,27 +269,55 @@ export const InstallPrompt = () => {
                 <h3 className="font-semibold text-lg mb-1">
                   Install Minet SACCO
                 </h3>
-                <p className="text-sm text-white/90 mb-3">
-                  Install our app for faster access, offline support, and push notifications
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleInstallClick}
-                    className="bg-white text-red-600 hover:bg-white/90 font-semibold"
-                    size="sm"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Install Now
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={handleDismiss}
-                    className="text-white hover:bg-white/20"
-                    size="sm"
-                  >
-                    Maybe Later
-                  </Button>
-                </div>
+                {deferredPrompt ? (
+                  // Native install available (HTTPS) — single click install
+                  <>
+                    <p className="text-sm text-white/90 mb-3">
+                      Install the app for faster access, offline support, and notifications
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleInstallClick}
+                        className="bg-white text-red-600 hover:bg-white/90 font-semibold"
+                        size="sm"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Install Now
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={handleDismiss}
+                        className="text-white hover:bg-white/20"
+                        size="sm"
+                      >
+                        Maybe Later
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  // No native prompt (HTTP deployment) — show manual steps inline
+                  <>
+                    <p className="text-sm text-white/90 mb-2">
+                      Install this app directly from your browser:
+                    </p>
+                    <div className="text-sm space-y-1 bg-white/10 p-3 rounded-lg mb-3">
+                      <p className="font-medium mb-1">Chrome / Edge:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-white/90">
+                        <li>Click the <strong>⊕</strong> icon in the address bar, OR</li>
+                        <li>Open the browser menu <strong>⋮</strong></li>
+                        <li>Select <strong>"Install Minet SACCO"</strong></li>
+                      </ol>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      onClick={handleDismiss}
+                      className="text-white hover:bg-white/20"
+                      size="sm"
+                    >
+                      Dismiss
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
             <Button

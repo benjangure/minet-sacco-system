@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Download, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import api, { getAuthToken } from '@/config/api';
+import api, { getAuthToken, getApiBaseUrl } from '@/config/api';
+import { nativeFetch } from '@/utils/nativeHttp';
 import { downloadAndOpenFile } from '@/utils/downloadHelper';
 
 export default function MemberReportsView() {
@@ -18,9 +19,10 @@ export default function MemberReportsView() {
       if (!token) {
         throw new Error('No authentication token available');
       }
-      
-      const response = await fetch(api.defaults.baseURL + `/member/${endpoint}`, {
-        headers: { Authorization: `Bearer ${token}` }
+
+      const url = `${getApiBaseUrl()}/member/${endpoint}`;
+      const response = await nativeFetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
@@ -33,7 +35,20 @@ export default function MemberReportsView() {
         }
       }
 
-      const blob = await response.blob();
+      // CapacitorHttp returns binary as base64 string; regular fetch returns a blob.
+      // Try to get the raw text/base64, convert to blob for the file helper.
+      const rawText = await response.text();
+      let blob: Blob;
+      try {
+        // If it's base64, decode it
+        const binary = atob(rawText);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        blob = new Blob([bytes], { type: 'application/pdf' });
+      } catch {
+        blob = new Blob([rawText], { type: 'application/pdf' });
+      }
+
       await downloadAndOpenFile(
         blob,
         filename,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,7 +45,7 @@ const TellerMemberContext = () => {
 
   const fetchMembers = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/members`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -58,7 +59,7 @@ const TellerMemberContext = () => {
 
   const fetchCurrentContext = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/teller/current-member-context`, {
+      const response = await nativeFetch(`${API_BASE_URL}/teller/current-member-context`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -76,7 +77,7 @@ const TellerMemberContext = () => {
 
   const handleSelectMember = async (member: Member) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/teller/set-member-context/${member.id}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/teller/set-member-context/${member.id}`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
@@ -100,7 +101,7 @@ const TellerMemberContext = () => {
 
   const handleClearContext = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/teller/clear-member-context`, {
+      const response = await nativeFetch(`${API_BASE_URL}/teller/clear-member-context`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${session?.token}` },
       });

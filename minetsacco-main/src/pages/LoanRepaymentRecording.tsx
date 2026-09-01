@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,7 +90,7 @@ const LoanRepaymentRecording = () => {
 
   const fetchActiveLoans = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/loans`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       if (response.ok) {
@@ -214,7 +215,7 @@ const LoanRepaymentRecording = () => {
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loans/${selectedLoan.id}/repay`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loans/${selectedLoan.id}/repay`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

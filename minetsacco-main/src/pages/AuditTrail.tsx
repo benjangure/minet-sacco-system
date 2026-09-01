@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,7 +99,7 @@ export const AuditTrail = () => {
       const end = endDate ? new Date(endDate).toISOString() : new Date().toISOString();
       url += `&startDate=${start}&endDate=${end}`;
 
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
 
@@ -141,7 +142,7 @@ export const AuditTrail = () => {
       const end = endDate ? new Date(endDate).toISOString() : new Date().toISOString();
       url += `&startDate=${start}&endDate=${end}`;
 
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
 

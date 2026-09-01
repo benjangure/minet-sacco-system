@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -49,7 +50,7 @@ const ViewMemberDocuments = () => {
   const fetchMembers = async () => {
     if (!session?.token) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/members`, {
+      const response = await nativeFetch(`${API_BASE_URL}/members`, {
         headers: { Authorization: `Bearer ${session.token}` },
       });
       if (response.ok) {
@@ -72,7 +73,7 @@ const ViewMemberDocuments = () => {
     if (!session?.token || !selectedMemberId) return;
     setFetchingDocs(true);
     try {
-      const response = await fetch(
+      const response = await nativeFetch(
         `${API_BASE_URL}/kyc-documents/member/${selectedMemberId}`,
         {
           headers: { Authorization: `Bearer ${session.token}` },

@@ -4,6 +4,7 @@
  */
 
 import { getApiBaseUrl } from '../config/api';
+import { nativeFetch } from '../utils/nativeHttp';
 
 export interface PushSubscriptionData {
   endpoint: string;
@@ -346,7 +347,7 @@ class PushNotificationService {
    */
   private async sendSubscriptionToBackend(subscriptionData: PushSubscriptionData): Promise<any> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/member/push/subscribe`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/member/push/subscribe`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(subscriptionData)
@@ -377,7 +378,7 @@ class PushNotificationService {
    */
   private async removeSubscriptionFromBackend(subscriptionData: PushSubscriptionData): Promise<any> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/member/push/unsubscribe`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/member/push/unsubscribe`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(subscriptionData)
@@ -407,7 +408,7 @@ class PushNotificationService {
    */
   async getSubscriptionStatus(): Promise<{ subscribed: boolean; subscription?: PushSubscriptionData }> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/member/push/status`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/member/push/status`, {
         method: 'GET',
         headers: this.getAuthHeaders()
       });
@@ -435,7 +436,7 @@ class PushNotificationService {
    */
   async sendTestNotification(): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/member/push/test`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/member/push/test`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify({})

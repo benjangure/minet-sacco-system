@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { nativeFetch } from '@/utils/nativeHttp';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -50,7 +51,7 @@ const LoanProducts = () => {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/loan-products`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loan-products`, {
         headers: { "Authorization": `Bearer ${session?.token}` },
       });
       
@@ -118,7 +119,7 @@ const LoanProducts = () => {
         ? `${API_BASE_URL}/loan-products/${editingProduct.id}`
         : `${API_BASE_URL}/loan-products`;
       
-      const response = await fetch(url, {
+      const response = await nativeFetch(url, {
         method: editingProduct ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
@@ -156,7 +157,7 @@ const LoanProducts = () => {
     if (!confirm("Are you sure you want to delete this loan product?")) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/loan-products/${id}`, {
+      const response = await nativeFetch(`${API_BASE_URL}/loan-products/${id}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${session?.token}` },
       });

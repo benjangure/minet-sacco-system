@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '../config/api';
+import { nativeFetch } from '../utils/nativeHttp';
 
 export interface Notification {
   id: number;
@@ -74,7 +75,7 @@ const getAuthHeaders = () => {
 
 let isRedirecting = false;
 
-const handleAuthError = (response: Response) => {
+const handleAuthError = (response: { ok: boolean; status: number }) => {
   // Only treat 401 as session expiry — 403 is a permissions error, not auth failure
   if (response.status === 401) {
     const currentPath = window.location.pathname;
@@ -149,75 +150,72 @@ const getApiBaseUrlDynamic = (): string => {
 
 export const notificationService = {
   getNotifications: async () => {
-    const response = await fetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}`, {
+    const response = await nativeFetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
     const handledResponse = handleAuthError(response);
     if (!handledResponse.ok) throw new Error('Failed to fetch notifications');
-    const data = await handledResponse.json();
+    const data = await response.json();
     return Array.isArray(data.data) ? data.data : [];
   },
 
   getUnreadNotifications: async () => {
-    const response = await fetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/unread`, {
+    const response = await nativeFetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/unread`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
     const handledResponse = handleAuthError(response);
     if (!handledResponse.ok) throw new Error('Failed to fetch unread notifications');
-    const data = await handledResponse.json();
+    const data = await response.json();
     return Array.isArray(data.data) ? data.data : [];
   },
 
   getUnreadCount: async () => {
     try {
-      const response = await fetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/unread-count`, {
+      const response = await nativeFetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/unread-count`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
-      // 400 means the backend couldn't find the user record — not an auth failure,
-      // just silently return 0 rather than logging noise.
       if (response.status === 400) return 0;
       const handledResponse = handleAuthError(response);
       if (!handledResponse.ok) return 0;
-      const data = await handledResponse.json();
+      const data = await response.json();
       return typeof data.data === 'number' ? data.data : 0;
     } catch (error) {
-      // Silently fail — notification count is non-critical
       return 0;
     }
   },
 
   markAsRead: async (notificationId: number) => {
-    const response = await fetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/${notificationId}/read`, {
+    const response = await nativeFetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/${notificationId}/read`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({}),
     });
     const handledResponse = handleAuthError(response);
     if (!handledResponse.ok) throw new Error('Failed to mark notification as read');
-    return await handledResponse.json();
+    return await response.json();
   },
 
   markAllAsRead: async () => {
-    const response = await fetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/read-all`, {
+    const response = await nativeFetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/read-all`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({}),
     });
     const handledResponse = handleAuthError(response);
     if (!handledResponse.ok) throw new Error('Failed to mark all as read');
-    return await handledResponse.json();
+    return await response.json();
   },
 
   deleteNotification: async (notificationId: number) => {
-    const response = await fetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/${notificationId}`, {
+    const response = await nativeFetch(`${getApiBaseUrlDynamic()}${getNotificationsPath()}/${notificationId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
     const handledResponse = handleAuthError(response);
     if (!handledResponse.ok) throw new Error('Failed to delete notification');
-    return await handledResponse.json();
+    return await response.json();
   },
 };
