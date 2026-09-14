@@ -28,6 +28,8 @@ interface Member {
   employeeId?: string;
   firstName: string;
   lastName: string;
+  fullName?: string;
+  nameNeedsReview?: boolean;
   email: string;
   phone: string;
   nationalId: string;
@@ -314,7 +316,10 @@ const Members = () => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${session?.token}`,
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          fullName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
+        }),
       });
 
       if (response.ok) {
@@ -462,7 +467,11 @@ const Members = () => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${session?.token}`,
         },
-        body: JSON.stringify(editingMember),
+        body: JSON.stringify({
+          ...editingMember,
+          fullName: `${(editingMember.firstName || "").trim()} ${(editingMember.lastName || "").trim()}`.trim(),
+          nameNeedsReview: false,
+        }),
       });
 
       if (response.ok) {
@@ -1075,7 +1084,14 @@ const Members = () => {
               ) : members.map(member => (
                 <TableRow key={member.id}>
                   <TableCell className="font-mono text-sm">{member.employeeId || member.memberNumber || "—"}</TableCell>
-                  <TableCell className="font-medium">{member.fullName || member.firstName}</TableCell>
+                  <TableCell className="font-medium">
+                    {member.fullName || member.firstName}
+                    {member.nameNeedsReview && (
+                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800" title="Name may be incomplete — click edit to correct">
+                        ⚠ Review
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>{member.phone}</TableCell>
                   <TableCell>{member.department || "—"}</TableCell>
                   <TableCell>
@@ -1197,18 +1213,12 @@ const Members = () => {
                 
                 <TabsContent value="personal" className="space-y-4 pt-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>First Name</Label>
+                    <div className="space-y-2 col-span-2">
+                      <Label>Full Name</Label>
                       <Input 
-                        value={editingMember.firstName} 
-                        onChange={e => setEditingMember({...editingMember, firstName: e.target.value})} 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Last Name</Label>
-                      <Input 
-                        value={editingMember.lastName} 
-                        onChange={e => setEditingMember({...editingMember, lastName: e.target.value})} 
+                        value={editingMember.fullName ?? `${editingMember.firstName ?? ""} ${editingMember.lastName ?? ""}`.trim()} 
+                        onChange={e => setEditingMember({...editingMember, fullName: e.target.value, firstName: e.target.value.split(" ")[0] ?? "", lastName: e.target.value.split(" ").slice(1).join(" ") ?? ""})} 
+                        placeholder="e.g. John Doe"
                       />
                     </div>
                     <div className="space-y-2">

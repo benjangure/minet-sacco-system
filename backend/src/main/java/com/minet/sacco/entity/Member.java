@@ -33,6 +33,10 @@ public class Member {
     @Deprecated
     private String firstName;
 
+    // Transient helper: holds lastName from JSON until firstName is also set, then combined into fullName
+    @Transient
+    private String pendingLastName;
+
     @Email(message = "Invalid email format")
     @Size(max = 100)
     private String email;
@@ -128,6 +132,10 @@ public class Member {
     @Column(name = "is_legacy_member")
     private Boolean isLegacyMember = false;
 
+    // Name review flag: set by V1001 migration for members whose full_name may be incomplete
+    @Column(name = "name_needs_review")
+    private Boolean nameNeedsReview = false;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -173,9 +181,12 @@ public class Member {
     @Deprecated
     public void setFirstName(String firstName) { 
         this.firstName = firstName;
-        // Automatically update fullName if it's not set
+        // Only build fullName from firstName+lastName if fullName hasn't been set explicitly
         if (this.fullName == null || this.fullName.isEmpty()) {
-            this.fullName = firstName;
+            String pending = (this.pendingLastName != null && !this.pendingLastName.isEmpty())
+                    ? firstName + " " + this.pendingLastName
+                    : firstName;
+            this.fullName = pending;
         }
     }
 
@@ -186,7 +197,13 @@ public class Member {
     }
     @Deprecated
     public void setLastName(String lastName) { 
-        // Ignore - no longer used
+        // Store last name and rebuild fullName with first name only if fullName not already set explicitly
+        this.pendingLastName = (lastName != null) ? lastName.trim() : "";
+        if (this.fullName == null || this.fullName.isEmpty()) {
+            if (this.firstName != null && !this.firstName.isEmpty() && !this.pendingLastName.isEmpty()) {
+                this.fullName = this.firstName + " " + this.pendingLastName;
+            }
+        }
     }
 
     public String getEmail() { return email; }
@@ -284,6 +301,9 @@ public class Member {
 
     public Boolean getIsLegacyMember() { return isLegacyMember; }
     public void setIsLegacyMember(Boolean isLegacyMember) { this.isLegacyMember = isLegacyMember; }
+
+    public Boolean getNameNeedsReview() { return nameNeedsReview; }
+    public void setNameNeedsReview(Boolean nameNeedsReview) { this.nameNeedsReview = nameNeedsReview; }
 
     public Long getExitedBy() { return exitedBy; }
     public void setExitedBy(Long exitedBy) { this.exitedBy = exitedBy; }
