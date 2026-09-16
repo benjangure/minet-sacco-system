@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Eye, CheckCircle, XCircle, DollarSign, AlertCircle, Users, FileText, Printer } from "lucide-react";
+import { Plus, Search, Eye, CheckCircle, XCircle, AlertCircle, Users, FileText, Printer } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import GuarantorDetailsModal from "@/components/GuarantorDetailsModal";
@@ -2237,7 +2237,6 @@ const Loans = () => {
                           className="text-purple-600"
                           type="button"
                         >
-                          <DollarSign className="h-4 w-4" />
                         </Button>
                       )}
 

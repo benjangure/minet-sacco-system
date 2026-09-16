@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { formatCurrency } from "@/lib/utils";
-import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/config/api";
 import { Button } from "@/components/ui/button";

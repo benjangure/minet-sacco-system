@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle, XCircle, Eye, AlertCircle, ArrowUp, DollarSign } from 'lucide-react';
+import { CheckCircle, XCircle, Eye, AlertCircle, ArrowUp } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/config/api';
 
@@ -419,7 +419,6 @@ export default function LoanTopUpReviewSection() {
                             onClick={() => openDisburse(req)}
                             className="gap-1 bg-purple-600 hover:bg-purple-700"
                           >
-                            <DollarSign className="h-4 w-4" />
                             Disburse Top-Up
                           </Button>
                         )}

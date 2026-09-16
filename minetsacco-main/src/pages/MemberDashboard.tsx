@@ -2,14 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRefresh } from '@/contexts/RefreshContext';
 import { formatCurrency } from '@/lib/utils';
-import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import api, { getApiBaseUrl } from '@/config/api';
 import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Wallet, TrendingUp, DollarSign, Plus, HandshakeIcon, FileText, Send, Upload, Eye, ArrowUp, Clock } from 'lucide-react';
+import { Wallet, TrendingUp, Plus, HandshakeIcon, FileText, Send, Upload, Eye, ArrowUp, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import MemberLayout from '@/components/MemberLayout';
 import GuarantorApprovalDialog from '@/components/GuarantorApprovalDialog';
@@ -905,7 +904,6 @@ export default function MemberDashboard() {
               <Card className="border-none shadow-sm">
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Total Balance</CardTitle>
-                  <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-primary" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-lg md:text-2xl font-bold text-foreground">{formatCurrency(dashboard?.totalBalance || 0)}</div>
@@ -923,7 +921,6 @@ export default function MemberDashboard() {
                 >
                   <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                     <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Deposit via M-Pesa</CardTitle>
-                    <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-primary" />
                   </CardHeader>
                   <CardContent>
                     <p className="text-muted-foreground text-xs md:text-sm">Add funds to your account</p>
@@ -1011,8 +1008,6 @@ export default function MemberDashboard() {
                 className="h-auto py-3 md:py-4 lg:py-6 flex flex-col items-center gap-2 text-xs md:text-sm"
                 onClick={() => setRepaymentFormOpen(true)}
               >
-                <DollarSign className="h-4 w-4 md:h-5 md:w-5 lg:h-6 lg:w-6 text-primary" />
-                <span className="font-medium">Repay Loan</span>
               </Button>
 
               <Button
@@ -1170,7 +1165,6 @@ export default function MemberDashboard() {
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Pay Loan</CardTitle>
-                  <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-primary" />
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground text-xs md:text-sm">Make a loan repayment</p>
@@ -1791,7 +1785,6 @@ export default function MemberDashboard() {
             fetchDashboard();
             fetchPendingGuarantees();
           }}
-          selectedGuarantee={selectedGuarantee}
         />
 
         {/* Top-Up Guarantor Approval Modal */}

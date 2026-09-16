@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Circle, Clock, XCircle, DollarSign, FileCheck, Users, Shield, Building } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, XCircle, FileCheck, Users, Shield, Building } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface LoanStatusTimelineProps {
@@ -106,7 +106,6 @@ const LoanStatusTimeline: React.FC<LoanStatusTimelineProps> = ({
       status: 'DISBURSED',
       label: 'Loan Disbursed',
       description: 'Loan amount has been transferred to your bank account',
-      icon: DollarSign,
       getDate: () => formatDate(disbursementDate),
       isCompleted: (current) => current === 'REPAID',
       isCurrent: (current) => current === 'DISBURSED',
@@ -253,7 +252,6 @@ const LoanStatusTimeline: React.FC<LoanStatusTimelineProps> = ({
         {currentStatus === 'DISBURSED' && (
           <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-start gap-3">
-              <DollarSign className="w-5 h-5 text-green-600 mt-0.5" />
               <div>
                 <h4 className="font-semibold text-green-800">Loan Disbursed Successfully</h4>
                 <p className="text-sm text-green-700 mt-1">

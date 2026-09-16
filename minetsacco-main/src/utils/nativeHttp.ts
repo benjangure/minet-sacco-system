@@ -16,6 +16,10 @@ interface NativeHttpResponse {
   status: number;
   json: () => Promise<any>;
   text: () => Promise<string>;
+  blob: () => Promise<Blob>;
+  headers: {
+    get: (name: string) => string | null;
+  };
 }
 
 /**
@@ -53,6 +57,13 @@ export async function nativeFetch(url: string, options: FetchOptions = {}): Prom
             return response.data;
           }
           return JSON.stringify(response.data);
+        },
+        blob: async () => {
+          const data = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+          return new Blob([data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+        },
+        headers: {
+          get: (name: string) => response.headers?.[name.toLowerCase()] || null
         }
       };
     } catch (error) {
@@ -70,6 +81,8 @@ export async function nativeFetch(url: string, options: FetchOptions = {}): Prom
     ok: response.ok,
     status: response.status,
     json: () => response.json(),
-    text: () => response.text()
+    text: () => response.text(),
+    blob: () => response.blob(),
+    headers: response.headers
   };
 }

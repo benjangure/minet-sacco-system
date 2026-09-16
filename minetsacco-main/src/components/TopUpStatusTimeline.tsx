@@ -2,10 +2,9 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
-import { formatCurrency } from '@/lib/utils';
 import {
   CheckCircle2, Circle, Clock, XCircle,
-  DollarSign, FileCheck, Users, Shield, Building, CreditCard
+  FileCheck, Users, Shield, Building, CreditCard
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -81,7 +80,6 @@ const STEPS = [
     status: 'DISBURSED',
     label: 'Top-Up Disbursed',
     description: 'Funds have been added to your loan balance',
-    icon: DollarSign,
     completedWhen: () => false,
     currentWhen: (s: string) => s === 'DISBURSED',
   },
@@ -203,7 +201,6 @@ const TopUpStatusTimeline: React.FC<TopUpStatusTimelineProps> = ({
         {/* Disbursed celebration banner */}
         {currentStatus === 'DISBURSED' && (
           <div className="mt-5 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
-            <DollarSign className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
             <div>
               <p className="font-semibold text-green-800">Top-Up Disbursed Successfully</p>
               <p className="text-sm text-green-700 mt-1">
