@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { formatCurrency } from '@/lib/utils';
 
 interface GuarantorDetail {
   guarantorId: number;
@@ -28,12 +29,7 @@ export default function GuarantorDetailsModal({
   guarantors,
   loanAmount
 }: GuarantorDetailsModalProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
-  };
+
 
   const getStatusColor = (status: string) => {
     switch (status) {

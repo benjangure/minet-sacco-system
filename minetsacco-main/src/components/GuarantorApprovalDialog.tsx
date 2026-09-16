@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/config/api';
+import { formatCurrency } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -142,10 +143,10 @@ export default function GuarantorApprovalDialog({
                                 Member: {request.topUpRequest?.requestingMember?.memberNumber} - {request.topUpRequest?.requestingMember?.firstName} {request.topUpRequest?.requestingMember?.lastName}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                Top-Up Amount: KES {request.topUpRequest?.requestedAmount?.toLocaleString()}
+                                Top-Up Amount: {formatCurrency(request.topUpRequest?.requestedAmount)}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                Your Guarantee: KES {request.guaranteeAmount?.toLocaleString()}
+                                Your Guarantee: {formatCurrency(request.guaranteeAmount)}
                               </p>
                               <p className="text-xs text-muted-foreground mt-1">
                                 Purpose: {request.topUpRequest?.purpose}
@@ -160,7 +161,7 @@ export default function GuarantorApprovalDialog({
                                 Member: {request.loan?.member?.memberNumber} - {request.loan?.member?.firstName} {request.loan?.member?.lastName}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                Amount: KES {request.loan?.amount?.toLocaleString()}
+                                Amount: {formatCurrency(request.loan?.amount)}
                               </p>
                             </>
                           )}

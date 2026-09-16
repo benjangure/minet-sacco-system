@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -947,7 +948,7 @@ const Reports = () => {
                 <CardContent className="pt-4 pb-3">
                   <p className="text-xs text-muted-foreground mb-1">Total Deposited</p>
                   <p className="text-xl font-bold text-green-700">
-                    KES {(mcReportData.totalDeposited ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {formatCurrency(mcReportData.totalDeposited ?? 0)}
                   </p>
                 </CardContent>
               </Card>
@@ -955,7 +956,7 @@ const Reports = () => {
                 <CardContent className="pt-4 pb-3">
                   <p className="text-xs text-muted-foreground mb-1">Total Withdrawn</p>
                   <p className="text-xl font-bold text-red-700">
-                    KES {(mcReportData.totalWithdrawn ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {formatCurrency(mcReportData.totalWithdrawn ?? 0)}
                   </p>
                 </CardContent>
               </Card>
@@ -963,7 +964,7 @@ const Reports = () => {
                 <CardContent className="pt-4 pb-3">
                   <p className="text-xs text-muted-foreground mb-1">Net Contribution</p>
                   <p className="text-xl font-bold text-blue-700">
-                    KES {(mcReportData.netContribution ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {formatCurrency(mcReportData.netContribution ?? 0)}
                   </p>
                 </CardContent>
               </Card>
@@ -981,7 +982,7 @@ const Reports = () => {
                         <p className="text-xs text-muted-foreground">{acc.transactionCount} transaction{acc.transactionCount !== 1 ? "s" : ""}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold">KES {(acc.currentBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        <p className="text-sm font-bold">{formatCurrency(acc.currentBalance ?? 0)}</p>
                         <p className="text-xs text-muted-foreground">current balance</p>
                       </div>
                     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/config/api';
+import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -824,13 +825,6 @@ export default function MemberLoanApplication() {
   };
 
   const selectedProductData = loanProducts.find(p => p.id === parseInt(selectedProduct));
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
-  };
 
   return (
     <MemberLayout memberName={memberFirstName} onLogout={handleLogout}>

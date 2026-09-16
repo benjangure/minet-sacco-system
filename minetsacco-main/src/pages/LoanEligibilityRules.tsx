@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -242,7 +243,7 @@ export default function LoanEligibilityRules() {
                   max="10"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Kenyan SACCO standard: 3x savings. Member with KES 50,000 savings can borrow max KES {(50000 * rules.maxLoanToSavingsMultiplier).toLocaleString('en-KE')}
+                  Kenyan SACCO standard: 3x savings. Member with KES 50,000 savings can borrow max {formatCurrency(50000 * rules.maxLoanToSavingsMultiplier)}
                 </p>
               </div>
             </div>

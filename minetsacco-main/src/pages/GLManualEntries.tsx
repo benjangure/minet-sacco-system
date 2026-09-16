@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRefresh } from '@/contexts/RefreshContext';
+import { formatCurrency } from '@/lib/utils';
 import {
   AlertCircle,
   Plus,
@@ -391,7 +392,7 @@ export default function GLManualEntries() {
                   <p><span className="font-medium">Account:</span> {selectedAccount.code} — {selectedAccount.name}</p>
                   <p>
                     <span className="font-medium">Amount:</span>{' '}
-                    KES {(formData.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}{' '}
+                    {formatCurrency(formData.amount || 0)}{' '}
                     <span className={formData.isDebit ? 'text-destructive' : 'text-green-700'}>
                       ({formData.isDebit ? 'Debit' : 'Credit'})
                     </span>
@@ -502,7 +503,7 @@ export default function GLManualEntries() {
                           {entry.description || '—'}
                         </TableCell>
                         <TableCell className="text-sm text-right font-medium">
-                          KES {entry.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          {formatCurrency(entry.amount)}
                         </TableCell>
                         <TableCell className="text-center">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${

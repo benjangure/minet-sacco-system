@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { AlertCircle, Download, RefreshCw, TrendingUp } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 
 interface RiskyGuarantee {
@@ -111,14 +112,6 @@ const OverCommittedGuarantorsReport: React.FC = () => {
       console.error('Error exporting to PDF:', err);
       alert('Failed to export report');
     }
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-      minimumFractionDigits: 2,
-    }).format(value);
   };
 
   const getRiskLevel = (overCommittedAmount: number) => {

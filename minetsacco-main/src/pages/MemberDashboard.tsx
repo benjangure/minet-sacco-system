@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRefresh } from '@/contexts/RefreshContext';
+import { formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import api, { getApiBaseUrl } from '@/config/api';
 import { nativeFetch } from '@/utils/nativeHttp';
@@ -161,13 +163,6 @@ function MemberDepositsView() {
       console.error('Download error:', error);
       toast({ title: 'Error', description: 'Failed to download receipt', variant: 'destructive' });
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
   };
 
   const formatDate = (dateString: string) => {
@@ -657,13 +652,6 @@ export default function MemberDashboard() {
       console.error('Error fetching pending guarantees:', error);
       setPendingGuarantees([]);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
   };
 
   const formatDate = (dateString: string) => {
@@ -1526,7 +1514,7 @@ export default function MemberDashboard() {
                                     <div key={topup.id} className="p-3 bg-purple-50 border border-purple-200 rounded text-xs">
                                       <div className="flex justify-between items-start mb-2">
                                         <div>
-                                          <p className="font-semibold text-purple-900">KES {topup.topupAmount?.toLocaleString()}</p>
+                                          <p className="font-semibold text-purple-900">{formatCurrency(topup.topupAmount)}</p>
                                           <p className="text-gray-600">{new Date(topup.topupDate).toLocaleDateString('en-KE')}</p>
                                         </div>
                                         <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-medium">
@@ -1536,11 +1524,11 @@ export default function MemberDashboard() {
                                       <div className="grid grid-cols-2 gap-2 text-xs mb-2">
                                         <div>
                                           <span className="text-gray-600">Before:</span>
-                                          <span className="font-medium ml-1">KES {topup.outstandingBeforeTopup?.toLocaleString()}</span>
+                                          <span className="font-medium ml-1">{formatCurrency(topup.outstandingBeforeTopup)}</span>
                                         </div>
                                         <div>
                                           <span className="text-gray-600">After:</span>
-                                          <span className="font-medium ml-1">KES {topup.outstandingAfterTopup?.toLocaleString()}</span>
+                                          <span className="font-medium ml-1">{formatCurrency(topup.outstandingAfterTopup)}</span>
                                         </div>
                                       </div>
                                       {topup.purpose && (

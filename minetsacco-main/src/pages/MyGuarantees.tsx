@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRefresh } from '@/contexts/RefreshContext';
 import api from '@/config/api';
+import { formatCurrency } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -90,13 +91,6 @@ export default function MyGuarantees() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
-  };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'DISBURSED':
@@ -135,7 +129,6 @@ export default function MyGuarantees() {
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-
       <Card>
         <CardHeader>
           <CardTitle>My Guarantees</CardTitle>
@@ -166,7 +159,6 @@ export default function MyGuarantees() {
                   <p className="text-2xl font-bold text-red-600">{formatCurrency(getTotalFrozenAmount())}</p>
                 </div>
               </div>
-
               {/* Active Guarantees Alert */}
               {getActiveGuarantees().length > 0 && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
@@ -175,7 +167,6 @@ export default function MyGuarantees() {
                   </p>
                 </div>
               )}
-
               {/* Guarantees Table */}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -234,11 +225,10 @@ export default function MyGuarantees() {
                   </tbody>
                 </table>
               </div>
-
               {/* Information */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> Your frozen pledges will be reduced proportionally as the borrower repays the loan. 
+                  <strong>Note:</strong> Your frozen pledges will be reduced proportionally as the borrower repays the loan.
                   Once the loan is fully repaid, all pledges will be released and your eligibility will be restored.
                 </p>
               </div>
@@ -246,7 +236,6 @@ export default function MyGuarantees() {
           )}
         </CardContent>
       </Card>
-
       {/* Guarantor Details Modal */}
       {selectedLoanId && (
         <GuarantorDetailsModal

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRefresh } from "@/contexts/RefreshContext";
+import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -362,19 +363,19 @@ const MemberTransactionHistory = ({ memberMode = false }: MemberTransactionHisto
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Total Deposits</p>
-                  <p className="text-lg font-bold text-green-600">KES {totals.deposits.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-green-600">{formatCurrency(totals.deposits)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Total Withdrawals</p>
-                  <p className="text-lg font-bold text-red-600">KES {totals.withdrawals.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-red-600">{formatCurrency(totals.withdrawals)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Loan Disbursements</p>
-                  <p className="text-lg font-bold text-blue-600">KES {totals.loanDisbursements.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-blue-600">{formatCurrency(totals.loanDisbursements)}</p>
                 </CardContent>
               </Card>
             </div>
@@ -417,7 +418,7 @@ const MemberTransactionHistory = ({ memberMode = false }: MemberTransactionHisto
                           </TableCell>
                           <TableCell className="text-sm">{transaction.description}</TableCell>
                           <TableCell className="text-right font-medium">
-                            KES {transaction.amount.toLocaleString()}
+                            {formatCurrency(transaction.amount)}
                           </TableCell>
                         </TableRow>
                       ))}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatCurrency } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -57,13 +58,6 @@ export default function GuarantorRejectionOptionsDialog({
 
   // Withdraw state
   const [withdrawReason, setWithdrawReason] = useState('');
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-    }).format(amount);
-  };
 
   const handleReplaceGuarantor = async () => {
     if (!newGuarantorId || !newGuaranteeAmount) {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -185,14 +186,6 @@ export default function FundConfiguration() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatCurrency = (amount?: number) => {
-    if (!amount) return "-";
-    return new Intl.NumberFormat("en-KE", {
-      style: "currency",
-      currency: "KES",
-    }).format(amount);
   };
 
   return (

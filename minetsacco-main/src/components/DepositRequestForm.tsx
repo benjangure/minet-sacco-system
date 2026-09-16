@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api, { API_BASE_URL, getAuthToken } from '@/config/api';
+import { formatCurrency } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -124,12 +125,7 @@ export default function DepositRequestForm({ open, onOpenChange, onSuccess }: De
 
   const selectedAccountData = accounts.find(a => a.id === parseInt(selectedAccount));
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
-  };
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

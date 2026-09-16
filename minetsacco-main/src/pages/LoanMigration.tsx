@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRefresh } from "@/contexts/RefreshContext";
+import { formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/config/api";
 import { Button } from "@/components/ui/button";
@@ -174,11 +176,6 @@ export default function LoanMigration() {
     }
   };
 
-  const formatCurrency = (amount: number | null) => {
-    if (amount == null) return "-";
-    return `KES ${amount.toLocaleString("en-KE", { minimumFractionDigits: 2 })}`;
-  };
-
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "SUCCESS":
@@ -243,7 +240,7 @@ export default function LoanMigration() {
                 <div key={p.id} className="bg-white border border-blue-200 rounded-md px-3 py-1.5 text-sm">
                   <span className="font-medium text-blue-900">{p.name}</span>
                   <span className="text-blue-600 ml-2 text-xs">
-                    {p.interestRate}% p.a. | KES {p.minAmount?.toLocaleString()}–{p.maxAmount?.toLocaleString()} | {p.minTermMonths}–{p.maxTermMonths} months
+                    {p.interestRate}% p.a. | {formatCurrency(p.minAmount)}–{formatCurrency(p.maxAmount)} | {p.minTermMonths}–{p.maxTermMonths} months
                   </span>
                 </div>
               ))}

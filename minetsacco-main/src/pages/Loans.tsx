@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -981,7 +982,7 @@ const Loans = () => {
           return;
         }
         if (outstanding > loanToEdit.amount) {
-          toast({ title: "Error", description: `Outstanding balance cannot exceed principal (KES ${loanToEdit.amount.toLocaleString()})`, variant: "destructive" });
+          toast({ title: "Error", description: `Outstanding balance cannot exceed principal (${formatCurrency(loanToEdit.amount)})`, variant: "destructive" });
           setEditSubmitting(false);
           return;
         }
@@ -1061,8 +1062,8 @@ const Loans = () => {
           if (percentage > 100) {
             const confirmed = window.confirm(
               `Warning: Total guarantor coverage is ${percentage.toFixed(1)}% (exceeds 100%).\n\n` +
-              `Total pledged: KES ${totalGuarantees.toLocaleString()}\n` +
-              `Outstanding balance: KES ${finalOutstanding.toLocaleString()}\n\n` +
+              `Total pledged: ${formatCurrency(totalGuarantees)}\n` +
+              `Outstanding balance: ${formatCurrency(finalOutstanding)}\n\n` +
               `Do you want to proceed anyway?`
             );
             if (!confirmed) {
@@ -1078,7 +1079,7 @@ const Loans = () => {
           if (difference > 1) {
             toast({ 
               title: "Validation Error", 
-              description: `Total guarantees (KES ${totalGuarantees.toLocaleString()}) must equal principal amount (KES ${loanToEdit.amount.toLocaleString()})`, 
+              description: `Total guarantees (${formatCurrency(totalGuarantees)}) must equal principal amount (${formatCurrency(loanToEdit.amount)})`, 
               variant: "destructive" 
             });
             setEditSubmitting(false);
@@ -1335,8 +1336,8 @@ const Loans = () => {
       if (percentage > 100) {
         const confirmed = window.confirm(
           `Warning: Total guarantor coverage is ${percentage.toFixed(1)}% (exceeds 100%).\n\n` +
-          `Total pledged: KES ${totalPledged.toLocaleString()}\n` +
-          `Top-up amount: KES ${parseFloat(topUpAmount).toLocaleString()}\n\n` +
+          `Total pledged: ${formatCurrency(totalPledged)}\n` +
+          `Top-up amount: ${formatCurrency(parseFloat(topUpAmount))}\n\n` +
           `Do you want to proceed anyway?`
         );
         if (!confirmed) return;
@@ -1613,7 +1614,7 @@ const Loans = () => {
                   <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription className="text-xs">
-                      Range: KES {selectedProduct.minAmount.toLocaleString()} — KES {selectedProduct.maxAmount.toLocaleString()} | 
+                      Range: {formatCurrency(selectedProduct.minAmount)} — {formatCurrency(selectedProduct.maxAmount)} | 
                       Term: {selectedProduct.minTermMonths}–{Math.min(selectedProduct.maxTermMonths, maxLoanTermMonths)} months
                       {selectedProduct.maxTermMonths > maxLoanTermMonths && ` (capped at SACCO policy max of ${maxLoanTermMonths} months)`}
                     </AlertDescription>
@@ -1647,10 +1648,10 @@ const Loans = () => {
                     {form.amount && selectedProduct && (
                       <>
                         {parseFloat(form.amount) < selectedProduct.minAmount && (
-                          <p className="text-xs text-red-500">Below minimum of KES {selectedProduct.minAmount.toLocaleString()}</p>
+                          <p className="text-xs text-red-500">Below minimum of {formatCurrency(selectedProduct.minAmount)}</p>
                         )}
                         {parseFloat(form.amount) > selectedProduct.maxAmount && (
-                          <p className="text-xs text-red-500">Exceeds maximum of KES {selectedProduct.maxAmount.toLocaleString()}</p>
+                          <p className="text-xs text-red-500">Exceeds maximum of {formatCurrency(selectedProduct.maxAmount)}</p>
                         )}
                       </>
                     )}
@@ -1777,7 +1778,7 @@ const Loans = () => {
                                 if (newTotalGuaranteed > loanAmount) {
                                   toast({ 
                                     title: "Exceeds Loan Amount", 
-                                    description: `Total guaranteed (KES ${newTotalGuaranteed.toLocaleString()}) cannot exceed loan amount (KES ${loanAmount.toLocaleString()})`, 
+                                    description: `Total guaranteed (${formatCurrency(newTotalGuaranteed)}) cannot exceed loan amount (${formatCurrency(loanAmount)})`, 
                                     variant: "destructive" 
                                   });
                                   return;
@@ -1794,7 +1795,7 @@ const Loans = () => {
                                   setGuarantorEmployeeIdInput("");
                                   setGuarantorAmountInput("");
                                   setGuarantorLookupResult(null);
-                                  toast({ title: "Success", description: `${guarantorLookupResult.firstName} added as guarantor for KES ${guaranteeAmount.toLocaleString()}` });
+                                  toast({ title: "Success", description: `${guarantorLookupResult.firstName} added as guarantor for ${formatCurrency(guaranteeAmount)}` });
                                   runPreCheck(form.memberId, form.amount, updated);
                                 } else {
                                   toast({ 
@@ -1816,7 +1817,7 @@ const Loans = () => {
                                 guarantorEligibilityMap[guarantorLookupResult.id].eligible ? (
                                   <div className="flex items-center gap-1 text-green-600">
                                     <CheckCircle className="h-3 w-3" />
-                                    <span>✓ Eligible to guarantee KES {parseFloat(guarantorAmountInput).toLocaleString()}</span>
+                                    <span>✓ Eligible to guarantee {formatCurrency(parseFloat(guarantorAmountInput))}</span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-1 text-red-600">
@@ -1851,7 +1852,7 @@ const Loans = () => {
                               <div className="flex-1">
                                 <p className="text-sm font-medium">{guarantor?.firstName} {guarantor?.lastName}</p>
                                 <p className="text-xs text-muted-foreground">
-                                  {guarantor?.employeeId} • Guaranteeing: KES {amount.toLocaleString()}
+                                  {guarantor?.employeeId} • Guaranteeing: {formatCurrency(amount)}
                                 </p>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1917,7 +1918,7 @@ const Loans = () => {
                                       <div>
                                         <p className="text-sm font-medium">{nokMember.firstName} {nokMember.lastName}</p>
                                         <p className="text-xs text-muted-foreground">
-                                          {nokMember.employeeId} • Will cover: KES {amount.toLocaleString()}
+                                          {nokMember.employeeId} • Will cover: {formatCurrency(amount)}
                                         </p>
                                       </div>
                                       
@@ -2004,8 +2005,8 @@ const Loans = () => {
                       <div className="flex-1">
                         <p className="font-medium">{preCheck.member?.name} <span className="text-xs text-muted-foreground">({preCheck.member?.memberNumber})</span></p>
                         <p className="text-xs text-muted-foreground">
-                          Savings: KES {Number(preCheck.member?.savingsBalance || 0).toLocaleString()} | 
-                          Shares: KES {Number(preCheck.member?.sharesBalance || 0).toLocaleString()} | 
+                          Savings: {formatCurrency(Number(preCheck.member?.savingsBalance || 0))} | 
+                          Shares: {formatCurrency(Number(preCheck.member?.sharesBalance || 0))} | 
                           Active loans: {preCheck.member?.activeLoans}
                         </p>
                         {preCheck.member?.errors?.map((e: string, i: number) => (
@@ -2024,9 +2025,9 @@ const Loans = () => {
                         <div className="flex-1">
                           <p className="font-medium">Guarantor: {g.guarantorName}</p>
                           <p className="text-xs text-muted-foreground">
-                            Savings: KES {Number(g.savingsBalance || 0).toLocaleString()} | 
-                            Available capacity: KES {Number(g.availableGuaranteeCapacity || 0).toLocaleString()} | 
-                            Outstanding: KES {Number(g.outstandingBalance || 0).toLocaleString()}
+                            Savings: {formatCurrency(Number(g.savingsBalance || 0))} | 
+                            Available capacity: {formatCurrency(Number(g.availableGuaranteeCapacity || 0))} | 
+                            Outstanding: {formatCurrency(Number(g.outstandingBalance || 0))}
                           </p>
                           {g.errors?.map((e: string, j: number) => (
                             <p key={j} className="text-xs text-red-600">• {e}</p>
@@ -2055,9 +2056,9 @@ const Loans = () => {
                   {!form.amount || !form.loanProductId
                     ? "Fill in all required fields"
                     : selectedProduct && parseFloat(form.amount) < selectedProduct.minAmount
-                    ? `Amount below minimum (KES ${selectedProduct.minAmount.toLocaleString()})`
+                    ? `Amount below minimum (${formatCurrency(selectedProduct.minAmount)})`
                     : selectedProduct && parseFloat(form.amount) > selectedProduct.maxAmount
-                    ? `Amount exceeds maximum (KES ${selectedProduct.maxAmount.toLocaleString()})`
+                    ? `Amount exceeds maximum (${formatCurrency(selectedProduct.maxAmount)})`
                     : preCheck && !preCheck.canProceed
                     ? "Member Not Eligible — Cannot Submit"
                     : preCheck && preCheck.allGuarantorsEligible === false
@@ -2152,7 +2153,7 @@ const Loans = () => {
                     {loan.member?.fullName || `${loan.member?.firstName} ${loan.member?.lastName}`}
                   </TableCell>
                   <TableCell>{loan.loanProduct?.name}</TableCell>
-                  <TableCell>KES {loan.amount.toLocaleString()}</TableCell>
+                  <TableCell>{formatCurrency(loan.amount)}</TableCell>
                   <TableCell>
                     <Badge className={`${loanStatusColors[loan.status]} whitespace-normal sm:whitespace-nowrap text-center leading-tight max-w-[140px] sm:max-w-none`}>
                       <span className="block sm:hidden">
@@ -2302,7 +2303,7 @@ const Loans = () => {
                 <div className="grid grid-cols-3 gap-1 text-xs">
                   <div>
                     <p className="text-xs text-gray-600">Principal</p>
-                    <p className="font-bold">KES {selectedLoanForDetails.amount?.toLocaleString()}</p>
+                    <p className="font-bold">{formatCurrency(selectedLoanForDetails.amount)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-600">Rate</p>
@@ -2314,11 +2315,11 @@ const Loans = () => {
                   </div>
                   <div>
                     <p className="text-xs text-gray-600">Interest Collected</p>
-                    <p className="font-medium text-blue-600">KES {(selectedLoanForDetails.interestCollected !== undefined ? selectedLoanForDetails.interestCollected : selectedLoanForDetails.totalInterest)?.toLocaleString() || "0"}</p>
+                    <p className="font-medium text-blue-600">{formatCurrency(selectedLoanForDetails.interestCollected !== undefined ? selectedLoanForDetails.interestCollected : selectedLoanForDetails.totalInterest)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-600">Outstanding</p>
-                    <p className="font-bold text-red-600">KES {selectedLoanForDetails.outstandingBalance?.toLocaleString() || "0"}</p>
+                    <p className="font-bold text-red-600">{formatCurrency(selectedLoanForDetails.outstandingBalance)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-600">Status</p>
@@ -2363,7 +2364,7 @@ const Loans = () => {
                           <div key={idx} className="bg-white p-2 rounded border border-purple-200 text-xs">
                             <div className="flex justify-between items-start mb-1">
                               <div>
-                                <p className="font-semibold text-purple-900">KES {topup.topupAmount?.toLocaleString()}</p>
+                <p className="font-semibold text-purple-900">{formatCurrency(topup.topupAmount)}</p>
                                 <p className="text-gray-600">{new Date(topup.topupDate).toLocaleDateString()}</p>
                               </div>
                               <div className="flex items-center gap-1">
@@ -2375,11 +2376,11 @@ const Loans = () => {
                             <div className="grid grid-cols-2 gap-1 text-xs">
                               <div>
                                 <span className="text-gray-600">Before:</span>
-                                <span className="font-medium ml-1">KES {topup.outstandingBeforeTopup?.toLocaleString()}</span>
+                                <span className="font-medium ml-1">{formatCurrency(topup.outstandingBeforeTopup)}</span>
                               </div>
                               <div>
                                 <span className="text-gray-600">After:</span>
-                                <span className="font-medium ml-1">KES {topup.outstandingAfterTopup?.toLocaleString()}</span>
+                                <span className="font-medium ml-1">{formatCurrency(topup.outstandingAfterTopup)}</span>
                               </div>
                             </div>
                             {topup.purpose && (
@@ -2389,7 +2390,7 @@ const Loans = () => {
                             )}
                             {topup.principalPaidBeforeTopup !== undefined && (
                               <p className="text-green-700 bg-green-50 p-1 rounded mt-1">
-                                ✓ Principal paid before top-up: KES {topup.principalPaidBeforeTopup?.toLocaleString()}
+                                ✓ Principal paid before top-up: {formatCurrency(topup.principalPaidBeforeTopup)}
                               </p>
                             )}
                           </div>
@@ -2431,27 +2432,27 @@ const Loans = () => {
                     <div className="grid grid-cols-5 gap-1 text-xs">
                       <div className="bg-white rounded p-1.5 border border-blue-100">
                         <p className="text-gray-600 text-xs">Principal</p>
-                        <p className="font-bold text-blue-600">KES {selectedLoanForDetails.amount?.toLocaleString()}</p>
+                        <p className="font-bold text-blue-600">{formatCurrency(selectedLoanForDetails.amount)}</p>
                       </div>
                       <div className="bg-white rounded p-1.5 border border-orange-100">
                         <p className="text-gray-600 text-xs">Interest Collected</p>
-                        <p className="font-bold text-orange-600">KES {selectedLoanForDetails.interestCollected?.toLocaleString() || "0"}</p>
+                        <p className="font-bold text-orange-600">{formatCurrency(selectedLoanForDetails.interestCollected)}</p>
                       </div>
                       <div className="bg-white rounded p-1.5 border border-green-100">
                         <p className="text-gray-600 text-xs">Principal Repaid</p>
                         <p className="font-bold text-green-600">
-                          KES {selectedLoanForDetails.principalRepaid?.toLocaleString() || "0"}
+                          {formatCurrency(selectedLoanForDetails.principalRepaid)}
                         </p>
                       </div>
                       <div className="bg-white rounded p-1.5 border border-purple-100">
                         <p className="text-gray-600 text-xs">Total Repaid</p>
                         <p className="font-bold text-purple-600">
-                          KES {selectedLoanForDetails.totalRepaid?.toLocaleString() || "0"}
+                          {formatCurrency(selectedLoanForDetails.totalRepaid)}
                         </p>
                       </div>
                       <div className="bg-white rounded p-1.5 border border-red-100">
                         <p className="text-gray-600 text-xs">Outstanding</p>
-                        <p className="font-bold text-red-600">KES {selectedLoanForDetails.outstandingBalance?.toLocaleString() || "0"}</p>
+                        <p className="font-bold text-red-600">{formatCurrency(selectedLoanForDetails.outstandingBalance)}</p>
                       </div>
                     </div>
 
@@ -2544,7 +2545,7 @@ const Loans = () => {
                           {/* Guarantee Amount */}
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-gray-600">Guarantee Amount:</span>
-                            <span className="font-semibold">KES {guaranteeAmount?.toLocaleString()}</span>
+                            <span className="font-semibold">{formatCurrency(guaranteeAmount)}</span>
                           </div>
                           
                           {/* Partial Guarantee Badge */}
@@ -2585,7 +2586,7 @@ const Loans = () => {
                         <p className="text-sm font-semibold mb-2">Loan Summary</p>
                         <div className="text-xs space-y-1">
                           <p>Member: {selectedLoanForDetails.member.firstName} {selectedLoanForDetails.member.lastName}</p>
-                          <p>Amount: KES {(selectedLoanForDetails.amount || 0).toLocaleString()}</p>
+                          <p>Amount: {formatCurrency(selectedLoanForDetails.amount || 0)}</p>
                           <p>Term: {selectedLoanForDetails.termMonths} months</p>
                           <p className="text-gray-600 mt-2">Interest will be determined during repayments using reducing balance method.</p>
                         </div>
@@ -2709,7 +2710,7 @@ const Loans = () => {
                 <p className="text-sm text-gray-600">Member</p>
                 <p className="font-semibold">{actionDialog.loan.member?.firstName} {actionDialog.loan.member?.lastName}</p>
                 <p className="text-sm text-gray-600 mt-2">Loan Amount</p>
-                <p className="font-bold text-lg">KES {actionDialog.loan.amount?.toLocaleString()}</p>
+                <p className="font-bold text-lg">{formatCurrency(actionDialog.loan.amount)}</p>
               </div>
               <div>
                 <p className="text-sm font-medium mb-1">Reason/Comments</p>
@@ -2754,7 +2755,7 @@ const Loans = () => {
                 <p className="text-sm text-gray-600">Member</p>
                 <p className="font-semibold">{actionDialog.loan.member?.firstName} {actionDialog.loan.member?.lastName}</p>
                 <p className="text-sm text-gray-600 mt-2">Loan Amount</p>
-                <p className="font-bold text-lg">KES {actionDialog.loan.amount?.toLocaleString()}</p>
+                <p className="font-bold text-lg">{formatCurrency(actionDialog.loan.amount)}</p>
               </div>
               <p className="text-sm text-gray-700">
                 Are you sure you want to disburse this loan? The member account will be credited with the loan amount.
@@ -2897,19 +2898,19 @@ const Loans = () => {
                             {result.savingsBalance !== undefined && (
                               <div>
                                 <span className="text-gray-500">Savings</span>
-                                <p className="font-medium text-gray-800">{typeof result.savingsBalance === 'number' ? `KES ${result.savingsBalance.toLocaleString()}` : result.savingsBalance}</p>
+                                <p className="font-medium text-gray-800">{typeof result.savingsBalance === 'number' ? formatCurrency(result.savingsBalance) : result.savingsBalance}</p>
                               </div>
                             )}
                             {result.sharesBalance !== undefined && (
                               <div>
                                 <span className="text-gray-500">Shares (not used)</span>
-                                <p className="font-medium text-gray-800">{typeof result.sharesBalance === 'number' ? `KES ${result.sharesBalance.toLocaleString()}` : result.sharesBalance}</p>
+                                <p className="font-medium text-gray-800">{typeof result.sharesBalance === 'number' ? formatCurrency(result.sharesBalance) : result.sharesBalance}</p>
                               </div>
                             )}
                             {result.outstandingBalance !== undefined && (
                               <div>
                                 <span className="text-gray-500">Outstanding</span>
-                                <p className="font-medium text-gray-800">{typeof result.outstandingBalance === 'number' ? `KES ${result.outstandingBalance.toLocaleString()}` : result.outstandingBalance}</p>
+                                <p className="font-medium text-gray-800">{typeof result.outstandingBalance === 'number' ? formatCurrency(result.outstandingBalance) : result.outstandingBalance}</p>
                               </div>
                             )}
                           </div>
@@ -3095,7 +3096,7 @@ const Loans = () => {
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm">
                 <p className="font-medium text-blue-900">Loan: {loanToEdit.loanNumber}</p>
                 <p className="text-xs text-blue-800">{loanToEdit.member?.firstName} {loanToEdit.member?.lastName} — {loanToEdit.loanProduct?.name}</p>
-                <p className="text-xs text-blue-800">Principal: KES {loanToEdit.amount.toLocaleString()} | Outstanding: KES {loanToEdit.outstandingBalance?.toLocaleString() || '0'} | Status: {loanToEdit.status}</p>
+                <p className="text-xs text-blue-800">Principal: {formatCurrency(loanToEdit.amount)} | Outstanding: {formatCurrency(loanToEdit.outstandingBalance)} | Status: {loanToEdit.status}</p>
               </div>
 
               <div className="space-y-2">
@@ -3121,7 +3122,7 @@ const Loans = () => {
                   placeholder="0.00"
                   className="text-sm"
                 />
-                <p className="text-xs text-muted-foreground">Max: KES {loanToEdit.amount.toLocaleString()} | Leave blank to skip updating</p>
+                <p className="text-xs text-muted-foreground">Max: {formatCurrency(loanToEdit.amount)} | Leave blank to skip updating</p>
               </div>
 
               <div className="space-y-2">
@@ -3143,7 +3144,7 @@ const Loans = () => {
                   <div className="flex-1">
                     <p className="text-sm font-medium mb-2">Guarantor Management</p>
                     <p className="text-xs text-gray-600">
-                      Outstanding Balance: <span className="font-semibold">KES {(parseFloat(editForm.outstandingBalance) || loanToEdit.outstandingBalance || loanToEdit.amount).toLocaleString()}</span>
+                      Outstanding Balance: <span className="font-semibold">{formatCurrency(parseFloat(editForm.outstandingBalance) || loanToEdit.outstandingBalance || loanToEdit.amount)}</span>
                     </p>
                     <p className="text-xs text-gray-500 mt-1">Remove guarantors • Edit pledge amounts • Add new guarantors</p>
                   </div>
@@ -3228,7 +3229,7 @@ const Loans = () => {
                           <AlertCircle className="h-4 w-4 text-blue-600" />
                           <AlertDescription className="text-xs text-blue-800">
                             <strong>Loan Fully Paid:</strong> Outstanding balance is KES 0. 
-                            You can remove all guarantors (KES {totalPledged.toLocaleString()} currently pledged) - no coverage needed for paid loans.
+                            You can remove all guarantors ({formatCurrency(totalPledged)} currently pledged) - no coverage needed for paid loans.
                           </AlertDescription>
                         </Alert>
                       );
@@ -3244,7 +3245,7 @@ const Loans = () => {
                         <AlertCircle className="h-4 w-4 text-red-600" />
                         <AlertDescription className="text-xs text-red-800">
                           <strong>Warning:</strong> Total guarantor coverage is {percentage.toFixed(1)}% (exceeds 100%). 
-                          Total pledged: KES {totalPledged.toLocaleString()} of KES {outstanding.toLocaleString()} needed.
+                          Total pledged: {formatCurrency(totalPledged)} of {formatCurrency(outstanding)} needed.
                         </AlertDescription>
                       </Alert>
                     );
@@ -3375,7 +3376,7 @@ const Loans = () => {
                                           const proportion = loanToEdit.amount > 0 ? outstandingForCalc / loanToEdit.amount : 1;
                                           // Use displayAmount which is specific to this guarantor
                                           const frozen = (displayAmount * proportion).toFixed(2);
-                                          return `KES ${parseFloat(frozen).toLocaleString()}`;
+                                          return formatCurrency(parseFloat(frozen));
                                         } catch (err) {
                                           return 'KES 0.00';
                                         }
@@ -3476,7 +3477,7 @@ const Loans = () => {
                                   </Button>
                                 </div>
                                 <p className="text-xs text-blue-600 bg-blue-50 p-1 rounded">
-                                  Will freeze: KES {frozen}
+                                  Will freeze: {formatCurrency(frozen)}
                                 </p>
                               </div>
                             );
@@ -3559,11 +3560,11 @@ const Loans = () => {
                             <>
                               <div className="grid grid-cols-2 gap-2 text-xs">
                                 <p className="text-gray-700">Kept guarantors:</p>
-                                <p className="font-semibold text-right">KES {keptTotal.toLocaleString()}</p>
+                                <p className="font-semibold text-right">{formatCurrency(keptTotal)}</p>
                                 <p className="text-gray-700">New guarantors:</p>
-                                <p className="font-semibold text-right">KES {newTotal.toLocaleString()}</p>
+                                <p className="font-semibold text-right">{formatCurrency(newTotal)}</p>
                                 <p className="text-gray-700 font-semibold">Total:</p>
-                                <p className="font-bold text-right">KES {totalGuarantees.toLocaleString()}</p>
+                                <p className="font-bold text-right">{formatCurrency(totalGuarantees)}</p>
                               </div>
                               <div className={`p-2 rounded font-semibold text-center ${
                                 isValid 
@@ -3581,7 +3582,7 @@ const Loans = () => {
                               </div>
                               {!isValid && (
                                 <p className="text-gray-700 text-[11px]">
-                                  Outstanding: KES {outstandingForCalc.toLocaleString()}
+                                  Outstanding: {formatCurrency(outstandingForCalc)}
                                 </p>
                               )}
                             </>
@@ -3634,15 +3635,15 @@ const Loans = () => {
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm space-y-1">
                 <p className="font-medium text-blue-900">Loan: {loanForReassign.loanNumber}</p>
                 <p className="text-xs text-blue-800">{loanForReassign.member?.firstName} {loanForReassign.member?.lastName}</p>
-                <p className="text-xs text-blue-800">Amount: KES {loanForReassign.amount.toLocaleString()} | Outstanding: KES {loanForReassign.outstandingBalance?.toLocaleString() || '0'}</p>
+                <p className="text-xs text-blue-800">Amount: {formatCurrency(loanForReassign.amount)} | Outstanding: {formatCurrency(loanForReassign.outstandingBalance)}</p>
               </div>
 
               {/* Member Eligibility */}
               <div className="border rounded-md p-3 space-y-2">
                 <p className="text-sm font-medium">Member Eligibility</p>
                 <div className="text-xs space-y-1 bg-gray-50 p-2 rounded">
-                  <p className="text-blue-900">Savings: <span className="font-semibold">KES {(reassignData.memberInfo.savingsBalance || 0).toLocaleString()}</span></p>
-                  <p className="text-blue-900">Shares: <span className="font-semibold">KES {(reassignData.memberInfo.sharesBalance || 0).toLocaleString()}</span></p>
+                  <p className="text-blue-900">Savings: <span className="font-semibold">{formatCurrency(reassignData.memberInfo.savingsBalance || 0)}</span></p>
+                  <p className="text-blue-900">Shares: <span className="font-semibold">{formatCurrency(reassignData.memberInfo.sharesBalance || 0)}</span></p>
                   <p className="text-blue-900">Active Loans: <span className="font-semibold">{reassignData.memberInfo.activeLoans || 0}</span></p>
                   {reassignData.memberInfo.errors?.length > 0 && (
                     <div className="text-red-600 mt-1">
@@ -3654,12 +3655,12 @@ const Loans = () => {
 
               {/* Current Guarantors */}
               <div className="border rounded-md p-3 space-y-2">
-                <p className="text-sm font-medium">Current Guarantors (Total: KES {reassignData.totalCurrentGuarantee?.toLocaleString() || '0'})</p>
+                <p className="text-sm font-medium">Current Guarantors (Total: {formatCurrency(reassignData.totalCurrentGuarantee)})</p>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {reassignData.currentGuarantors?.map((g: any, i: number) => (
                     <div key={i} className="text-xs bg-yellow-50 p-2 rounded border border-yellow-200">
                       <p className="font-semibold">{g.firstName} {g.lastName} ({g.memberNumber})</p>
-                      <p className="text-gray-700">Guarantee: KES {g.guaranteeAmount?.toLocaleString() || '0'} | Pledge: KES {g.pledgeAmount?.toLocaleString() || '0'} | Status: {g.status}</p>
+                      <p className="text-gray-700">Guarantee: {formatCurrency(g.guaranteeAmount)} | Pledge: {formatCurrency(g.pledgeAmount)} | Status: {g.status}</p>
                     </div>
                   ))}
                 </div>
@@ -3678,7 +3679,7 @@ const Loans = () => {
                             <div className="flex-1">
                               <p className="font-semibold">{member?.firstName} {member?.lastName}</p>
                               <p className="text-xs text-gray-600">
-                                Employee ID: {member?.employeeId || member?.memberNumber} | Available Savings: KES {member?.availableSavings?.toLocaleString() || '0'}
+                                Employee ID: {member?.employeeId || member?.memberNumber} | Available Savings: {formatCurrency(member?.availableSavings)}
                               </p>
                             </div>
                             <Input
@@ -3719,7 +3720,7 @@ const Loans = () => {
                     <SelectContent>
                       {reassignData.availableMembers?.map((m: any) => (
                         <SelectItem key={m.memberId} value={m.memberId.toString()}>
-                          {m.firstName} {m.lastName} ({m.employeeId || m.memberNumber}) - Available: KES {m.availableSavings?.toLocaleString() || '0'}
+                          {m.firstName} {m.lastName} ({m.employeeId || m.memberNumber}) - Available: {formatCurrency(m.availableSavings)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -3774,7 +3775,7 @@ const Loans = () => {
               <div className="bg-red-50 border border-red-200 rounded-md p-3">
                 <p className="text-sm font-medium text-red-900">Loan: {loanToDelete.loanNumber}</p>
                 <p className="text-xs text-red-800">{loanToDelete.member?.firstName} {loanToDelete.member?.lastName}</p>
-                <p className="text-xs text-red-800">Amount: KES {loanToDelete.amount.toLocaleString()}</p>
+                <p className="text-xs text-red-800">Amount: {formatCurrency(loanToDelete.amount)}</p>
                 <p className="text-xs text-red-800">Status: {loanToDelete.status}</p>
               </div>
               <Alert className="bg-amber-50 border-amber-200">
@@ -3838,8 +3839,8 @@ const Loans = () => {
               <div className="bg-purple-50 border border-purple-200 rounded-md p-3 text-sm">
                 <p className="font-medium text-purple-900">Loan: {selectedLoanForDetails.loanNumber}</p>
                 <p className="text-xs text-purple-800">{selectedLoanForDetails.member?.firstName} {selectedLoanForDetails.member?.lastName}</p>
-                <p className="text-xs text-purple-800">Original Principal: KES {selectedLoanForDetails.amount.toLocaleString()}</p>
-                <p className="text-xs text-purple-800">Current Outstanding: KES {selectedLoanForDetails.outstandingBalance?.toLocaleString() || '0'}</p>
+                <p className="text-xs text-purple-800">Original Principal: {formatCurrency(selectedLoanForDetails.amount)}</p>
+                <p className="text-xs text-purple-800">Current Outstanding: {formatCurrency(selectedLoanForDetails.outstandingBalance)}</p>
               </div>
 
               <div>
@@ -3866,19 +3867,19 @@ const Loans = () => {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <span className="text-gray-700">Current Outstanding:</span>
-                      <p className="font-semibold">KES {topUpPreview.currentOutstanding?.toLocaleString()}</p>
+                      <p className="font-semibold">{formatCurrency(topUpPreview.currentOutstanding)}</p>
                     </div>
                     <div>
                       <span className="text-gray-700">Top-Up Amount:</span>
-                      <p className="font-semibold text-purple-700">+KES {topUpPreview.topupAmount?.toLocaleString()}</p>
+                      <p className="font-semibold text-purple-700">+{formatCurrency(topUpPreview.topupAmount)}</p>
                     </div>
                     <div>
                       <span className="text-gray-700">New Outstanding:</span>
-                      <p className="font-bold text-red-600">KES {topUpPreview.newOutstanding?.toLocaleString()}</p>
+                      <p className="font-bold text-red-600">{formatCurrency(topUpPreview.newOutstanding)}</p>
                     </div>
                     <div>
                       <span className="text-gray-700">Principal Paid So Far:</span>
-                      <p className="font-semibold text-green-600">KES {topUpPreview.principalPaidBeforeTopup?.toLocaleString()}</p>
+                      <p className="font-semibold text-green-600">{formatCurrency(topUpPreview.principalPaidBeforeTopup)}</p>
                     </div>
                   </div>
                   <p className="text-gray-700 bg-white p-2 rounded">
@@ -3932,7 +3933,7 @@ const Loans = () => {
                         <AlertCircle className="h-4 w-4 text-red-600" />
                         <AlertDescription className="text-xs text-red-800">
                           <strong>Warning:</strong> Total guarantor coverage is {percentage.toFixed(1)}% (exceeds 100%). 
-                          Total pledged: KES {totalPledged.toLocaleString()} of KES {parseFloat(topUpAmount).toLocaleString()} needed.
+                          Total pledged: {formatCurrency(totalPledged)} of {formatCurrency(parseFloat(topUpAmount))} needed.
                         </AlertDescription>
                       </Alert>
                     );
@@ -4140,7 +4141,7 @@ const Loans = () => {
                     onChange={(e) => setFullEditForm({...fullEditForm, principal: e.target.value})}
                     className="mt-2 text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.amount.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 mt-1">Current: {formatCurrency(selectedLoanForDetails.amount)}</p>
                 </div>
 
                 <div>
@@ -4154,7 +4155,7 @@ const Loans = () => {
                     onChange={(e) => setFullEditForm({...fullEditForm, outstandingBalance: e.target.value})}
                     className="mt-2 text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.outstandingBalance?.toLocaleString() || '0'}</p>
+                  <p className="text-xs text-gray-500 mt-1">Current: {formatCurrency(selectedLoanForDetails.outstandingBalance)}</p>
                 </div>
 
                 <div>
@@ -4195,7 +4196,7 @@ const Loans = () => {
                     onChange={(e) => setFullEditForm({...fullEditForm, totalInterest: e.target.value})}
                     className="mt-2 text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.totalInterest?.toLocaleString() || '0'}</p>
+                  <p className="text-xs text-gray-500 mt-1">Current: {formatCurrency(selectedLoanForDetails.totalInterest)}</p>
                 </div>
 
                 <div>
@@ -4209,7 +4210,7 @@ const Loans = () => {
                     onChange={(e) => setFullEditForm({...fullEditForm, totalRepayable: e.target.value})}
                     className="mt-2 text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.totalRepayable?.toLocaleString() || '0'}</p>
+                  <p className="text-xs text-gray-500 mt-1">Current: {formatCurrency(selectedLoanForDetails.totalRepayable)}</p>
                 </div>
 
                 <div className="col-span-2">
@@ -4223,7 +4224,7 @@ const Loans = () => {
                     onChange={(e) => setFullEditForm({...fullEditForm, monthlyRepayment: e.target.value})}
                     className="mt-2 text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.monthlyRepayment?.toLocaleString() || '0'}</p>
+                  <p className="text-xs text-gray-500 mt-1">Current: {formatCurrency(selectedLoanForDetails.monthlyRepayment)}</p>
                 </div>
 
                 <div className="col-span-2">
@@ -4237,7 +4238,7 @@ const Loans = () => {
                     onChange={(e) => setFullEditForm({...fullEditForm, interestCollected: e.target.value})}
                     className="mt-2 text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.interestCollected?.toLocaleString() || '0'}</p>
+                  <p className="text-xs text-gray-500 mt-1">Current: {formatCurrency(selectedLoanForDetails.interestCollected)}</p>
                 </div>
 
                 <div className="col-span-2">
@@ -4251,7 +4252,7 @@ const Loans = () => {
                     onChange={(e) => setFullEditForm({...fullEditForm, principalRepaid: e.target.value})}
                     className="mt-2 text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Current: KES {selectedLoanForDetails.principalRepaid?.toLocaleString() || '0'}</p>
+                  <p className="text-xs text-gray-500 mt-1">Current: {formatCurrency(selectedLoanForDetails.principalRepaid)}</p>
                   <p className="text-xs text-amber-600 mt-1">⚠️ Manual override - ignores top-ups and outstanding balance</p>
                 </div>
               </div>
@@ -4320,7 +4321,7 @@ const Loans = () => {
                   className="mt-2"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Current: KES {topUpToEdit.topupAmount?.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">Current: {formatCurrency(topUpToEdit.topupAmount)}</p>
               </div>
 
               <div>
@@ -4375,7 +4376,7 @@ const Loans = () => {
             <div className="space-y-4">
               <div className="bg-red-50 border border-red-200 rounded p-3">
                 <p className="text-sm font-medium text-red-900">Top-Up Details:</p>
-                <p className="text-sm text-red-800 mt-1">Amount: KES {topUpToDelete.topupAmount?.toLocaleString()}</p>
+                <p className="text-sm text-red-800 mt-1">Amount: {formatCurrency(topUpToDelete.topupAmount)}</p>
                 <p className="text-sm text-red-800">Date: {new Date(topUpToDelete.topupDate).toLocaleDateString()}</p>
                 {topUpToDelete.purpose && (
                   <p className="text-sm text-red-800">Purpose: {topUpToDelete.purpose}</p>

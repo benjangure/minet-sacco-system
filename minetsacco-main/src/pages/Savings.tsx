@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,7 +135,7 @@ const Savings = () => {
     if (message.type === 'TRANSACTION') {
       toast({
         title: "Transaction Processed",
-        description: `${message.transactionType}: KES ${message.amount?.toLocaleString()} for account ${message.accountType}`,
+        description: `${message.transactionType}: ${formatCurrency(message.amount)} for account ${message.accountType}`,
       });
     }
     
@@ -191,7 +192,7 @@ const Savings = () => {
     if (fromMember && amount > fromMember.balance) {
       toast({
         title: "Insufficient Shares",
-        description: `Source member only has KES ${fromMember.balance.toLocaleString()} in shares. Cannot transfer KES ${amount.toLocaleString()}.`,
+        description: `Source member only has ${formatCurrency(fromMember.balance)} in shares. Cannot transfer ${formatCurrency(amount)}.`,
         variant: "destructive",
       });
       return;
@@ -221,7 +222,7 @@ const Savings = () => {
 
         toast({
           title: "Transfer Successful",
-          description: `KES ${amount.toLocaleString()} in shares transferred from ${fromName} to ${toName}. Audit log recorded.`,
+          description: `${formatCurrency(amount)} in shares transferred from ${fromName} to ${toName}. Audit log recorded.`,
         });
         setTransferOpen(false);
         setTransferForm({ fromMemberId: "", toMemberId: "", amount: "", description: "" });
@@ -437,7 +438,7 @@ const Savings = () => {
                               >
                                 {m.member.memberNumber} — {name}
                                 {m.sharesBalance > 0
-                                  ? ` (Shares: KES ${m.sharesBalance.toLocaleString()})`
+                                  ? ` (Shares: ${formatCurrency(m.sharesBalance)})`
                                   : " (No shares)"}
                               </SelectItem>
                             );
@@ -448,7 +449,7 @@ const Savings = () => {
                       const m = memberList.find(x => x.member.id.toString() === transferForm.fromMemberId);
                       return m ? (
                         <p className="text-xs text-muted-foreground">
-                          Available shares balance: <span className="font-semibold text-blue-600">KES {m.sharesBalance.toLocaleString()}</span>
+                        <span className="font-semibold text-blue-600">{formatCurrency(m.sharesBalance)}</span>
                         </p>
                       ) : null;
                     })()}
@@ -496,7 +497,7 @@ const Savings = () => {
                                 disabled={m.member.id.toString() === transferForm.fromMemberId}
                               >
                                 {m.member.memberNumber} — {name}
-                                {` (Shares: KES ${m.sharesBalance.toLocaleString()})`}
+                                {` (Shares: ${formatCurrency(m.sharesBalance)})`}
                               </SelectItem>
                             );
                           })}
@@ -506,7 +507,7 @@ const Savings = () => {
                       const m = memberList.find(x => x.member.id.toString() === transferForm.toMemberId);
                       return m ? (
                         <p className="text-xs text-muted-foreground">
-                          Current shares balance: <span className="font-semibold text-blue-600">KES {m.sharesBalance.toLocaleString()}</span>
+                          Current shares balance: <span className="font-semibold text-blue-600">{formatCurrency(m.sharesBalance)}</span>
                         </p>
                       ) : null;
                     })()}
@@ -541,7 +542,7 @@ const Savings = () => {
                     <Alert className="bg-amber-50 border-amber-200">
                       <AlertCircle className="h-4 w-4 text-amber-600" />
                       <AlertDescription className="text-xs text-amber-800">
-                        This will transfer <strong>KES {parseFloat(transferForm.amount || "0").toLocaleString()}</strong> in shares from{" "}
+                        This will transfer <strong>{formatCurrency(parseFloat(transferForm.amount || "0"))}</strong> in shares from{" "}
                         <strong>
                           {(() => {
                             const m = memberList.find(x => x.member.id.toString() === transferForm.fromMemberId);
@@ -619,7 +620,7 @@ const Savings = () => {
                           })
                           .map(account => (
                           <SelectItem key={account.id} value={account.id.toString()}>
-                            {account.member?.memberNumber} — {account.member?.fullName || `${account.member?.firstName} ${account.member?.lastName}`} ({account.accountType}) - KES {account.balance.toLocaleString()}
+                            {account.member?.memberNumber} — {account.member?.fullName || `${account.member?.firstName} ${account.member?.lastName}`} ({account.accountType}) - {formatCurrency(account.balance)}
                           </SelectItem>
                         ))
                       )}
@@ -703,7 +704,7 @@ const Savings = () => {
             <CardTitle className="text-sm text-muted-foreground">Total Savings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">KES {totalSavings.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalSavings)}</div>
           </CardContent>
         </Card>
         <Card className="border-none shadow-sm">
@@ -711,7 +712,7 @@ const Savings = () => {
             <CardTitle className="text-sm text-muted-foreground">Total Shares</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">KES {totalShares.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalShares)}</div>
           </CardContent>
         </Card>
         <Card className="border-none shadow-sm">
@@ -776,14 +777,14 @@ const Savings = () => {
                     </TableCell>
                     <TableCell className="font-semibold">
                       {accountGroup.savingsBalance > 0 ? (
-                        <span className="text-green-600">KES {accountGroup.savingsBalance.toLocaleString()}</span>
+                        <span className="text-green-600">{formatCurrency(accountGroup.savingsBalance)}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell className="font-semibold">
                       {accountGroup.sharesBalance > 0 ? (
-                        <span className="text-blue-600">KES {accountGroup.sharesBalance.toLocaleString()}</span>
+                        <span className="text-blue-600">{formatCurrency(accountGroup.sharesBalance)}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

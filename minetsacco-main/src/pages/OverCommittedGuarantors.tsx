@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -243,9 +244,7 @@ const OverCommittedGuarantors = () => {
     setExpandedRows(newExpanded);
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "KES" }).format(value);
-  };
+
 
   const getRiskColor = (overCommitted: number, available: number) => {
     const ratio = overCommitted / available;

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRefresh } from '@/contexts/RefreshContext';
 import api from '@/config/api';
+import { formatCurrency } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download, ArrowLeft } from 'lucide-react';
@@ -79,13 +80,6 @@ export default function MemberAccountStatement() {
     a.download = `account-statement-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     toast({ title: 'Success', description: 'Statement downloaded' });
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
   };
 
   const formatDate = (dateString: string) => {

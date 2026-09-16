@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -98,7 +99,7 @@ export const GuarantorReassignmentDialog: React.FC<GuarantorReassignmentDialogPr
       // Check if individual guarantee amount does not exceed loan amount
       if (loan && assignment.guaranteeAmount > loan.amount) {
         const guarantor = guarantors.find(g => g.id === assignment.guarantorId);
-        newErrors.push(`${guarantor?.member.firstName} ${guarantor?.member.lastName}: Guarantee amount cannot exceed loan amount (KES ${loan.amount.toFixed(2)})`);
+        newErrors.push(`${guarantor?.member.firstName} ${guarantor?.member.lastName}: Guarantee amount cannot exceed loan amount (${formatCurrency(loan.amount)})`);
       }
     }
 
@@ -106,7 +107,7 @@ export const GuarantorReassignmentDialog: React.FC<GuarantorReassignmentDialogPr
     const totalAmount = assignments.reduce((sum, a) => sum + a.guaranteeAmount, 0);
     if (loan && totalAmount < loan.amount) {
       newErrors.push(
-        `Total guarantee amount (KES ${totalAmount.toFixed(2)}) must be at least equal to loan amount (KES ${loan.amount.toFixed(2)})`
+        `Total guarantee amount (${formatCurrency(totalAmount)}) must be at least equal to loan amount (${formatCurrency(loan.amount)})`
       );
     }
 
@@ -181,12 +182,12 @@ export const GuarantorReassignmentDialog: React.FC<GuarantorReassignmentDialogPr
               {loan.originalAmount && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Original Amount:</span>
-                  <span className="font-semibold">KES {loan.originalAmount.toFixed(2)}</span>
+                  <span className="font-semibold">{formatCurrency(loan.originalAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t pt-2">
                 <span className="text-gray-600">New Loan Amount:</span>
-                <span className="font-semibold text-lg">KES {loan.amount.toFixed(2)}</span>
+                <span className="font-semibold text-lg">{formatCurrency(loan.amount)}</span>
               </div>
             </CardContent>
           </Card>
@@ -218,7 +219,7 @@ export const GuarantorReassignmentDialog: React.FC<GuarantorReassignmentDialogPr
                       {guarantor.previousGuaranteeAmount && (
                         <div className="text-right">
                           <p className="text-sm text-gray-600">Previous Amount:</p>
-                          <p className="font-semibold">KES {guarantor.previousGuaranteeAmount.toFixed(2)}</p>
+                          <p className="font-semibold">{formatCurrency(guarantor.previousGuaranteeAmount)}</p>
                         </div>
                       )}
                     </div>
@@ -252,12 +253,12 @@ export const GuarantorReassignmentDialog: React.FC<GuarantorReassignmentDialogPr
               <div className="flex justify-between items-center">
                 <span className="font-semibold">Total Guarantee Amount:</span>
                 <span className={`text-lg font-bold ${isValid ? 'text-green-600' : 'text-orange-600'}`}>
-                  KES {totalAmount.toFixed(2)}
+                  {formatCurrency(totalAmount)}
                 </span>
               </div>
               <div className="flex justify-between items-center mt-2 text-sm">
                 <span className="text-gray-600">Required Amount:</span>
-                <span className="font-semibold">KES {loan.amount.toFixed(2)}</span>
+                <span className="font-semibold">{formatCurrency(loan.amount)}</span>
               </div>
               {isValid && (
                 <div className="flex items-center gap-2 mt-3 text-green-600">
@@ -269,7 +270,7 @@ export const GuarantorReassignmentDialog: React.FC<GuarantorReassignmentDialogPr
                 <div className="flex items-center gap-2 mt-3 text-orange-600">
                   <AlertCircle className="w-4 h-4" />
                   <span className="text-sm">
-                    Shortfall: KES {(loan.amount - totalAmount).toFixed(2)}
+                    Shortfall: {formatCurrency(loan.amount - totalAmount)}
                   </span>
                 </div>
               )}

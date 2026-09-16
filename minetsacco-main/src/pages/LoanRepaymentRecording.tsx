@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -187,7 +188,7 @@ const LoanRepaymentRecording = () => {
     if (total > selectedLoan.outstandingBalance) {
       toast({ 
         title: "Error", 
-        description: `Amount cannot exceed outstanding balance of KES ${selectedLoan.outstandingBalance.toLocaleString()}`, 
+        description: `Amount cannot exceed outstanding balance of ${formatCurrency(selectedLoan.outstandingBalance)}`, 
         variant: "destructive" 
       });
       return;
@@ -333,7 +334,7 @@ const LoanRepaymentRecording = () => {
                         <TableCell>{loan.member.fullName || `${loan.member.firstName} ${loan.member.lastName}`}</TableCell>
                         <TableCell>{loan.member.employeeId}</TableCell>
                         <TableCell className="text-right font-semibold">
-                          KES {loan.outstandingBalance.toLocaleString()}
+                          {formatCurrency(loan.outstandingBalance)}
                         </TableCell>
                       </TableRow>
                     ))
@@ -394,25 +395,25 @@ const LoanRepaymentRecording = () => {
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Principal</p>
-                  <p className="text-lg font-bold">KES {schedule.principal.toLocaleString()}</p>
+                  <p className="text-lg font-bold">{formatCurrency(schedule.principal)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Total Repaid</p>
-                  <p className="text-lg font-bold text-green-600">KES {schedule.totalRepaid.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-green-600">{formatCurrency(schedule.totalRepaid)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Interest Collected</p>
-                  <p className="text-lg font-bold text-blue-600">KES {totalInterestCollected.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-blue-600">{formatCurrency(totalInterestCollected)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-xs text-muted-foreground">Outstanding</p>
-                  <p className="text-lg font-bold text-red-600">KES {schedule.outstandingBalance.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-red-600">{formatCurrency(schedule.outstandingBalance)}</p>
                 </CardContent>
               </Card>
             </div>
@@ -485,17 +486,17 @@ const LoanRepaymentRecording = () => {
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
                       <span>Principal:</span>
-                      <span className="font-medium">{repaymentForm.principalAmount ? `KES ${parseFloat(repaymentForm.principalAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : "—"}</span>
+                      <span className="font-medium">{repaymentForm.principalAmount ? formatCurrency(parseFloat(repaymentForm.principalAmount)) : "—"}</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Interest:</span>
-                      <span className="font-medium">{repaymentForm.interestAmount ? `KES ${parseFloat(repaymentForm.interestAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : "—"}</span>
+                      <span className="font-medium">{repaymentForm.interestAmount ? formatCurrency(parseFloat(repaymentForm.interestAmount)) : "—"}</span>
                     </div>
                     <div className="flex justify-between text-xs border-t border-blue-200 pt-1 mt-1">
                       <span className="font-semibold">Total:</span>
                       <span className="font-bold text-blue-900">
                         {repaymentForm.principalAmount && repaymentForm.interestAmount ? 
-                          `KES ${(parseFloat(repaymentForm.principalAmount) + parseFloat(repaymentForm.interestAmount)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` 
+                          formatCurrency(parseFloat(repaymentForm.principalAmount) + parseFloat(repaymentForm.interestAmount))
                           : "—"}
                       </span>
                     </div>
@@ -517,7 +518,7 @@ const LoanRepaymentRecording = () => {
                     required
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Outstanding: KES {selectedLoan.outstandingBalance.toLocaleString()}
+                    Outstanding: {formatCurrency(selectedLoan.outstandingBalance)}
                   </p>
                   {repaymentForm.principalAmount && repaymentForm.interestAmount && repaymentForm.amount &&
                     Math.abs((parseFloat(repaymentForm.principalAmount) + parseFloat(repaymentForm.interestAmount)) - parseFloat(repaymentForm.amount)) > 0.01 && (
@@ -620,7 +621,7 @@ const LoanRepaymentRecording = () => {
                             {new Date(repayment.paymentDate).toLocaleDateString()}
                           </TableCell>
                           <TableCell className="font-medium">
-                            KES {repayment.amount.toLocaleString()}
+                            {formatCurrency(repayment.amount)}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{repayment.paymentMethod.replace(/_/g, " ")}</Badge>

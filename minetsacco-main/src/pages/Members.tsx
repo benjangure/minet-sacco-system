@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -905,7 +906,7 @@ const Members = () => {
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-3">
                   <div className="font-semibold text-yellow-900">⚠️ Impact Analysis</div>
                   <p className="text-sm text-yellow-800">
-                    This member is currently a PRIMARY guarantor for <strong>{exitImpact.totalLoansAsGuarantor} loan(s)</strong> totaling <strong>KES {exitImpact.totalGuaranteeAmount?.toLocaleString()}</strong>
+                    This member is currently a PRIMARY guarantor for <strong>{exitImpact.totalLoansAsGuarantor} loan(s)</strong> totaling <strong>{formatCurrency(exitImpact.totalGuaranteeAmount)}</strong>
                   </p>
                   
                   {exitImpact.loansAsGuarantor && exitImpact.loansAsGuarantor.length > 0 && (
@@ -916,7 +917,7 @@ const Members = () => {
                           <div className="flex items-start justify-between">
                             <div>
                               <p className="font-medium">Loan #{loan.loanNumber} - {loan.borrowerName}</p>
-                              <p className="text-xs text-gray-600">Guarantee Amount: KES {loan.guaranteeAmount?.toLocaleString()}</p>
+                              <p className="text-xs text-gray-600">Guarantee Amount: {formatCurrency(loan.guaranteeAmount)}</p>
                             </div>
                             <div className="text-right">
                               {loan.hasNok ? (

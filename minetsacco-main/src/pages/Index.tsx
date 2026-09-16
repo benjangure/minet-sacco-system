@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRefresh } from "@/contexts/RefreshContext";
+import { formatCurrency } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -280,7 +281,7 @@ const Index = () => {
       members: { title: "Total Members", value: stats.totalMembers.toLocaleString(), icon: Users, sub: `${stats.activeMembers} active`, link: "/members" },
       pending: { title: "Pending Approvals", value: stats.approvedLoansForDisbursement.toLocaleString(), icon: FileText, sub: "Loans ready for disbursement", link: "/loans?status=APPROVED" },
       loans: { title: "Active Loans", value: stats.activeLoans.toLocaleString(), icon: Landmark, sub: `${stats.pendingLoans} pending approval`, link: "/loans" },
-      savings: { title: "Total Savings", value: `KES ${stats.totalSavings.toLocaleString()}`, icon: PiggyBank, sub: `KES ${stats.totalShares.toLocaleString()} in shares`, link: "/savings" },
+      savings: { title: "Total Savings", value: formatCurrency(stats.totalSavings), icon: PiggyBank, sub: `${formatCurrency(stats.totalShares)} in shares`, link: "/savings" },
       defaulted: { title: "Defaulted Loans", value: stats.defaultedLoans.toLocaleString(), icon: AlertTriangle, sub: "Requires attention", link: "/loans" },
       kycPending: { title: "KYC Documents Pending", value: stats.kycDocumentsPending.toLocaleString(), icon: FileText, sub: "Awaiting verification", link: "/kyc-approval" },
       kycIncomplete: { title: "Members with Incomplete KYC", value: stats.membersWithIncompleteKyc.toLocaleString(), icon: Shield, sub: "Awaiting document upload", link: "/kyc-approval" },
@@ -432,7 +433,7 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-foreground">
-                    {loading ? "..." : `KES ${stats.totalDisbursedPrincipal.toLocaleString()}`}
+                    {loading ? "..." : formatCurrency(stats.totalDisbursedPrincipal)}
                   </div>
                   <p className="text-xs mt-1 text-muted-foreground">Click to view disbursed loans</p>
                 </CardContent>
@@ -447,7 +448,7 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-red-600">
-                    {loading ? "..." : `KES ${stats.totalDisbursedOutstanding.toLocaleString()}`}
+                    {loading ? "..." : formatCurrency(stats.totalDisbursedOutstanding)}
                   </div>
                   <p className="text-xs mt-1 text-muted-foreground">
                     Principal remaining to be repaid
@@ -461,7 +462,7 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600">
-                    {loading ? "..." : `KES ${stats.totalInterestCollected.toLocaleString()}`}
+                    {loading ? "..." : formatCurrency(stats.totalInterestCollected)}
                   </div>
                   <p className="text-xs mt-1 text-muted-foreground">Total from all repayments</p>
                 </CardContent>
@@ -487,7 +488,7 @@ const Index = () => {
                             <Cell key={i} fill={LOAN_PORTFOLIO_COLORS[i % LOAN_PORTFOLIO_COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(value: number) => `KES ${Number(value).toLocaleString()}`} />
+                        <Tooltip formatter={(value: number) => formatCurrency(Number(value))} />
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (

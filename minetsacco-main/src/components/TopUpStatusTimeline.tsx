@@ -1,6 +1,8 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import {
   CheckCircle2, Circle, Clock, XCircle,
   DollarSign, FileCheck, Users, Shield, Building, CreditCard
@@ -110,11 +112,6 @@ const TopUpStatusTimeline: React.FC<TopUpStatusTimelineProps> = ({
     if (step.completedWhen(currentStatus)) return 'completed';
     return 'pending';
   };
-
-  const formatCurrency = (n?: number) =>
-    n != null
-      ? new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(n)
-      : '';
 
   return (
     <Card className={`w-full ${className}`}>

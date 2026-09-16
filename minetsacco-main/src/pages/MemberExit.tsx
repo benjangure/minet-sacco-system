@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRefresh } from '@/contexts/RefreshContext';
+import { formatCurrency } from '@/lib/utils';
 import { AlertCircle, CheckCircle, Loader, LogOut, CheckCheck } from 'lucide-react';
 import api from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -265,27 +266,27 @@ export default function MemberExit() {
                 <div className="grid grid-cols-2 gap-3 text-sm mb-3">
                   <div>
                     <p className="text-gray-600">Savings Balance</p>
-                    <p className="font-semibold">KES {exitSummary.savingsBalance.toLocaleString()}</p>
+                    <p className="font-semibold">{formatCurrency(exitSummary.savingsBalance)}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Outstanding Loan</p>
-                    <p className="font-semibold">KES {exitSummary.outstandingLoan.toLocaleString()}</p>
+                    <p className="font-semibold">{formatCurrency(exitSummary.outstandingLoan)}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Loan Deduction</p>
-                    <p className="font-semibold">KES {exitSummary.loanDeduction.toLocaleString()}</p>
+                    <p className="font-semibold">{formatCurrency(exitSummary.loanDeduction)}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Remaining Payout</p>
-                    <p className="font-semibold">KES {exitSummary.remainingPayout.toLocaleString()}</p>
+                    <p className="font-semibold">{formatCurrency(exitSummary.remainingPayout)}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Shares Refund</p>
-                    <p className="font-semibold">KES {exitSummary.sharesRefund.toLocaleString()}</p>
+                    <p className="font-semibold">{formatCurrency(exitSummary.sharesRefund)}</p>
                   </div>
                   <div className="bg-green-50 p-2 rounded">
                     <p className="text-gray-600">Total Payout</p>
-                    <p className="font-bold text-green-600">KES {exitSummary.totalPayout.toLocaleString()}</p>
+                    <p className="font-bold text-green-600">{formatCurrency(exitSummary.totalPayout)}</p>
                   </div>
                 </div>
 
@@ -372,7 +373,7 @@ export default function MemberExit() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">{exit.exitReason}</td>
                   <td className="px-6 py-4 text-sm font-semibold text-green-600">
-                    KES {exit.totalPayout.toLocaleString()}
+                    {formatCurrency(exit.totalPayout)}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {new Date(exit.createdAt).toLocaleDateString()}
@@ -417,7 +418,7 @@ export default function MemberExit() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">{exit.exitReason}</td>
                   <td className="px-6 py-4 text-sm font-semibold text-green-600">
-                    KES {exit.totalPayout.toLocaleString()}
+                    {formatCurrency(exit.totalPayout)}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {exit.approvedBy ? `${exit.approvedBy.firstName} ${exit.approvedBy.lastName}` : '-'}
@@ -459,7 +460,7 @@ export default function MemberExit() {
                   <td className="px-6 py-4 text-sm text-gray-600">{exit.member.employeeId}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{exit.exitReason}</td>
                   <td className="px-6 py-4 text-sm font-semibold text-green-600">
-                    KES {exit.totalPayout.toLocaleString()}
+                    {formatCurrency(exit.totalPayout)}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {exit.initiatedBy ? `${exit.initiatedBy.firstName} ${exit.initiatedBy.lastName}` : '-'}
@@ -505,7 +506,7 @@ export default function MemberExit() {
               <div className="flex justify-between">
                 <span className="text-gray-600">Total Payout:</span>
                 <span className="font-semibold text-green-600">
-                  KES {exitSummary?.totalPayout.toLocaleString()}
+                  {formatCurrency(exitSummary?.totalPayout)}
                 </span>
               </div>
               {exitSummary?.isActiveGuarantor && (

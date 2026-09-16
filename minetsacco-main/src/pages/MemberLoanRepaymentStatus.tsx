@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/config/api';
+import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,7 +102,7 @@ export default function MemberLoanRepaymentStatus() {
     if (details && repaymentAmount > details.outstandingBalance) {
       toast({
         title: 'Error',
-        description: `Amount cannot exceed outstanding balance of KES ${details.outstandingBalance.toLocaleString()}`,
+        description: `Amount cannot exceed outstanding balance of ${formatCurrency(details.outstandingBalance)}`,
         variant: 'destructive'
       });
       return;
@@ -136,13 +137,6 @@ export default function MemberLoanRepaymentStatus() {
     } finally {
       setResubmitting(false);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
   };
 
   const formatDate = (dateString: string) => {

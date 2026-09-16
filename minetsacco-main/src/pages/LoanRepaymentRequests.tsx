@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRefresh } from '@/contexts/RefreshContext';
 import api from '@/config/api';
+import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -197,13 +198,6 @@ export default function LoanRepaymentRequests() {
     } finally {
       setProcessing(false);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
   };
 
   const formatDate = (dateString: string) => {

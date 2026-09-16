@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
+import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -349,7 +350,7 @@ const LoanProducts = () => {
                     </TableCell>
                     <TableCell>{product.interestRate}% p.a.</TableCell>
                     <TableCell>
-                      KES {product.minAmount.toLocaleString()} - {product.maxAmount.toLocaleString()}
+                      {formatCurrency(product.minAmount)} - {formatCurrency(product.maxAmount)}
                     </TableCell>
                     <TableCell>
                       {product.minTermMonths} - {product.maxTermMonths} months

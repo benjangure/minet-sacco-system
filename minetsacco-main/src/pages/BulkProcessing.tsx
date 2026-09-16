@@ -930,13 +930,6 @@ export default function BulkProcessing() {
     return batchType.replace(/_/g, " ");
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-KE", {
-      style: "currency",
-      currency: "KES",
-    }).format(amount);
-  };
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("en-KE");
   };
