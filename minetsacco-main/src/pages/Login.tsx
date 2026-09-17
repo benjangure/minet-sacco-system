@@ -35,7 +35,11 @@ const Login = () => {
     const { error } = await signIn(usernameOrEmail, password);
     setIsLoading(false);
     if (error) {
-      toast({ title: "Login Failed", description: error.message, variant: "destructive" });
+      toast({ 
+        title: "Login Failed", 
+        description: error.message || "An unexpected error occurred", 
+        variant: "destructive" 
+      });
     } else {
       // Check if user is a member (not allowed on staff login)
       const storedSession = localStorage.getItem("session");

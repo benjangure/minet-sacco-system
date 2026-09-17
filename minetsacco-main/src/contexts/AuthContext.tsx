@@ -135,7 +135,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('DEBUG: memberSignIn - error response:', errorData);
-        throw new Error(errorData.message || "Login failed");
+        // Improve error message for invalid credentials
+        let errorMessage = errorData.message || "Login failed";
+        if (errorMessage.includes("Incorrect username or password") || 
+            errorMessage.includes("username or password")) {
+          errorMessage = "Invalid username or password";
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -219,7 +225,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || "Login failed");
+        // Improve error message for invalid credentials
+        let errorMessage = errorData.message || "Login failed";
+        if (errorMessage.includes("Incorrect username or password") || 
+            errorMessage.includes("username or password")) {
+          errorMessage = "Invalid username or password";
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();

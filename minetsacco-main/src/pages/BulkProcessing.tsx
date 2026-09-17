@@ -293,12 +293,23 @@ export default function BulkProcessing() {
           Authorization: `Bearer ${token}`,
         },
       });
+      
+      if (!response.ok) {
+        console.warn(`Approved loans API returned status ${response.status}. This may occur if no loans are approved yet or user lacks TREASURER role.`);
+        setApprovedLoanItems([]);
+        return;
+      }
+      
       const data = await response.json();
       if (data.success) {
         setApprovedLoanItems(data.data || []);
+      } else {
+        console.warn("Approved loans fetch returned false:", data.message);
+        setApprovedLoanItems([]);
       }
     } catch (error) {
-      console.error("Error fetching approved loans:", error);
+      console.warn("Error fetching approved loans:", error);
+      setApprovedLoanItems([]);
     }
   };
 
