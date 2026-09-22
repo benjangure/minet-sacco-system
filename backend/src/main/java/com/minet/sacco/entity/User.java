@@ -58,6 +58,26 @@ public class User {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    // Account Lockout Fields
+    @Column(name = "account_locked")
+    private Boolean accountLocked = false;
+
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
+    @Column(name = "failed_login_attempts")
+    private Integer failedLoginAttempts = 0;
+
+    // Password Expiration Fields
+    @Column(name = "password_changed_at")
+    private LocalDateTime passwordChangedAt;
+
+    @Column(name = "password_expires_at")
+    private LocalDateTime passwordExpiresAt;
+
+    @Column(name = "password_expiration_warning_sent")
+    private Boolean passwordExpirationWarningSent = false;
+
     public enum Role {
         ADMIN,              // System configuration and user management
         HR,                 // Human Resources - member exit/suspension initiation
@@ -112,4 +132,24 @@ public class User {
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    // Account Lockout Getters and Setters
+    public Boolean getAccountLocked() { return accountLocked; }
+    public void setAccountLocked(Boolean accountLocked) { this.accountLocked = accountLocked; }
+
+    public LocalDateTime getLockedUntil() { return lockedUntil; }
+    public void setLockedUntil(LocalDateTime lockedUntil) { this.lockedUntil = lockedUntil; }
+
+    public Integer getFailedLoginAttempts() { return failedLoginAttempts; }
+    public void setFailedLoginAttempts(Integer failedLoginAttempts) { this.failedLoginAttempts = failedLoginAttempts; }
+
+    // Password Expiration Getters and Setters
+    public LocalDateTime getPasswordChangedAt() { return passwordChangedAt; }
+    public void setPasswordChangedAt(LocalDateTime passwordChangedAt) { this.passwordChangedAt = passwordChangedAt; }
+
+    public LocalDateTime getPasswordExpiresAt() { return passwordExpiresAt; }
+    public void setPasswordExpiresAt(LocalDateTime passwordExpiresAt) { this.passwordExpiresAt = passwordExpiresAt; }
+
+    public Boolean getPasswordExpirationWarningSent() { return passwordExpirationWarningSent; }
+    public void setPasswordExpirationWarningSent(Boolean passwordExpirationWarningSent) { this.passwordExpirationWarningSent = passwordExpirationWarningSent; }
 }

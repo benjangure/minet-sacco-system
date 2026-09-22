@@ -58,7 +58,7 @@ public class EmailService {
     }
     
     /**
-     * Send password reset email
+     * Send password reset email (deprecated - use sendPasswordResetEmail with link)
      */
     public boolean sendPasswordResetEmail(String memberEmail, String memberName, String temporaryPassword) {
         if (!emailEnabled || mailSender == null) {
@@ -81,6 +81,62 @@ public class EmailService {
             
         } catch (Exception e) {
             logger.error("Failed to send password reset email to {} ({}): {}", memberName, memberEmail, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Send password reset email with reset link (for staff)
+     */
+    public boolean sendPasswordResetEmail(String email, String username, String resetLink, boolean isStaff) {
+        if (!emailEnabled || mailSender == null) {
+            logger.warn("Email service not configured. Cannot send password reset email to {}", email);
+            return false;
+        }
+        
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(email);
+            message.setSubject(saccoName + " - Password Reset Request");
+            
+            String emailBody = buildPasswordResetLinkEmailBody(username, resetLink, isStaff);
+            message.setText(emailBody);
+            
+            mailSender.send(message);
+            logger.info("Password reset email with link sent successfully to {} ({})", username, email);
+            return true;
+            
+        } catch (Exception e) {
+            logger.error("Failed to send password reset email to {} ({}): {}", username, email, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Send password reset email to member with reset link
+     */
+    public boolean sendMemberPasswordResetEmail(String email, String username, String resetLink) {
+        if (!emailEnabled || mailSender == null) {
+            logger.warn("Email service not configured. Cannot send member password reset email to {}", email);
+            return false;
+        }
+        
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(email);
+            message.setSubject(saccoName + " - Password Reset Request");
+            
+            String emailBody = buildMemberPasswordResetLinkEmailBody(username, resetLink);
+            message.setText(emailBody);
+            
+            mailSender.send(message);
+            logger.info("Member password reset email sent successfully to {} ({})", username, email);
+            return true;
+            
+        } catch (Exception e) {
+            logger.error("Failed to send member password reset email to {} ({}): {}", username, email, e.getMessage());
             return false;
         }
     }
@@ -139,6 +195,64 @@ public class EmailService {
         body.append("3. Choose a strong password that you can remember\n\n");
         
         body.append("If you did not request this password reset, please contact our support team immediately at ").append(supportEmail).append("\n\n");
+        
+        body.append("Best regards,\n");
+        body.append(saccoName).append(" Team");
+        
+        return body.toString();
+    }
+
+    private String buildPasswordResetLinkEmailBody(String username, String resetLink, boolean isStaff) {
+        StringBuilder body = new StringBuilder();
+        
+        body.append("Hello ").append(username).append(",\n\n");
+        body.append("We received a request to reset your password for your ").append(saccoName).append(" account.\n\n");
+        
+        body.append("CLICK THE LINK BELOW TO RESET YOUR PASSWORD:\n");
+        body.append(resetLink).append("\n\n");
+        
+        body.append("IMPORTANT SECURITY INFORMATION:\n");
+        body.append("- This password reset link will expire in 30 minutes\n");
+        body.append("- The link can only be used once\n");
+        body.append("- If the link has expired, request a new password reset\n\n");
+        
+        body.append("If you did not request this password reset, please:\n");
+        body.append("1. Ignore this email\n");
+        body.append("2. Contact our support team immediately at ").append(supportEmail).append("\n\n");
+        
+        body.append("PASSWORD SECURITY REMINDER:\n");
+        body.append("- Use a strong password (mix of uppercase, lowercase, numbers, and special characters)\n");
+        body.append("- Never share your password with anyone\n");
+        body.append("- Do not reuse passwords from other accounts\n\n");
+        
+        body.append("Best regards,\n");
+        body.append(saccoName).append(" Team");
+        
+        return body.toString();
+    }
+
+    private String buildMemberPasswordResetLinkEmailBody(String username, String resetLink) {
+        StringBuilder body = new StringBuilder();
+        
+        body.append("Hello ").append(username).append(",\n\n");
+        body.append("We received a request to reset your password for your ").append(saccoName).append(" member account.\n\n");
+        
+        body.append("CLICK THE LINK BELOW TO RESET YOUR PASSWORD:\n");
+        body.append(resetLink).append("\n\n");
+        
+        body.append("IMPORTANT SECURITY INFORMATION:\n");
+        body.append("- This password reset link will expire in 30 minutes\n");
+        body.append("- The link can only be used once\n");
+        body.append("- If the link has expired, request a new password reset\n\n");
+        
+        body.append("If you did not request this password reset, please:\n");
+        body.append("1. Do not click the link\n");
+        body.append("2. Contact our support team immediately at ").append(supportEmail).append("\n\n");
+        
+        body.append("PASSWORD SECURITY REMINDER:\n");
+        body.append("- Use a strong password (mix of uppercase, lowercase, numbers, and special characters)\n");
+        body.append("- Never share your password with anyone\n");
+        body.append("- Do not reuse passwords from other accounts\n\n");
         
         body.append("Best regards,\n");
         body.append(saccoName).append(" Team");

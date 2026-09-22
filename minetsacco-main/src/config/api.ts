@@ -47,6 +47,7 @@ export const getApiBaseUrl = (): string => {
   return `${getBackendUrl()}/api`;
 };
 
+// Create a dynamically evaluated string export
 export const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({

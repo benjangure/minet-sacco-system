@@ -4,12 +4,18 @@ import com.minet.sacco.dto.ApiResponse;
 import com.minet.sacco.dto.AuthRequest;
 import com.minet.sacco.dto.AuthResponse;
 import com.minet.sacco.dto.SetupPasswordRequest;
+import com.minet.sacco.dto.PasswordResetRequestDTO;
+import com.minet.sacco.dto.PasswordResetConfirmDTO;
+import com.minet.sacco.dto.TokenValidationDTO;
 import com.minet.sacco.entity.User;
+import com.minet.sacco.entity.PasswordResetToken;
 import com.minet.sacco.repository.UserRepository;
 import com.minet.sacco.repository.MemberCredentialRepository;
 import com.minet.sacco.repository.MemberRepository;
 import com.minet.sacco.security.CustomUserDetailsService;
 import com.minet.sacco.security.JwtUtil;
+import com.minet.sacco.service.PasswordResetService;
+import com.minet.sacco.service.AccountLockoutService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -21,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -51,10 +58,32 @@ public class AuthController {
     @Autowired(required = false)
     private com.minet.sacco.service.DeviceTrackingService deviceTrackingService;
 
+    @Autowired
+    private PasswordResetService passwordResetService;
+
+    @Autowired
+    private AccountLockoutService accountLockoutService;
+
     @PostMapping("/login")
     public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest, HttpServletRequest request) throws Exception {
         User user = null;
+        String ipAddress = getClientIpAddress(request);
+        String userAgent = request.getHeader("User-Agent");
+
         try {
+            // Find user first to check lockout status
+            Optional<User> userOpt = userRepository.findByUsername(authRequest.getUsername());
+            if (userOpt.isPresent()) {
+                user = userOpt.get();
+                
+                // Check if account is locked
+                if (accountLockoutService.isAccountLocked(user)) {
+                    AccountLockoutService.AccountLockoutStatus status = accountLockoutService.getAccountLockoutStatus(user);
+                    accountLockoutService.recordLoginAttempt(user, authRequest.getUsername(), false, ipAddress, userAgent, "Account locked");
+                    throw new Exception("Account is locked. Please try again after " + status.getLockoutDurationMinutes() + " minutes or contact support.");
+                }
+            }
+
             System.out.println("DEBUG: Attempting authentication for user: " + authRequest.getUsername());
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(authRequest.getUsername(), authRequest.getPassword())
@@ -63,15 +92,17 @@ public class AuthController {
         } catch (BadCredentialsException e) {
             System.err.println("ERROR: Bad credentials for user: " + authRequest.getUsername());
             
-            // Track failed login attempt
-            if (deviceTrackingService != null) {
-                try {
-                    user = userRepository.findByUsername(authRequest.getUsername()).orElse(null);
-                    if (user != null) {
+            // Record failed login attempt
+            if (user != null) {
+                accountLockoutService.recordLoginAttempt(user, authRequest.getUsername(), false, ipAddress, userAgent, "Invalid credentials");
+                
+                // Track in device tracking service
+                if (deviceTrackingService != null) {
+                    try {
                         deviceTrackingService.trackLogin(user, request, false, "Invalid credentials");
+                    } catch (Exception ex) {
+                        System.err.println("Failed to track failed login: " + ex.getMessage());
                     }
-                } catch (Exception ex) {
-                    System.err.println("Failed to track failed login: " + ex.getMessage());
                 }
             }
             
@@ -99,6 +130,9 @@ public class AuthController {
             final String jwt = jwtUtil.generateToken(userDetails);
             System.out.println("DEBUG: JWT token generated successfully");
             
+            // Record successful login attempt
+            accountLockoutService.recordLoginAttempt(user, authRequest.getUsername(), true, ipAddress, userAgent, null);
+            
             // Track successful login and check for new device
             if (deviceTrackingService != null) {
                 try {
@@ -124,7 +158,23 @@ public class AuthController {
     @PostMapping("/member/login")
     public ResponseEntity<?> memberLogin(@RequestBody AuthRequest authRequest, HttpServletRequest request) throws Exception {
         User user = null;
+        String ipAddress = getClientIpAddress(request);
+        String userAgent = request.getHeader("User-Agent");
+
         try {
+            // Find user first to check lockout status
+            Optional<User> userOpt = userRepository.findByUsername(authRequest.getUsername());
+            if (userOpt.isPresent()) {
+                user = userOpt.get();
+                
+                // Check if account is locked
+                if (accountLockoutService.isAccountLocked(user)) {
+                    AccountLockoutService.AccountLockoutStatus status = accountLockoutService.getAccountLockoutStatus(user);
+                    accountLockoutService.recordLoginAttempt(user, authRequest.getUsername(), false, ipAddress, userAgent, "Account locked");
+                    throw new Exception("Account is locked. Please try again after " + status.getLockoutDurationMinutes() + " minutes or contact support.");
+                }
+            }
+
             System.out.println("DEBUG: Member login attempt for: " + authRequest.getUsername());
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(authRequest.getUsername(), authRequest.getPassword())
@@ -133,15 +183,17 @@ public class AuthController {
         } catch (BadCredentialsException e) {
             System.err.println("ERROR: Invalid member credentials for: " + authRequest.getUsername());
             
-            // Track failed login attempt
-            if (deviceTrackingService != null) {
-                try {
-                    user = userRepository.findByUsername(authRequest.getUsername()).orElse(null);
-                    if (user != null) {
+            // Record failed login attempt
+            if (user != null) {
+                accountLockoutService.recordLoginAttempt(user, authRequest.getUsername(), false, ipAddress, userAgent, "Invalid credentials");
+                
+                // Track in device tracking service
+                if (deviceTrackingService != null) {
+                    try {
                         deviceTrackingService.trackLogin(user, request, false, "Invalid credentials");
+                    } catch (Exception ex) {
+                        System.err.println("Failed to track failed login: " + ex.getMessage());
                     }
-                } catch (Exception ex) {
-                    System.err.println("Failed to track failed login: " + ex.getMessage());
                 }
             }
             
@@ -180,6 +232,9 @@ public class AuthController {
             final String jwt = jwtUtil.generateTokenWithMemberId(userDetails, user.getMemberId(), user.isFirstLogin());
             
             System.out.println("DEBUG: JWT token generated successfully, first login flag: " + user.isFirstLogin());
+            
+            // Record successful login attempt
+            accountLockoutService.recordLoginAttempt(user, authRequest.getUsername(), true, ipAddress, userAgent, null);
             
             // Track successful login and check for new device
             if (deviceTrackingService != null) {
@@ -444,5 +499,189 @@ public class AuthController {
                 new ApiResponse<>(false, "Initialization failed: " + e.getMessage(), null)
             );
         }
+    }
+
+    // ======================== PASSWORD RESET ENDPOINTS ========================
+
+    /**
+     * Request password reset for staff user
+     * Sends password reset email with secure token link
+     */
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<?> requestPasswordReset(@RequestBody PasswordResetRequestDTO request) {
+        try {
+            if (request.getEmail() == null || request.getEmail().isEmpty()) {
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, "Email is required", null)
+                );
+            }
+
+            // Find user by email
+            User user = userRepository.findByEmail(request.getEmail())
+                    .orElse(null);
+
+            if (user == null || user.getRole() == User.Role.MEMBER) {
+                // Don't reveal whether user exists (security)
+                return ResponseEntity.ok(new ApiResponse<>(true, 
+                    "If an account exists with this email, a password reset link will be sent shortly", null));
+            }
+
+            // Generate reset token and send email
+            String token = passwordResetService.requestPasswordResetForStaff(user.getUsername());
+
+            if (token != null) {
+                return ResponseEntity.ok(new ApiResponse<>(true, 
+                    "Password reset link has been sent to your email address", null));
+            } else {
+                return ResponseEntity.ok(new ApiResponse<>(true, 
+                    "If an account exists with this email, a password reset link will be sent shortly", null));
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error requesting password reset: " + e.getMessage());
+            return ResponseEntity.ok(new ApiResponse<>(true, 
+                "If an account exists with this email, a password reset link will be sent shortly", null));
+        }
+    }
+
+    /**
+     * Request password reset for member user
+     * Sends password reset email with secure token link
+     */
+    @PostMapping("/password-reset/member/request")
+    public ResponseEntity<?> requestMemberPasswordReset(@RequestBody PasswordResetRequestDTO request) {
+        try {
+            if (request.getEmail() == null || request.getEmail().isEmpty()) {
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, "Email is required", null)
+                );
+            }
+
+            // Find user by email
+            User user = userRepository.findByEmail(request.getEmail())
+                    .orElse(null);
+
+            if (user == null || user.getRole() != User.Role.MEMBER) {
+                // Don't reveal whether user exists (security)
+                return ResponseEntity.ok(new ApiResponse<>(true, 
+                    "If a member account exists with this email, a password reset link will be sent shortly", null));
+            }
+
+            // Generate reset token and send email
+            String token = passwordResetService.requestPasswordResetForMember(user.getUsername(), false);
+
+            if (token != null) {
+                return ResponseEntity.ok(new ApiResponse<>(true, 
+                    "Password reset link has been sent to your email address", null));
+            } else {
+                return ResponseEntity.ok(new ApiResponse<>(true, 
+                    "If a member account exists with this email, a password reset link will be sent shortly", null));
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error requesting member password reset: " + e.getMessage());
+            return ResponseEntity.ok(new ApiResponse<>(true, 
+                "If a member account exists with this email, a password reset link will be sent shortly", null));
+        }
+    }
+
+    /**
+     * Validate a password reset token
+     * Returns token information if valid, or error if invalid/expired
+     */
+    @PostMapping("/password-reset/validate-token")
+    public ResponseEntity<?> validateToken(@RequestBody java.util.Map<String, String> request) {
+        try {
+            String token = request.get("token");
+            if (token == null || token.isEmpty()) {
+                return ResponseEntity.badRequest().body(
+                    new TokenValidationDTO(false, "Token is required")
+                );
+            }
+
+            // Validate token
+            if (!passwordResetService.validateResetToken(token)) {
+                return ResponseEntity.ok(new TokenValidationDTO(false, 
+                    "This password reset link has expired or is invalid. Please request a new one."));
+            }
+
+            // Get token info
+            PasswordResetService.PasswordResetTokenInfo tokenInfo = passwordResetService.getTokenInfo(token);
+            if (tokenInfo == null) {
+                return ResponseEntity.ok(new TokenValidationDTO(false, 
+                    "This password reset link is invalid"));
+            }
+
+            return ResponseEntity.ok(new TokenValidationDTO(true, 
+                tokenInfo.getUsername(), 
+                tokenInfo.getEmail(), 
+                tokenInfo.getResetType(),
+                tokenInfo.getExpiresAt(),
+                "Token is valid"));
+
+        } catch (Exception e) {
+            System.err.println("Error validating token: " + e.getMessage());
+            return ResponseEntity.status(500).body(
+                new TokenValidationDTO(false, "Error validating token")
+            );
+        }
+    }
+
+    /**
+     * Reset password using valid token
+     * Updates the user's password and marks the token as used
+     */
+    @PostMapping("/password-reset/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody PasswordResetConfirmDTO request) {
+        try {
+            if (request.getToken() == null || request.getToken().isEmpty()) {
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, "Token is required", null)
+                );
+            }
+
+            if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, "Password must be at least 6 characters long", null)
+                );
+            }
+
+            // Reset password
+            if (passwordResetService.resetPasswordWithToken(request.getToken(), request.getNewPassword())) {
+                return ResponseEntity.ok(new ApiResponse<>(true, 
+                    "Password has been reset successfully. You can now login with your new password.", null));
+            } else {
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, 
+                    "Password reset failed. The link may have expired or already been used. Please request a new reset link.", null)
+                );
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error resetting password: " + e.getMessage());
+            return ResponseEntity.status(500).body(
+                new ApiResponse<>(false, "An error occurred while resetting your password", null)
+            );
+        }
+    }
+
+    // ======================== HELPER METHODS ========================
+
+    /**
+     * Extract client IP address from request
+     */
+    private String getClientIpAddress(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            // Return the first IP in case of multiple proxies
+            return xForwardedFor.split(",")[0].trim();
+        }
+        
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp;
+        }
+        
+        return request.getRemoteAddr();
     }
 }

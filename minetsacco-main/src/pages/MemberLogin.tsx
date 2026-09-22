@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { nativeFetch } from '@/utils/nativeHttp';
 import { jwtDecode } from 'jwt-decode';
 import { useAuth } from '@/contexts/AuthContext';
@@ -384,6 +384,15 @@ export default function MemberLogin() {
                   <LogIn className="h-4 w-4" />
                   {loading ? 'Logging in...' : 'Login'}
                 </Button>
+
+                <div className="text-center">
+                  <Link 
+                    to="/member/forgot-password" 
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </form>
             </CardContent>
           </Card>

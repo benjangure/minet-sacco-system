@@ -13,6 +13,8 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import MemberForgotPassword from "./pages/MemberForgotPassword";
+import MemberResetPassword from "./pages/MemberResetPassword";
 import Members from "./pages/Members";
 import Loans from "./pages/Loans";
 import Savings from "./pages/Savings";
@@ -92,9 +94,11 @@ const AppRoutes = () => (
     <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
     <Route path="/reset-password" element={<ResetPassword />} />
     
-    {/* Member Login */}
+    {/* Member Login & Password Reset */}
     <Route path="/member/login" element={<MemberLogin />} />
     <Route path="/member/password-setup" element={<PasswordSetup />} />
+    <Route path="/member/forgot-password" element={<MemberForgotPassword />} />
+    <Route path="/member/reset-password" element={<MemberResetPassword />} />
     
     <Route path="/" element={<RootRoute />} />
     <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />
