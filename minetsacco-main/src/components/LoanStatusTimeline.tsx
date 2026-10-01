@@ -106,6 +106,7 @@ const LoanStatusTimeline: React.FC<LoanStatusTimelineProps> = ({
       status: 'DISBURSED',
       label: 'Loan Disbursed',
       description: 'Loan amount has been transferred to your bank account',
+      icon: Building,
       getDate: () => formatDate(disbursementDate),
       isCompleted: (current) => current === 'REPAID',
       isCurrent: (current) => current === 'DISBURSED',

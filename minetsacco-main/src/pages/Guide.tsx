@@ -5,13 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Shield, Users, Landmark, PiggyBank, FileText, Settings, ArrowRight } from "lucide-react";
 
 const roleLabels: Record<string, string> = {
-  admin: "System Administrator",
-  treasurer: "Treasurer / Finance",
-  loan_officer: "Loan Officer",
-  credit_committee: "Credit Committee",
-  auditor: "Auditor / Compliance",
-  teller: "Teller / Data Entry",
-  helpdesk: "Customer Support",
+  ADMIN: "System Administrator",
+  TREASURER: "Treasurer / Finance",
+  LOAN_OFFICER: "Loan Officer",
+  CREDIT_COMMITTEE: "Credit Committee",
+  AUDITOR: "Auditor / Compliance",
+  TELLER: "Teller / Data Entry",
+  CUSTOMER_SUPPORT: "Customer Support",
 };
 
 const Guide = () => {
@@ -49,13 +49,13 @@ const Guide = () => {
                 <div className="space-y-2">
                   <Badge className="text-sm px-3 py-1">{roleLabels[role]}</Badge>
                   <p className="text-sm text-muted-foreground mt-2">
-                    {role === "admin" && "You have full access to all modules. You can create Treasurers, Loan Officers, Credit Committee members, and Auditors."}
-                    {role === "treasurer" && "You manage finances, deposits, withdrawals, and can create Tellers and Helpdesk staff."}
-                    {role === "loan_officer" && "You process loan applications and manage member loan portfolios."}
-                    {role === "credit_committee" && "You review and approve/reject loan applications."}
-                    {role === "auditor" && "You have read-only access to all data for compliance and audit purposes."}
-                    {role === "teller" && "You handle day-to-day member transactions — deposits and withdrawals."}
-                    {role === "helpdesk" && "You assist members with inquiries and basic support."}
+                    {role === "ADMIN" && "You have full access to all modules. You can create Treasurers, Loan Officers, Credit Committee members, and Auditors."}
+                    {role === "TREASURER" && "You manage finances, deposits, withdrawals, and can create Tellers and Helpdesk staff."}
+                    {role === "LOAN_OFFICER" && "You process loan applications and manage member loan portfolios."}
+                    {role === "CREDIT_COMMITTEE" && "You review and approve/reject loan applications."}
+                    {role === "AUDITOR" && "You have read-only access to all data for compliance and audit purposes."}
+                    {role === "TELLER" && "You handle day-to-day member transactions — deposits and withdrawals."}
+                    {role === "CUSTOMER_SUPPORT" && "You assist members with inquiries and basic support."}
                   </p>
                 </div>
               ) : (

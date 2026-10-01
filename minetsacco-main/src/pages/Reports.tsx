@@ -398,8 +398,8 @@ const Reports = () => {
                     {canViewFinancialReports && (
                       <>
                         <SelectItem value="cashbook">Cashbook Report</SelectItem>
-                        <SelectItem value="trial-balance">Trial Balance</SelectItem>
-                        <SelectItem value="balance-sheet">Balance Sheet</SelectItem>
+                        <SelectItem value="trial-balance">Member Accounts Trial Balance</SelectItem>
+                        <SelectItem value="balance-sheet">Member Funds vs Loans Summary</SelectItem>
                         <SelectItem value="profit-loss">Profit & Loss Report</SelectItem>
                         <SelectItem value="par">Portfolio At Risk (PAR)</SelectItem>
                         <SelectItem value="capital-adequacy">Capital Adequacy</SelectItem>

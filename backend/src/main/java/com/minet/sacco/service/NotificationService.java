@@ -10,6 +10,8 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,6 +19,8 @@ import java.util.Optional;
 
 @Service
 public class NotificationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(NotificationService.class);
 
     @Autowired
     private NotificationRepository notificationRepository;
@@ -44,23 +48,15 @@ public class NotificationService {
             notification.setCreatedAt(LocalDateTime.now());
             notificationRepository.save(notification);
             
-            // Send email notification if email service is available and user has email
-            if (emailNotificationService != null && user.get().getEmail() != null && !user.get().getEmail().isEmpty()) {
-                try {
-                    String subject = getEmailSubject(type);
-                    emailNotificationService.sendNotificationEmail(
-                        user.get().getEmail(),
-                        subject,
-                        message,
-                        type
-                    );
-                } catch (Exception e) {
-                    System.err.println("Failed to send email notification: " + e.getMessage());
-                }
-            }
+            logger.debug("📬 Saved notification to database for user: {} (Type: {})", user.get().getUsername(), type);
+            
+            // Send email notification
+            sendEmailNotification(user.get(), message, type, null, null);
 
             // Send push notification
             sendPushNotification(user.get(), message, type, null);
+        } else {
+            logger.warn("⚠️  User not found for notification: userId={}, type={}", userId, type);
         }
     }
 
@@ -81,23 +77,50 @@ public class NotificationService {
             notification.setCreatedAt(LocalDateTime.now());
             notificationRepository.save(notification);
             
+            logger.debug("📬 Saved notification to database for user: {} (Type: {}, Category: {})", 
+                user.get().getUsername(), type, category);
+            
             // Send email notification
-            if (emailNotificationService != null && user.get().getEmail() != null && !user.get().getEmail().isEmpty()) {
-                try {
-                    String subject = getEmailSubject(type, category);
-                    emailNotificationService.sendNotificationEmail(
-                        user.get().getEmail(),
-                        subject,
-                        message,
-                        category != null ? category : type
-                    );
-                } catch (Exception e) {
-                    System.err.println("Failed to send email notification: " + e.getMessage());
-                }
-            }
+            sendEmailNotification(user.get(), message, type, category, loanId);
 
             // Send push notification
             sendPushNotification(user.get(), message, category != null ? category : type, null);
+        } else {
+            logger.warn("⚠️  User not found for notification: userId={}, type={}, category={}", userId, type, category);
+        }
+    }
+    
+    /**
+     * Helper method to send email notification with proper error handling and logging
+     */
+    private void sendEmailNotification(User user, String message, String type, String category, Long loanId) {
+        if (emailNotificationService == null) {
+            logger.debug("⚠️  Email service not available, skipping email for type: {}", type);
+            return;
+        }
+        
+        if (user.getEmail() == null || user.getEmail().isEmpty()) {
+            logger.warn("⚠️  User {} has no email configured, cannot send notification email", user.getUsername());
+            return;
+        }
+        
+        try {
+            String subject = getEmailSubject(type, category);
+            String notificationType = category != null ? category : type;
+            
+            logger.info("📧 Sending email notification to: {} (Subject: {})", user.getEmail(), subject);
+            
+            emailNotificationService.sendNotificationEmail(
+                user.getEmail(),
+                subject,
+                message,
+                notificationType
+            );
+            
+            logger.info("✅ Email sent successfully to: {} for user: {}", user.getEmail(), user.getUsername());
+        } catch (Exception e) {
+            logger.error("❌ Failed to send email notification to {} ({}): {}", 
+                user.getUsername(), user.getEmail(), e.getMessage());
         }
     }
 
@@ -197,7 +220,10 @@ public class NotificationService {
     @Transactional
     public void notifyUsersByRole(String role, String message, String type) {
         List<User> users = userRepository.findByRole(User.Role.valueOf(role));
+        logger.info("📢 Sending {} notifications to {} users with role: {}", type, users.size(), role);
+        
         for (User user : users) {
+            // Save notification to database
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setMessage(message);
@@ -206,13 +232,25 @@ public class NotificationService {
             notification.setRead(false);
             notification.setCreatedAt(LocalDateTime.now());
             notificationRepository.save(notification);
+            
+            // Send email notification
+            sendEmailNotification(user, message, type, null, null);
+            
+            // Send push notification
+            sendPushNotification(user, message, type, null);
         }
+        
+        logger.info("✅ Completed {} notifications to {} users", type, users.size());
     }
 
     @Transactional
     public void notifyUsersByRole(String role, String message, String type, Long loanId, Long memberId, String category) {
         List<User> users = userRepository.findByRole(User.Role.valueOf(role));
+        logger.info("📢 Sending {} notifications to {} users with role: {} (Category: {})", 
+            type, users.size(), role, category);
+        
         for (User user : users) {
+            // Save notification to database
             Notification notification = new Notification();
             notification.setUser(user);
             notification.setMessage(message);
@@ -224,7 +262,15 @@ public class NotificationService {
             notification.setRead(false);
             notification.setCreatedAt(LocalDateTime.now());
             notificationRepository.save(notification);
+            
+            // Send email notification
+            sendEmailNotification(user, message, type, category, loanId);
+            
+            // Send push notification
+            sendPushNotification(user, message, category != null ? category : type, null);
         }
+        
+        logger.info("✅ Completed {} notifications to {} users", type, users.size());
     }
 
     public List<Notification> getUserNotifications(Long userId) {

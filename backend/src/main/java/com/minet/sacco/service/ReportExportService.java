@@ -545,22 +545,35 @@ public class ReportExportService {
             colHeaderRow.createCell(2).setCellValue("Type");
             colHeaderRow.createCell(3).setCellValue("Amount");
             colHeaderRow.createCell(4).setCellValue("Description");
+            colHeaderRow.createCell(5).setCellValue("Balance");
             
             // Data rows
             int rowNum = 5;
+            if (report.getOpeningBalances() != null) {
+                for (java.util.Map.Entry<String, java.math.BigDecimal> ob : report.getOpeningBalances().entrySet()) {
+                    Row obRow = sheet.createRow(rowNum++);
+                    obRow.createCell(1).setCellValue(ob.getKey());
+                    obRow.createCell(2).setCellValue("OPENING BALANCE");
+                    obRow.createCell(5).setCellValue(ob.getValue().doubleValue());
+                }
+            }
             for (ReportsService.MemberStatementEntry entry : report.getEntries()) {
                 Row row = sheet.createRow(rowNum++);
                 row.createCell(0).setCellValue(entry.getDate().toString());
                 row.createCell(1).setCellValue(entry.getAccountType());
                 row.createCell(2).setCellValue(entry.getTransactionType());
                 row.createCell(3).setCellValue(entry.getAmount().doubleValue());
-                row.createCell(4).setCellValue(entry.getDescription());
+                row.createCell(4).setCellValue(entry.getDescription() == null ? "" : entry.getDescription());
+                if (entry.getBalance() != null) row.createCell(5).setCellValue(entry.getBalance().doubleValue());
             }
             
             // Totals
             Row totalRow = sheet.createRow(rowNum + 1);
-            totalRow.createCell(0).setCellValue("TOTALS");
-            totalRow.createCell(3).setCellValue(report.getTotalDeposits().add(report.getTotalWithdrawals()).doubleValue());
+            totalRow.createCell(0).setCellValue("TOTAL CREDITS");
+            totalRow.createCell(3).setCellValue(report.getTotalDeposits().doubleValue());
+            Row totalRow2 = sheet.createRow(rowNum + 2);
+            totalRow2.createCell(0).setCellValue("TOTAL DEBITS");
+            totalRow2.createCell(3).setCellValue(report.getTotalWithdrawals().doubleValue());
             
             // Current Balances
             Row balanceHeaderRow = sheet.createRow(rowNum + 3);
@@ -573,7 +586,7 @@ public class ReportExportService {
                 balanceRow.createCell(1).setCellValue(report.getCurrentBalances().get(accountType).doubleValue());
             }
             
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 6; i++) {
                 sheet.autoSizeColumn(i);
             }
             
@@ -610,20 +623,22 @@ public class ReportExportService {
             document.add(new Paragraph(""));
             
             // Transactions table
-            Table table = new Table(5);
+            Table table = new Table(6);
             table.setWidth(100);
             addHeaderCell(table, "Date");
             addHeaderCell(table, "Account");
             addHeaderCell(table, "Type");
             addHeaderCell(table, "Amount");
             addHeaderCell(table, "Description");
+            addHeaderCell(table, "Balance");
             
             for (ReportsService.MemberStatementEntry entry : report.getEntries()) {
                 table.addCell(new Cell().add(new Paragraph(entry.getDate().toString()).setFontSize(9)));
                 table.addCell(new Cell().add(new Paragraph(entry.getAccountType()).setFontSize(9)));
                 table.addCell(new Cell().add(new Paragraph(entry.getTransactionType()).setFontSize(9)));
                 table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getAmount())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
-                table.addCell(new Cell().add(new Paragraph(entry.getDescription()).setFontSize(9)));
+                table.addCell(new Cell().add(new Paragraph(entry.getDescription() == null ? "" : entry.getDescription()).setFontSize(9)));
+                table.addCell(new Cell().add(new Paragraph(formatCurrency(entry.getBalance())).setFontSize(9).setTextAlignment(TextAlignment.RIGHT)));
             }
             
             document.add(table);
@@ -695,7 +710,7 @@ public class ReportExportService {
         if (amount == null) {
             return "0.00";
         }
-        return String.format("%,.2f", amount);
+        return String.format(java.util.Locale.US, "%,.2f", amount);
     }
 
     private double toDouble(BigDecimal amount) {

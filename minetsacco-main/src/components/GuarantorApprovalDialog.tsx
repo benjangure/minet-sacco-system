@@ -15,6 +15,9 @@ interface GuarantorRequest {
   loan: any;
   member: any;
   status: string;
+  type?: string;
+  topUpRequest?: any;
+  guaranteeAmount?: number;
 }
 
 interface GuarantorApprovalDialogProps {

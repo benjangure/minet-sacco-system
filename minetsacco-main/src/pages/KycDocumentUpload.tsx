@@ -95,7 +95,7 @@ const KycDocumentUpload = () => {
         const docs = memberStatus?.documents || [];
         setUploadedDocs(docs);
         // Track which document types have been uploaded
-        const uploadedTypes = new Set(docs.map((doc: UploadedDoc) => doc.documentType));
+        const uploadedTypes = new Set<string>(docs.map((doc: UploadedDoc) => doc.documentType));
         setUploadedDocTypes(uploadedTypes);
       }
     } catch (error) {

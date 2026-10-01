@@ -1,5 +1,5 @@
-const CACHE_NAME = 'minet-sacco-v4';
-const OFFLINE_CACHE = 'minet-sacco-offline-v4';
+const CACHE_NAME = 'minet-sacco-v5';
+const OFFLINE_CACHE = 'minet-sacco-offline-v5';
 const LOGO_CACHE_VERSION = 'v4-minet-logo-final';
 
 // Critical pages to cache for offline access

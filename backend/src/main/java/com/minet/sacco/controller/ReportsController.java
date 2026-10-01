@@ -72,7 +72,6 @@ public class ReportsController {
     // ===== CASHBOOK ENDPOINTS =====
     @GetMapping("/cashbook")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
-    @org.springframework.cache.annotation.Cacheable(value = "cashbookReportAPI", key = "#startDate + '-' + #endDate + '-' + #memberNumber + '-' + #transactionType + '-' + #accountType", unless = "#result == null")
     public ResponseEntity<ApiResponse<ReportsService.CashbookReport>> getCashbook(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -81,13 +80,10 @@ public class ReportsController {
             @RequestParam(required = false) String accountType,
             @RequestParam(required = false) BigDecimal openingBalance) {
         
-        if (openingBalance == null) {
-            openingBalance = BigDecimal.ZERO;
-        }
         
         ReportsService.CashbookReport report = reportsService.generateCashbook(startDate, endDate, memberNumber, transactionType, accountType, openingBalance);
         return ResponseEntity.ok()
-                .cacheControl(org.springframework.http.CacheControl.maxAge(5, java.util.concurrent.TimeUnit.MINUTES))
+                .cacheControl(org.springframework.http.CacheControl.noStore())
                 .body(ApiResponse.success("Cashbook report generated successfully", report));
     }
 
@@ -101,9 +97,6 @@ public class ReportsController {
             @RequestParam(required = false) String accountType,
             @RequestParam(required = false) BigDecimal openingBalance) throws Exception {
         
-        if (openingBalance == null) {
-            openingBalance = BigDecimal.ZERO;
-        }
         
         ReportsService.CashbookReport report = reportsService.generateCashbook(startDate, endDate, memberNumber, transactionType, accountType, openingBalance);
         byte[] excelFile = reportExportService.exportCashbookToExcel(report);
@@ -124,9 +117,6 @@ public class ReportsController {
             @RequestParam(required = false) String accountType,
             @RequestParam(required = false) BigDecimal openingBalance) throws Exception {
         
-        if (openingBalance == null) {
-            openingBalance = BigDecimal.ZERO;
-        }
         
         ReportsService.CashbookReport report = reportsService.generateCashbook(startDate, endDate, memberNumber, transactionType, accountType, openingBalance);
         byte[] pdfFile = reportExportService.exportCashbookToPdf(report);

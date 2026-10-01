@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# secrets
+android/app/keystore.properties
+*.keystore
+android/app/release.keystore

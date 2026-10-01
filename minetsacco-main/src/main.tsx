@@ -18,9 +18,6 @@ console.error = (...args) => {
 SplashScreen.show({
   showDuration: 3000,
   autoHide: true,
-  backgroundColor: '#ef4444',
-  spinnerStyle: 'large',
-  spinnerColor: '#ffffff',
 });
 
 // Service Worker update handler - forces logo cache refresh

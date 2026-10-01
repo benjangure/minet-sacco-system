@@ -2446,7 +2446,7 @@ const Loans = () => {
                       <div className="bg-white rounded p-1.5 border border-purple-100">
                         <p className="text-gray-600 text-xs">Total Repaid</p>
                         <p className="font-bold text-purple-600">
-                          {formatCurrency(selectedLoanForDetails.totalRepaid)}
+                          {formatCurrency((selectedLoanForDetails.principalRepaid || 0) + (selectedLoanForDetails.interestCollected || 0))}
                         </p>
                       </div>
                       <div className="bg-white rounded p-1.5 border border-red-100">
@@ -3476,7 +3476,7 @@ const Loans = () => {
                                   </Button>
                                 </div>
                                 <p className="text-xs text-blue-600 bg-blue-50 p-1 rounded">
-                                  Will freeze: {formatCurrency(frozen)}
+                                  Will freeze: {formatCurrency(Number(frozen))}
                                 </p>
                               </div>
                             );
@@ -4102,6 +4102,7 @@ const Loans = () => {
             totalRepayable: "",
             monthlyRepayment: "",
             interestCollected: "",
+            principalRepaid: "",
             reason: ""
           });
         }

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '@/config/api';
 import { AlertCircle, Download, RefreshCw, TrendingUp } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { useAuth } from '../contexts/AuthContext';
 
 interface RiskyGuarantee {
   loanId: number;
@@ -42,7 +41,6 @@ const OverCommittedGuarantorsReport: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedGuarantor, setExpandedGuarantor] = useState<number | null>(null);
-  const { authToken, userRole } = useAuth();
 
   useEffect(() => {
     fetchReport();
@@ -52,11 +50,10 @@ const OverCommittedGuarantorsReport: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:9090'}/api/reports/over-committed-guarantors`,
+      const response = await api.get(
+        `/reports/over-committed-guarantors`,
         {
           headers: {
-            Authorization: `Bearer ${authToken}`,
             'Content-Type': 'application/json',
           },
         }
@@ -72,10 +69,10 @@ const OverCommittedGuarantorsReport: React.FC = () => {
 
   const exportToExcel = async () => {
     try {
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:9090'}/api/reports/over-committed-guarantors/export/excel`,
+      const response = await api.get(
+        `/reports/over-committed-guarantors/export/excel`,
         {
-          headers: { Authorization: `Bearer ${authToken}` },
+          
           responseType: 'blob',
         }
       );
@@ -94,10 +91,10 @@ const OverCommittedGuarantorsReport: React.FC = () => {
 
   const exportToPdf = async () => {
     try {
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:9090'}/api/reports/over-committed-guarantors/export/pdf`,
+      const response = await api.get(
+        `/reports/over-committed-guarantors/export/pdf`,
         {
-          headers: { Authorization: `Bearer ${authToken}` },
+          
           responseType: 'blob',
         }
       );

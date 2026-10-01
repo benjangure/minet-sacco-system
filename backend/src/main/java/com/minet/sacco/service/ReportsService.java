@@ -3,7 +3,6 @@ package com.minet.sacco.service;
 import com.minet.sacco.entity.*;
 import com.minet.sacco.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -30,11 +29,35 @@ public class ReportsService {
     @Autowired
     private LoanRepaymentRepository loanRepaymentRepository;
 
+    /** Round monetary values to 2 decimal places (half-up); null-safe. */
+    static BigDecimal money(BigDecimal v) {
+        return (v == null ? BigDecimal.ZERO : v).setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    /** Signed cash effect of a transaction on the SACCO cashbook (receipts +, payments -). */
+    static BigDecimal cashEffect(Transaction t) {
+        BigDecimal a = t.getAmount() == null ? BigDecimal.ZERO : t.getAmount();
+        return switch (t.getTransactionType()) {
+            case DEPOSIT, LOAN_REPAYMENT -> a;
+            case WITHDRAWAL, LOAN_DISBURSEMENT -> a.negate();
+            default -> BigDecimal.ZERO;
+        };
+    }
+
+    /** Signed effect of a transaction on a member account balance. */
+    static BigDecimal accountEffect(Transaction t) {
+        BigDecimal a = t.getAmount() == null ? BigDecimal.ZERO : t.getAmount();
+        return switch (t.getTransactionType()) {
+            case DEPOSIT, LOAN_DISBURSEMENT -> a;
+            case WITHDRAWAL, LOAN_REPAYMENT -> a.negate();
+            default -> BigDecimal.ZERO;
+        };
+    }
+
     /**
-     * Generate Cashbook - Daily transaction log with filters
-     * Cached for 5 minutes to improve dashboard performance
+     * Generate Cashbook - Daily transaction log with filters.
+     * Not cached: financial reports must always reflect the live ledger.
      */
-    @Cacheable(value = "cashbookReport", key = "#startDate + '-' + #endDate + '-' + #memberNumber + '-' + #transactionType + '-' + #accountType", unless = "#result == null")
     public CashbookReport generateCashbook(LocalDate startDate, LocalDate endDate, 
                                           String memberNumber, String transactionType, String accountType) {
         return generateCashbook(startDate, endDate, memberNumber, transactionType, accountType, BigDecimal.ZERO);
@@ -48,19 +71,25 @@ public class ReportsService {
         report.setEndDate(endDate);
         report.setGeneratedAt(LocalDateTime.now());
 
-        // Initialize opening balance
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay().minusNanos(1);
+
+        // Opening balance: when not supplied, derive it from all cash movements before the period
         if (openingBalance == null) {
-            openingBalance = BigDecimal.ZERO;
+            openingBalance = transactionRepository.findAllBefore(startDateTime).stream()
+                    .filter(t -> memberNumber == null || memberNumber.isEmpty() ||
+                               t.getAccount().getMember().getMemberNumber().equals(memberNumber))
+                    .filter(t -> transactionType == null || transactionType.isEmpty() ||
+                               t.getTransactionType().toString().equals(transactionType))
+                    .filter(t -> accountType == null || accountType.isEmpty() ||
+                               t.getAccount().getAccountType().toString().equals(accountType))
+                    .map(ReportsService::cashEffect)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
+        openingBalance = money(openingBalance);
         report.setOpeningBalance(openingBalance);
 
-        LocalDateTime startDateTime = startDate.atStartOfDay();
-        LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
-
-        List<Transaction> transactions = transactionRepository.findAll().stream()
-                .filter(t -> t.getTransactionDate() != null && 
-                           !t.getTransactionDate().isBefore(startDateTime) && 
-                           !t.getTransactionDate().isAfter(endDateTime))
+        List<Transaction> transactions = transactionRepository.findAllForReportInRange(startDateTime, endDateTime).stream()
                 .filter(t -> memberNumber == null || memberNumber.isEmpty() || 
                            t.getAccount().getMember().getMemberNumber().equals(memberNumber))
                 .filter(t -> transactionType == null || transactionType.isEmpty() || 
@@ -116,30 +145,29 @@ public class ReportsService {
         report.setEntries(entries);
         
         // Set breakdown fields
-        report.setTotalDeposits(totalDeposits);
-        report.setTotalWithdrawals(totalWithdrawals);
-        report.setTotalRepayments(totalRepayments);
-        report.setTotalDisbursements(totalDisbursements);
+        report.setTotalDeposits(money(totalDeposits));
+        report.setTotalWithdrawals(money(totalWithdrawals));
+        report.setTotalRepayments(money(totalRepayments));
+        report.setTotalDisbursements(money(totalDisbursements));
         
         // Set summary fields
-        report.setTotalReceipts(totalReceipts);
-        report.setTotalPayments(totalPayments);
+        report.setTotalReceipts(money(totalReceipts));
+        report.setTotalPayments(money(totalPayments));
         
         // Calculate closing balance: openingBalance + totalReceipts - totalPayments
         BigDecimal closingBalance = openingBalance.add(totalReceipts).subtract(totalPayments);
-        report.setClosingBalance(closingBalance);
+        report.setClosingBalance(money(closingBalance));
         
         // Legacy field for backward compatibility
-        report.setNetCash(totalReceipts.subtract(totalPayments));
+        report.setNetCash(money(totalReceipts.subtract(totalPayments)));
 
         return report;
     }
 
     /**
      * Generate Trial Balance - All accounts with debit/credit balances
-     * Cached for 5 minutes
+     * Not cached (live data).
      */
-    @Cacheable(value = "trialBalanceReport", key = "#memberNumber + '-' + #accountType", unless = "#result == null")
     public TrialBalanceReport generateTrialBalance(String memberNumber, String accountType) {
         TrialBalanceReport report = new TrialBalanceReport();
         report.setGeneratedAt(LocalDateTime.now());
@@ -173,7 +201,7 @@ public class ReportsService {
 
         // Add loan accounts (assets - debits)
         List<Loan> loans = loanRepository.findAll().stream()
-                .filter(l -> l.getStatus() == Loan.Status.DISBURSED || l.getStatus() == Loan.Status.APPROVED)
+                .filter(l -> l.getStatus() == Loan.Status.DISBURSED && l.getOutstandingBalance() != null)
                 .collect(Collectors.toList());
 
         for (Loan loan : loans) {
@@ -202,14 +230,13 @@ public class ReportsService {
      * Generate Balance Sheet - Assets, Liabilities, Equity
      * Cached for 10 minutes as it's expensive
      */
-    @Cacheable(value = "balanceSheetReport", unless = "#result == null")
     public BalanceSheetReport generateBalanceSheet() {
         BalanceSheetReport report = new BalanceSheetReport();
         report.setGeneratedAt(LocalDateTime.now());
 
         // ASSETS: Loans outstanding
         List<Loan> activeLoans = loanRepository.findAll().stream()
-                .filter(l -> l.getStatus() == Loan.Status.DISBURSED || l.getStatus() == Loan.Status.APPROVED)
+                .filter(l -> l.getStatus() == Loan.Status.DISBURSED && l.getOutstandingBalance() != null)
                 .collect(Collectors.toList());
 
         BigDecimal totalLoansOutstanding = activeLoans.stream()
@@ -259,46 +286,50 @@ public class ReportsService {
         report.setGeneratedAt(LocalDateTime.now());
 
         LocalDateTime startDateTime = startDate.atStartOfDay();
-        LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
+        LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay().minusNanos(1);
 
-        // Get all accounts for member with optimized query
         List<Account> memberAccounts = accountRepository.findByMemberIdWithDetails(memberId);
+
+        // Opening balance per account type, derived from history before the period
+        Map<String, BigDecimal> running = new HashMap<>();
+        for (Account account : memberAccounts) {
+            running.put(account.getAccountType().toString(), BigDecimal.ZERO);
+        }
+        for (Transaction t : transactionRepository.findByMemberBefore(memberId, startDateTime)) {
+            running.merge(t.getAccount().getAccountType().toString(), accountEffect(t), BigDecimal::add);
+        }
+        Map<String, BigDecimal> openingBalances = new HashMap<>();
+        running.forEach((k, v) -> openingBalances.put(k, money(v)));
+        report.setOpeningBalances(openingBalances);
 
         List<MemberStatementEntry> entries = new ArrayList<>();
         BigDecimal totalDeposits = BigDecimal.ZERO;
         BigDecimal totalWithdrawals = BigDecimal.ZERO;
 
-        for (Account account : memberAccounts) {
-            List<Transaction> transactions = transactionRepository.findAll().stream()
-                    .filter(t -> t.getAccount().getId().equals(account.getId()) &&
-                               t.getTransactionDate() != null &&
-                               !t.getTransactionDate().isBefore(startDateTime) &&
-                               !t.getTransactionDate().isAfter(endDateTime))
-                    .sorted(Comparator.comparing(Transaction::getTransactionDate))
-                    .collect(Collectors.toList());
+        for (Transaction transaction : transactionRepository.findByMemberInRangeAsc(memberId, startDateTime, endDateTime)) {
+            String accType = transaction.getAccount().getAccountType().toString();
+            BigDecimal effect = accountEffect(transaction);
+            BigDecimal bal = running.merge(accType, effect, BigDecimal::add);
 
-            for (Transaction transaction : transactions) {
-                MemberStatementEntry entry = new MemberStatementEntry();
-                entry.setDate(transaction.getTransactionDate().toLocalDate());
-                entry.setAccountType(account.getAccountType().toString());
-                entry.setTransactionType(transaction.getTransactionType().toString());
-                entry.setAmount(transaction.getAmount());
-                entry.setDescription(transaction.getDescription());
+            MemberStatementEntry entry = new MemberStatementEntry();
+            entry.setDate(transaction.getTransactionDate().toLocalDate());
+            entry.setAccountType(accType);
+            entry.setTransactionType(transaction.getTransactionType().toString());
+            entry.setAmount(money(transaction.getAmount()));
+            entry.setDescription(transaction.getDescription());
+            entry.setBalance(money(bal));
+            entries.add(entry);
 
-                entries.add(entry);
-
-                if (transaction.getTransactionType() == Transaction.TransactionType.DEPOSIT ||
-                    transaction.getTransactionType() == Transaction.TransactionType.LOAN_DISBURSEMENT) {
-                    totalDeposits = totalDeposits.add(transaction.getAmount());
-                } else if (transaction.getTransactionType() == Transaction.TransactionType.WITHDRAWAL) {
-                    totalWithdrawals = totalWithdrawals.add(transaction.getAmount());
-                }
+            if (effect.signum() > 0) {
+                totalDeposits = totalDeposits.add(transaction.getAmount());
+            } else if (effect.signum() < 0) {
+                totalWithdrawals = totalWithdrawals.add(transaction.getAmount());
             }
         }
 
         report.setEntries(entries);
-        report.setTotalDeposits(totalDeposits);
-        report.setTotalWithdrawals(totalWithdrawals);
+        report.setTotalDeposits(money(totalDeposits));
+        report.setTotalWithdrawals(money(totalWithdrawals));
 
         // Current balances
         Map<String, BigDecimal> currentBalances = new HashMap<>();
@@ -312,9 +343,8 @@ public class ReportsService {
 
     /**
      * Generate Loan Register - All loans with status and repayment schedule
-     * Cached for 5 minutes
+     * Not cached (live data).
      */
-    @Cacheable(value = "loanRegisterReport", key = "#memberNumber + '-' + #loanStatus + '-' + #loanProduct", unless = "#result == null")
     public LoanRegisterReport generateLoanRegister(String memberNumber, String loanStatus, String loanProduct) {
         LoanRegisterReport report = new LoanRegisterReport();
         report.setGeneratedAt(LocalDateTime.now());
@@ -351,8 +381,8 @@ public class ReportsService {
 
             entries.add(entry);
 
-            totalLoansIssued = totalLoansIssued.add(loan.getAmount());
-            totalOutstanding = totalOutstanding.add(loan.getOutstandingBalance());
+            totalLoansIssued = totalLoansIssued.add(loan.getAmount() == null ? BigDecimal.ZERO : loan.getAmount());
+            totalOutstanding = totalOutstanding.add(loan.getOutstandingBalance() == null ? BigDecimal.ZERO : loan.getOutstandingBalance());
 
             // Calculate total repaid
             BigDecimal totalRepaidForLoan = loanRepaymentRepository.getTotalRepaidAmount(loan.getId());
@@ -362,9 +392,9 @@ public class ReportsService {
         }
 
         report.setEntries(entries);
-        report.setTotalLoansIssued(totalLoansIssued);
-        report.setTotalOutstanding(totalOutstanding);
-        report.setTotalRepaid(totalRepaid);
+        report.setTotalLoansIssued(money(totalLoansIssued));
+        report.setTotalOutstanding(money(totalOutstanding));
+        report.setTotalRepaid(money(totalRepaid));
 
         return report;
     }
@@ -529,6 +559,7 @@ public class ReportsService {
         private BigDecimal totalDeposits;
         private BigDecimal totalWithdrawals;
         private Map<String, BigDecimal> currentBalances;
+        private Map<String, BigDecimal> openingBalances;
 
         // Getters and Setters
         public Long getMemberId() { return memberId; }
@@ -549,6 +580,8 @@ public class ReportsService {
         public void setTotalDeposits(BigDecimal totalDeposits) { this.totalDeposits = totalDeposits; }
         public BigDecimal getTotalWithdrawals() { return totalWithdrawals; }
         public void setTotalWithdrawals(BigDecimal totalWithdrawals) { this.totalWithdrawals = totalWithdrawals; }
+        public Map<String, BigDecimal> getOpeningBalances() { return openingBalances; }
+        public void setOpeningBalances(Map<String, BigDecimal> openingBalances) { this.openingBalances = openingBalances; }
         public Map<String, BigDecimal> getCurrentBalances() { return currentBalances; }
         public void setCurrentBalances(Map<String, BigDecimal> currentBalances) { this.currentBalances = currentBalances; }
     }
@@ -559,6 +592,7 @@ public class ReportsService {
         private String transactionType;
         private BigDecimal amount;
         private String description;
+        private BigDecimal balance;
 
         // Getters and Setters
         public LocalDate getDate() { return date; }
@@ -569,6 +603,8 @@ public class ReportsService {
         public void setTransactionType(String transactionType) { this.transactionType = transactionType; }
         public BigDecimal getAmount() { return amount; }
         public void setAmount(BigDecimal amount) { this.amount = amount; }
+        public BigDecimal getBalance() { return balance; }
+        public void setBalance(BigDecimal balance) { this.balance = balance; }
         public String getDescription() { return description; }
         public void setDescription(String description) { this.description = description; }
     }

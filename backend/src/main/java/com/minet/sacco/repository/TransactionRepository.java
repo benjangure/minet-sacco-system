@@ -17,6 +17,30 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     List<Transaction> findByTransactionType(Transaction.TransactionType transactionType);
 
+    // ===== Report queries (database-side filtering; avoids loading the whole ledger) =====
+    @Query("SELECT t FROM Transaction t JOIN FETCH t.account a JOIN FETCH a.member m " +
+           "WHERE t.transactionDate >= :startDate AND t.transactionDate <= :endDate " +
+           "ORDER BY t.transactionDate ASC, t.id ASC")
+    List<Transaction> findAllForReportInRange(@Param("startDate") LocalDateTime startDate,
+                                              @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT t FROM Transaction t JOIN FETCH t.account a " +
+           "WHERE a.member.id = :memberId " +
+           "AND t.transactionDate >= :startDate AND t.transactionDate <= :endDate " +
+           "ORDER BY t.transactionDate ASC, t.id ASC")
+    List<Transaction> findByMemberInRangeAsc(@Param("memberId") Long memberId,
+                                             @Param("startDate") LocalDateTime startDate,
+                                             @Param("endDate") LocalDateTime endDate);
+
+    @Query("SELECT t FROM Transaction t JOIN FETCH t.account a JOIN FETCH a.member m " +
+           "WHERE t.transactionDate < :before")
+    List<Transaction> findAllBefore(@Param("before") LocalDateTime before);
+
+    @Query("SELECT t FROM Transaction t JOIN FETCH t.account a " +
+           "WHERE a.member.id = :memberId AND t.transactionDate < :before")
+    List<Transaction> findByMemberBefore(@Param("memberId") Long memberId,
+                                         @Param("before") LocalDateTime before);
+
     List<Transaction> findByAccountIdAndTransactionDateBetween(Long accountId, LocalDateTime startDate, LocalDateTime endDate);
 
     List<Transaction> findByCreatedById(Long createdById);

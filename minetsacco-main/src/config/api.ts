@@ -8,7 +8,12 @@ import { Capacitor } from '@capacitor/core';
 import { getPlatformAdapter } from '@/utils/capacitorAxiosAdapter';
 
 // The one true backend URL for this deployment
-const SERVER_BACKEND_URL = 'http://10.39.60.15:9090';
+// Configurable per build via VITE_API_URL / VITE_NATIVE_BACKEND_URL (.env.production); falls back to the current server
+const SERVER_BACKEND_URL: string = (
+  (Capacitor.isNativePlatform() ? import.meta.env.VITE_NATIVE_BACKEND_URL : undefined) ||
+  import.meta.env.VITE_API_URL ||
+  'http://10.39.60.15:9090'
+).replace(/\/+$/, '');
 
 export const getBackendUrl = (): string => {
   // Native Capacitor app (APK) — always use server backend

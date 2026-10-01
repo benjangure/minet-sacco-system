@@ -8,12 +8,13 @@ import { Capacitor, CapacitorHttp, HttpResponse } from '@capacitor/core';
 interface FetchOptions {
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | FormData;
 }
 
 interface NativeHttpResponse {
   ok: boolean;
   status: number;
+  statusText?: string;
   json: () => Promise<any>;
   text: () => Promise<string>;
   blob: () => Promise<Blob>;
@@ -29,7 +30,7 @@ export async function nativeFetch(url: string, options: FetchOptions = {}): Prom
   const method = options.method || 'GET';
 
   // On Android, use CapacitorHttp for better network/SSL handling
-  if (Capacitor.getPlatform() === 'android') {
+  if (Capacitor.getPlatform() === "android" && !(options.body instanceof FormData)) {
     try {
       console.log('[NativeHttp] Using CapacitorHttp for Android:', url);
       
@@ -37,7 +38,7 @@ export async function nativeFetch(url: string, options: FetchOptions = {}): Prom
         url: url,
         method: method,
         headers: options.headers || {},
-        data: options.body ? JSON.parse(options.body) : undefined,
+        data: typeof options.body === "string" ? JSON.parse(options.body) : undefined,
       });
 
       console.log('[NativeHttp] CapacitorHttp response status:', response.status);

@@ -23,7 +23,7 @@ export interface PushSubscriptionResponse {
 /**
  * Handle authentication errors (401/403) by redirecting to appropriate login
  */
-const handleAuthError = (response: Response): void => {
+const handleAuthError = (response: { status: number }): void => {
   if (response.status === 401 || response.status === 403) {
     const currentPath = window.location.pathname;
     const isMemberPortal = currentPath.startsWith('/member');
@@ -319,7 +319,7 @@ class PushNotificationService {
   /**
    * Get authentication headers for API requests
    */
-  private getAuthHeaders(): HeadersInit {
+  private getAuthHeaders(): Record<string, string> {
     let token = null;
 
     try {

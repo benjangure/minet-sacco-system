@@ -34,6 +34,12 @@ public class CustomerSupportService {
     @Autowired
     private AuditService auditService;
 
+    @Autowired
+    private PasswordResetService passwordResetService;
+
+    @Autowired
+    private EmailService emailService;
+
     /**
      * Create a support ticket
      */
@@ -113,25 +119,39 @@ public class CustomerSupportService {
     }
 
     /**
-     * Send password reset email to member
+     * Send password reset email to member (Admin initiated)
+     * This method requests a password reset for a member via the PasswordResetService
+     * which handles token generation, storage, and email sending.
      */
     @Transactional
     public void sendPasswordResetEmail(Member member, User initiatedBy) {
-        // Generate a temporary password reset token
-        String resetToken = java.util.UUID.randomUUID().toString();
-        
-        // In a real implementation, you would:
-        // 1. Store the reset token in a PasswordResetToken entity with expiration
-        // 2. Send an email with a link containing the token
-        // 3. Member clicks link and sets new password
-        
-        // For now, we'll log the action and prepare for email sending
-        auditService.logAction(initiatedBy, "RESET_PASSWORD_REQUEST", "MEMBER", member.getId(),
-                "Password reset initiated for member: " + member.getFirstName() + " " + member.getLastName(),
-                "Reset token: " + resetToken, "SUCCESS");
-        
-        // TODO: Implement actual email sending via EmailService
-        // emailService.sendPasswordResetEmail(member.getEmail(), resetToken);
+        try {
+            // Get member's user account
+            User memberUser = userRepository.findByMemberId(member.getId())
+                    .orElseThrow(() -> new RuntimeException("User account not found for member: " + member.getId()));
+            
+            // Use PasswordResetService to handle token generation and email sending
+            // This is admin-initiated password reset (true = admin initiated)
+            String resetToken = passwordResetService.requestPasswordResetForMember(memberUser.getUsername(), true);
+            
+            if (resetToken != null) {
+                // Log successful password reset initiation
+                auditService.logAction(initiatedBy, "RESET_PASSWORD_REQUEST", "MEMBER", member.getId(),
+                        "Password reset initiated for member: " + member.getFirstName() + " " + member.getLastName(),
+                        "Reset email sent to: " + member.getEmail(), "SUCCESS");
+            } else {
+                // Log failed password reset
+                auditService.logAction(initiatedBy, "RESET_PASSWORD_REQUEST", "MEMBER", member.getId(),
+                        "Password reset FAILED for member: " + member.getFirstName() + " " + member.getLastName(),
+                        "Reason: Could not generate reset token", "FAILED");
+            }
+        } catch (Exception e) {
+            // Log exception and fail gracefully
+            auditService.logAction(initiatedBy, "RESET_PASSWORD_REQUEST", "MEMBER", member.getId(),
+                    "Password reset FAILED for member: " + member.getFirstName() + " " + member.getLastName(),
+                    "Error: " + e.getMessage(), "FAILED");
+            throw new RuntimeException("Failed to send password reset email: " + e.getMessage(), e);
+        }
     }
 
     /**

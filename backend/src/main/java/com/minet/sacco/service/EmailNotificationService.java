@@ -8,12 +8,16 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 @Service
 public class EmailNotificationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(EmailNotificationService.class);
 
     private final JavaMailSender mailSender;
     
@@ -31,18 +35,50 @@ public class EmailNotificationService {
     }
 
     /**
-     * Send notification email asynchronously
+     * Send notification email asynchronously with retry capability
+     * - Retries up to 3 times if email sending fails
+     * - Waits 2 seconds between retries, with exponential backoff
+     * - Non-blocking: returns immediately, email sends in background thread
      */
-    @Async
+    @Async("taskExecutor")
     public void sendNotificationEmail(String toEmail, String subject, String notificationMessage, String notificationType) {
-        try {
-            String htmlContent = buildEmailTemplate(subject, notificationMessage, notificationType);
-            sendHtmlEmail(toEmail, subject, htmlContent);
-            System.out.println("Email sent successfully to: " + toEmail);
-        } catch (Exception e) {
-            System.err.println("Failed to send email to " + toEmail + ": " + e.getMessage());
-            e.printStackTrace();
+        int maxAttempts = 3;
+        int delayMs = 2000;
+        
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                logger.debug("📧 Sending notification email to {}: {} (Attempt {}/{})", toEmail, subject, attempt, maxAttempts);
+                
+                // Validate email address
+                if (toEmail == null || toEmail.trim().isEmpty()) {
+                    logger.warn("⚠️  Cannot send email: recipient email is empty");
+                    return;
+                }
+                
+                String htmlContent = buildEmailTemplate(subject, notificationMessage, notificationType);
+                sendHtmlEmail(toEmail, subject, htmlContent);
+                logger.info("✅ Email sent successfully to: {}", toEmail);
+                return; // Success - exit
+            } catch (Exception e) {
+                logger.error("❌ Attempt {}/{} failed to send email to {}: {} | Subject: {}", 
+                    attempt, maxAttempts, toEmail, e.getMessage(), subject);
+                
+                if (attempt < maxAttempts) {
+                    try {
+                        // Exponential backoff: 2s, 4s, 8s
+                        long waitTime = delayMs * (long) Math.pow(2, attempt - 1);
+                        logger.info("⏳ Retrying in {} ms...", waitTime);
+                        Thread.sleep(waitTime);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        logger.error("❌ Interrupted while waiting for retry: {}", ie.getMessage());
+                        return;
+                    }
+                }
+            }
         }
+        
+        logger.error("❌ Failed to send email to {} after {} attempts", toEmail, maxAttempts);
     }
 
     /**
@@ -361,9 +397,16 @@ public class EmailNotificationService {
     /**
      * Send test email with beautiful template
      */
-    @Async
+    @Async("taskExecutor")
     public void sendTestEmail(String toEmail) {
         try {
+            logger.info("🧪 Sending test email to: {}", toEmail);
+            
+            if (toEmail == null || toEmail.trim().isEmpty()) {
+                logger.warn("⚠️  Cannot send test email: recipient email is empty");
+                return;
+            }
+            
             String subject = "Welcome to Minet SACCO - Test Notification";
             String message = """
                 <p>Hello!</p>
@@ -381,31 +424,39 @@ public class EmailNotificationService {
             
             String htmlContent = buildEmailTemplate(subject, message, "SYSTEM_TEST");
             sendHtmlEmail(toEmail, subject, htmlContent);
-            System.out.println("✅ Test email sent successfully to: " + toEmail);
+            logger.info("✅ Test email sent successfully to: {}", toEmail);
         } catch (Exception e) {
-            System.err.println("❌ Failed to send test email: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("❌ Failed to send test email to {}: {}", toEmail, e.getMessage(), e);
+            throw new RuntimeException("Test email delivery failed: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Test SMTP connection
+     * Test SMTP connection and validate email configuration
      */
     public boolean testSmtpConnection() {
         try {
+            logger.info("🔍 Testing SMTP connection...");
+            
             // Cast to JavaMailSenderImpl to access testConnection method
             if (mailSender instanceof JavaMailSenderImpl mailSenderImpl) {
                 mailSenderImpl.testConnection();
-                System.out.println("✅ SMTP connection test successful");
+                logger.info("✅ SMTP connection test successful! Email service is operational.");
                 return true;
             } else {
-                System.err.println("❌ Cannot test connection - mailSender is not JavaMailSenderImpl");
+                logger.error("❌ Cannot test connection - mailSender is not JavaMailSenderImpl");
                 return false;
             }
         } catch (Exception e) {
-            System.err.println("❌ SMTP connection test failed: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("❌ SMTP connection test FAILED: {} | Error: {}", e.getClass().getSimpleName(), e.getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Check if email service is properly configured and ready
+     */
+    public boolean isEmailConfigured() {
+        return mailSender != null;
     }
 }

@@ -464,7 +464,6 @@ export default function LoanRepaymentRequests() {
                   step="0.01"
                   value={confirmedAmount}
                   onChange={(e) => setConfirmedAmount(e.target.value)}
-                  max={selectedRequest.amount}
                   max={selectedRequest.loan.outstandingBalance}
                 />
                 <p className="text-xs text-muted-foreground">

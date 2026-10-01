@@ -11,6 +11,7 @@ export interface Notification {
   type: string;
   read: boolean;
   createdAt: string;
+  category?: string;
 }
 
 /**
