@@ -1,13 +1,11 @@
-const CACHE_NAME = 'minet-sacco-v5';
-const OFFLINE_CACHE = 'minet-sacco-offline-v5';
+const CACHE_NAME = 'minet-sacco-v6';
+const OFFLINE_CACHE = 'minet-sacco-offline-v6';
 const LOGO_CACHE_VERSION = 'v4-minet-logo-final';
 
 // Critical pages to cache for offline access
 const CRITICAL_PAGES = [
-  '/member/dashboard',
-  '/member/apply-loan',
-  '/member/account-statement',
-  '/member/loan-balances'
+  '/',
+  '/index.html'
 ];
 
 // Install event - cache critical pages and force logo refresh
@@ -254,86 +252,55 @@ async function syncOfflineActions() {
   }
 }
 
-// Fetch event - Network first with offline fallback
+// Fetch event
+//  - API and cross-origin requests are never intercepted or cached (authenticated, live financial data)
+//  - Navigations are network-first with the cached app shell as the offline fallback
+//  - Same-origin static assets use stale-while-revalidate
 self.addEventListener('fetch', event => {
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
-    return;
-  }
+  const request = event.request;
+  if (request.method !== 'GET') return;
 
-  // Skip chrome-extension and other non-http(s) schemes
-  const url = new URL(event.request.url);
-  if (!url.protocol.startsWith('http')) {
-    return;
-  }
+  const url = new URL(request.url);
+  if (!url.protocol.startsWith('http')) return;
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws')) return;
 
-  // Skip API calls - handle separately
-  if (event.request.url.includes('/api/')) {
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
+      fetch(request)
         .then(response => {
           if (response && response.status === 200) {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then(cache => {
-              cache.put(event.request, responseClone).catch(() => {
-                // Silently ignore cache errors
-              });
-            });
+            const copy = response.clone();
+            caches.open(OFFLINE_CACHE).then(cache => cache.put('/index.html', copy)).catch(() => {});
           }
           return response;
         })
-        .catch(() => {
-          // Try to return cached API response
-          return caches.match(event.request)
-            .then(response => {
-              return response || new Response(
-                JSON.stringify({ error: 'Offline - data may be outdated' }),
-                {
-                  status: 503,
-                  headers: { 'Content-Type': 'application/json' }
-                }
-              );
-            });
-        })
+        .catch(() =>
+          caches.match('/index.html').then(cached =>
+            cached || caches.match('/') || new Response('You are offline. Please check your connection.', {
+              status: 503,
+              headers: { 'Content-Type': 'text/plain' }
+            })
+          )
+        )
     );
     return;
   }
 
-  // For HTML pages - network first
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        if (response && response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseClone).catch(() => {
-              // Silently ignore cache errors
-            });
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        // Try cache first for offline pages
-        return caches.match(event.request)
+    caches.open(CACHE_NAME).then(cache =>
+      cache.match(request).then(cached => {
+        const network = fetch(request)
           .then(response => {
-            if (response) {
-              return response;
+            if (response && response.status === 200 && response.type === 'basic') {
+              cache.put(request, response.clone()).catch(() => {});
             }
-            // Return offline page for critical routes
-            if (CRITICAL_PAGES.some(page => event.request.url.includes(page))) {
-              return caches.match('/member/dashboard')
-                .then(response => response || new Response('Offline - please check your connection', {
-                  status: 503,
-                  headers: { 'Content-Type': 'text/plain' }
-                }));
-            }
-            return new Response('Offline - please check your connection', {
-              status: 503,
-              headers: { 'Content-Type': 'text/plain' }
-            });
-          });
+            return response;
+          })
+          .catch(() => cached);
+        return cached || network;
       })
+    )
   );
 });
 

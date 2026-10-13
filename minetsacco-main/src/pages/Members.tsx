@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatName } from "@/lib/utils";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -527,7 +527,7 @@ const Members = () => {
                     <TabsTrigger value="other">Bank & Next of Kin</TabsTrigger>
                   </TabsList>
                   <TabsContent value="personal" className="space-y-4 pt-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>First Name *</Label>
                         <Input value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} required />
@@ -577,7 +577,7 @@ const Members = () => {
                     </div>
                   </TabsContent>
                   <TabsContent value="employment" className="space-y-4 pt-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Employment Status</Label>
                         <Select value={form.employmentStatus} onValueChange={handleEmploymentStatusChange}>
@@ -624,7 +624,7 @@ const Members = () => {
                   </TabsContent>
                   <TabsContent value="other" className="space-y-4 pt-4">
                     <h3 className="font-semibold">Bank Details</h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Bank Name</Label>
                         <Input value={form.bankName} onChange={e => setForm({...form, bankName: e.target.value})} />
@@ -639,7 +639,7 @@ const Members = () => {
                       </div>
                     </div>
                     <h3 className="font-semibold mt-4">Next of Kin</h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Name</Label>
                         <Input value={form.nextOfKinName} onChange={e => setForm({...form, nextOfKinName: e.target.value})} />
@@ -727,8 +727,8 @@ const Members = () => {
                 <CardTitle className="text-lg">Applicant Information</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><strong>Name:</strong> {approveDialog?.firstName} {approveDialog?.lastName}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div><strong>Name:</strong> {formatName(approveDialog?.fullName || `${approveDialog?.firstName} ${approveDialog?.lastName}`)}</div>
                   <div><strong>National ID:</strong> {approveDialog?.nationalId}</div>
                   <div><strong>Phone:</strong> {approveDialog?.phone}</div>
                   <div><strong>Email:</strong> {approveDialog?.email || "—"}</div>
@@ -1032,8 +1032,8 @@ const Members = () => {
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-muted-foreground">Name:</span> {viewMember.firstName} {viewMember.lastName}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div><span className="text-muted-foreground">Name:</span> {formatName(viewMember.fullName || `${viewMember.firstName} ${viewMember.lastName}`)}</div>
                 <div><span className="text-muted-foreground">Member No.:</span> {viewMember.employeeId || viewMember.memberNumber || "—"}</div>
                 <div><span className="text-muted-foreground">Phone:</span> {viewMember.phone}</div>
                 <div><span className="text-muted-foreground">Email:</span> {viewMember.email || "—"}</div>
@@ -1086,7 +1086,7 @@ const Members = () => {
                 <TableRow key={member.id}>
                   <TableCell className="font-mono text-sm">{member.employeeId || member.memberNumber || "—"}</TableCell>
                   <TableCell className="font-medium">
-                    {member.fullName || member.firstName}
+                    {formatName(member.fullName || member.firstName)}
                     {member.nameNeedsReview && (
                       <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800" title="Name may be incomplete — click edit to correct">
                         ⚠ Review
@@ -1213,7 +1213,7 @@ const Members = () => {
                 </TabsList>
                 
                 <TabsContent value="personal" className="space-y-4 pt-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2 col-span-2">
                       <Label>Full Name</Label>
                       <Input 
@@ -1257,7 +1257,7 @@ const Members = () => {
                 </TabsContent>
 
                 <TabsContent value="employment" className="space-y-4 pt-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Employment Status</Label>
                       <Select 
@@ -1293,7 +1293,7 @@ const Members = () => {
                 <TabsContent value="other" className="space-y-6 pt-4">
                   <div className="space-y-4">
                     <h3 className="font-semibold text-lg">Bank Details</h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Bank Name</Label>
                         <Input 

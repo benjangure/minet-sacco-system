@@ -213,6 +213,10 @@ public class MemberExitService {
         MemberExit exit = memberExitRepository.findById(exitId)
                 .orElseThrow(() -> new RuntimeException("Exit not found"));
 
+        if (exit.getApprovedBy() != null || "APPROVED".equals(exit.getStatus())) {
+            throw new RuntimeException("Exit already approved");
+        }
+
         // Add approval information
         exit.setApprovalNotes(approvalNotes);
         exit.setApprovedBy(approvedBy);

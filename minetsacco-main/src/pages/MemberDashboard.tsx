@@ -377,7 +377,7 @@ export default function MemberDashboard() {
     } catch (err: any) {
       console.error('[Dashboard] Error fetching dashboard:', err);
       const message = err?.message || String(err);
-      setError(`Cannot reach server.\nCheck that backend is running on 10.39.60.15:9090.\nDetails: ${message}`);
+      setError(`Cannot reach server.\nCheck your connection or contact support if the problem persists.\nDetails: ${message}`);
     } finally {
       setLoading(false);
     }

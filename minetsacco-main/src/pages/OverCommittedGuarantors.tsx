@@ -281,6 +281,7 @@ const OverCommittedGuarantors = () => {
 
   // Render function for guarantor table - eliminates duplication
   const renderGuarantorTable = (list: OverCommittedGuarantor[]) => (
+    <div className="overflow-x-auto">
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b bg-gray-50">
@@ -387,6 +388,7 @@ const OverCommittedGuarantors = () => {
         ))}
       </tbody>
     </table>
+    </div>
   );
 
   return (

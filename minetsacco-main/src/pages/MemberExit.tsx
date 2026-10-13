@@ -124,7 +124,7 @@ export default function MemberExit() {
     setShowConfirmDialog(false);
     
     try {
-      const response = await api.post(`/members/${memberId}/exit`, {
+      const response = await api.post(`/members/${memberId}/exit/initiate`, {
         exitReason,
       });
 
@@ -263,7 +263,7 @@ export default function MemberExit() {
             {exitSummary && (
               <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <h3 className="font-semibold mb-3">Exit Summary for {exitSummary.memberName}</h3>
-                <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                   <div>
                     <p className="text-gray-600">Savings Balance</p>
                     <p className="font-semibold">{formatCurrency(exitSummary.savingsBalance)}</p>
@@ -355,6 +355,7 @@ export default function MemberExit() {
           <div className="p-6 border-b bg-yellow-50">
             <h2 className="text-xl font-semibold">Pending Approvals</h2>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -392,6 +393,7 @@ export default function MemberExit() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -400,6 +402,7 @@ export default function MemberExit() {
           <div className="p-6 border-b bg-green-50">
             <h2 className="text-xl font-semibold">Approved Exits</h2>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -430,6 +433,7 @@ export default function MemberExit() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -439,6 +443,7 @@ export default function MemberExit() {
           <div className="p-6 border-b bg-blue-50">
             <h2 className="text-xl font-semibold text-blue-800">All Exits Report</h2>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -479,6 +484,7 @@ export default function MemberExit() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

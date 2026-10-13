@@ -83,8 +83,38 @@ public class MemberReactivationService {
      */
     @Transactional
     public MemberReactivation validateReactivation(Long reactivationId, String validationNotes, User validatedBy) {
+        return validateReactivation(reactivationId, validationNotes, validatedBy, true);
+    }
+
+    /**
+     * Approve or reject a pending reactivation (maker-checker: the initiator cannot validate).
+     */
+    @Transactional
+    public MemberReactivation validateReactivation(Long reactivationId, String validationNotes, User validatedBy, boolean approve) {
         MemberReactivation reactivation = memberReactivationRepository.findById(reactivationId)
                 .orElseThrow(() -> new RuntimeException("Reactivation not found"));
+
+        if (!"PENDING".equals(reactivation.getStatus())) {
+            throw new RuntimeException("Reactivation has already been processed");
+        }
+        if (reactivation.getInitiatedBy() != null && validatedBy != null
+                && reactivation.getInitiatedBy().getId().equals(validatedBy.getId())) {
+            throw new RuntimeException("The person who initiated a reactivation cannot validate it");
+        }
+
+        if (!approve) {
+            reactivation.setValidationNotes(validationNotes);
+            reactivation.setValidatedBy(validatedBy);
+            reactivation.setValidatedAt(LocalDateTime.now());
+            reactivation.setStatus("REJECTED");
+            reactivation.setIsActive(false);
+            MemberReactivation rejected = memberReactivationRepository.save(reactivation);
+            auditService.logAction(validatedBy, "REACTIVATION_REJECTED",
+                    "MemberReactivation", reactivationId,
+                    "Reactivation rejected: " + validationNotes,
+                    "Treasurer rejected member reactivation", "SUCCESS");
+            return rejected;
+        }
 
         // Add validation information and approve reactivation
         reactivation.setValidationNotes(validationNotes);

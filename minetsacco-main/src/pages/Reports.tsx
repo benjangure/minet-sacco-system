@@ -101,7 +101,7 @@ const Reports = () => {
   useEffect(() => {
     if (reportType === "member-contributions" && mcMembers.length === 0 && !mcMembersLoading) {
       setMcMembersLoading(true);
-      fetch(`${API_BASE_URL}/members/status/ACTIVE`, {
+      nativeFetch(`${API_BASE_URL}/members/status/ACTIVE`, {
         headers: { Authorization: `Bearer ${session?.token}` },
       })
         .then(r => r.ok ? r.json() : Promise.reject(r))
@@ -439,7 +439,7 @@ const Reports = () => {
               {reportType === "cashbook" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Cashbook Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Start Date *</label>
                       <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -493,7 +493,7 @@ const Reports = () => {
               {reportType === "trial-balance" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Trial Balance Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Member Number</label>
                       <Input placeholder="e.g., M001" value={tbMemberNumber} onChange={(e) => setTbMemberNumber(e.target.value)} />
@@ -519,7 +519,7 @@ const Reports = () => {
               {reportType === "member-statement" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Member Statement Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Member ID *</label>
                       <Input type="text" placeholder="e.g., EMP001" value={statementMemberId} onChange={(e) => setStatementMemberId(e.target.value)} />
@@ -541,7 +541,7 @@ const Reports = () => {
               {reportType === "loan-register" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Loan Register Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Member Number</label>
                       <Input placeholder="e.g., M001" value={lrMemberNumber} onChange={(e) => setLrMemberNumber(e.target.value)} />
@@ -574,7 +574,7 @@ const Reports = () => {
               {reportType === "profit-loss" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Profit & Loss Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Start Date *</label>
                       <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -612,7 +612,7 @@ const Reports = () => {
               {reportType === "withdrawal-monitoring" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Withdrawal Monitoring Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Start Date *</label>
                       <Input type="date" value={wmStartDate} onChange={(e) => setWmStartDate(e.target.value)} />
@@ -659,7 +659,7 @@ const Reports = () => {
               {reportType === "guarantor-report" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Guarantor Report Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Member ID *</label>
                       <Input type="text" placeholder="e.g., 1" value={guarantorMemberId} onChange={(e) => setGuarantorMemberId(e.target.value)} />
@@ -693,7 +693,7 @@ const Reports = () => {
               {reportType === "loan-eligibility-report" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Loan Eligibility Report Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Member ID *</label>
                       <Input type="text" placeholder="e.g., 1" value={eligibilityMemberId} onChange={(e) => setEligibilityMemberId(e.target.value)} />
@@ -706,7 +706,7 @@ const Reports = () => {
               {reportType === "monthly-contribution-tracking" && (
                 <div className="space-y-4 p-4 bg-accent rounded-lg">
                   <h3 className="font-medium">Monthly Contribution Tracking Filters</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Start Date *</label>
                       <Input type="date" value={mctStartDate} onChange={(e) => setMctStartDate(e.target.value)} />
@@ -839,7 +839,7 @@ const Reports = () => {
                   </div>
 
                   {/* Second row: account type + dates */}
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <div className="space-y-1.5">
                       <label className="block text-sm font-medium">Account Type</label>
                       <Select value={mcAccountType} onValueChange={setMcAccountType}>
@@ -943,7 +943,7 @@ const Reports = () => {
           <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
 
             {/* Summary cards */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <Card className="border-none bg-green-50">
                 <CardContent className="pt-4 pb-3">
                   <p className="text-xs text-muted-foreground mb-1">Total Deposited</p>
@@ -974,7 +974,7 @@ const Reports = () => {
             {mcReportData.accountSummaries?.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Account Breakdown</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {mcReportData.accountSummaries.map((acc: any) => (
                     <div key={acc.accountType} className="flex items-center justify-between rounded-lg border px-4 py-3 bg-background">
                       <div>

@@ -169,8 +169,16 @@ public class Member {
     public String getEmployeeId() { return employeeId; }
     public void setEmployeeId(String employeeId) { this.employeeId = employeeId; }
 
+    // Always persist names in Proper Case (e.g. "WAKUKHA ANTONY" -> "Wakukha Antony")
+    @jakarta.persistence.PrePersist
+    @jakarta.persistence.PreUpdate
+    protected void normalizeNames() {
+        this.fullName = com.minet.sacco.util.NameFormatter.toProperCase(this.fullName);
+        this.firstName = com.minet.sacco.util.NameFormatter.toProperCase(this.firstName);
+    }
+
     public String getFullName() { return fullName; }
-    public void setFullName(String fullName) { this.fullName = fullName; }
+    public void setFullName(String fullName) { this.fullName = com.minet.sacco.util.NameFormatter.toProperCase(fullName); }
 
     // Legacy getters/setters - kept for backward compatibility
     @Deprecated
@@ -180,6 +188,7 @@ public class Member {
     }
     @Deprecated
     public void setFirstName(String firstName) { 
+        firstName = com.minet.sacco.util.NameFormatter.toProperCase(firstName);
         this.firstName = firstName;
         // Only build fullName from firstName+lastName if fullName hasn't been set explicitly
         if (this.fullName == null || this.fullName.isEmpty()) {
@@ -198,7 +207,7 @@ public class Member {
     @Deprecated
     public void setLastName(String lastName) { 
         // Store last name and rebuild fullName with first name only if fullName not already set explicitly
-        this.pendingLastName = (lastName != null) ? lastName.trim() : "";
+        this.pendingLastName = (lastName != null) ? com.minet.sacco.util.NameFormatter.toProperCase(lastName) : "";
         if (this.fullName == null || this.fullName.isEmpty()) {
             if (this.firstName != null && !this.firstName.isEmpty() && !this.pendingLastName.isEmpty()) {
                 this.fullName = this.firstName + " " + this.pendingLastName;

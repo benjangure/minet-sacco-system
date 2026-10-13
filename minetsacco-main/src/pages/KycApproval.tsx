@@ -37,7 +37,7 @@ interface MemberKycStatus {
   documents: KycDocument[];
 }
 
-const KycApproval = () => {
+const KycApprovalContent = () => {
   const [pendingDocuments, setPendingDocuments] = useState<KycDocument[]>([]);
   const [membersWithIncompleteKyc, setMembersWithIncompleteKyc] = useState<MemberKycStatus[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<Set<number>>(new Set());
@@ -48,20 +48,6 @@ const KycApproval = () => {
   const { session, role } = useAuth();
   const { toast } = useToast();
 
-  // Check if user is TELLER
-  if (role !== "TELLER" && role !== "ADMIN") {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
-            <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
-            <p className="text-muted-foreground">Only TELLER can access the KYC Approval module.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   useEffect(() => {
     if (session && (session.role === 'TELLER' || session.role === 'ADMIN')) {
@@ -517,6 +503,25 @@ const KycApproval = () => {
       )}
     </div>
   );
+};
+
+const KycApproval = () => {
+  const { role } = useAuth();
+  // Check if user is TELLER
+  if (role !== "TELLER" && role !== "ADMIN") {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6 text-center">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+            <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
+            <p className="text-muted-foreground">Only TELLER can access the KYC Approval module.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  return <KycApprovalContent />;
 };
 
 export default KycApproval;

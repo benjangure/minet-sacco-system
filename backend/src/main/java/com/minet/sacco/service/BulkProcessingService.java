@@ -86,6 +86,9 @@ public class BulkProcessingService {
     private MemberCredentialRepository memberCredentialRepository;
 
     @Autowired
+    private MemberCredentialService memberCredentialService;
+
+    @Autowired
     private BulkLoanDataUpdateItemRepository bulkLoanDataUpdateItemRepository;
 
     @Autowired
@@ -862,6 +865,9 @@ public class BulkProcessingService {
             if (item.getLastName() != null && !item.getLastName().trim().isEmpty()) {
                 member.setLastName(item.getLastName());
             }
+            if (item.getFullName() != null && !item.getFullName().trim().isEmpty()) {
+                member.setFullName(item.getFullName());
+            }
             
             // Update email if provided
             if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
@@ -924,6 +930,10 @@ public class BulkProcessingService {
             member = new Member();
             member.setFirstName(item.getFirstName());
             member.setLastName(item.getLastName());
+            // The upload carries the full name in one column - keep all of it (not just the first word)
+            if (item.getFullName() != null && !item.getFullName().trim().isEmpty()) {
+                member.setFullName(item.getFullName());
+            }
             
             // Set email if provided, otherwise use generated email
             if (item.getEmail() != null && !item.getEmail().trim().isEmpty()) {
@@ -1151,7 +1161,9 @@ public class BulkProcessingService {
                 user.setUpdatedAt(LocalDateTime.now());
                 userRepository.save(user);
             }
-            return; // Don't create credential record for existing users
+            // Still create the credential tracking record so the member is visible in Member Credentials
+            memberCredentialService.ensureCredentialRecord(member, null, user.getId());
+            return;
         } else {
             // Create new user account
             user = new User();
@@ -1195,13 +1207,19 @@ public class BulkProcessingService {
             // If email service is configured and email is available, try to send
             if (emailService != null && emailService.isEmailConfigured() && 
                 member.getEmail() != null && !member.getEmail().isBlank()) {
-                boolean emailSent = emailService.sendWelcomeEmail(
-                    member.getEmail(), 
-                    member.getFirstName() + " " + member.getLastName(),
-                    username, 
-                    password, 
-                    hasNationalId
-                );
+                boolean emailSent = false;
+                try {
+                    emailSent = emailService.sendWelcomeEmail(
+                        member.getEmail(), 
+                        member.getFullName(),
+                        username, 
+                        password, 
+                        hasNationalId
+                    );
+                } catch (Exception emailEx) {
+                    // Email problems must never block member/credential creation
+                    System.err.println("Welcome email failed for " + username + ": " + emailEx.getMessage());
+                }
                 
                 if (emailSent) {
                     credential.setEmailSent(true);

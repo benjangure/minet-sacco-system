@@ -205,7 +205,7 @@ export const InstallPrompt = () => {
                     To install the Android app, open this link in Chrome and allow the download when prompted:
                   </p>
                   <div className="text-sm bg-white/10 p-2 rounded-lg mb-3 break-all font-mono">
-                    http://10.39.60.15:8090/minet-sacco.apk
+                    {window.location.origin}/minet-sacco.apk
                   </div>
                   <div className="text-xs text-white/80 mb-3 bg-white/10 p-2 rounded-lg">
                     <p className="font-medium mb-1">If Chrome blocks the download:</p>

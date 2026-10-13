@@ -48,7 +48,7 @@ interface Transaction {
   transactionDate: string;
 }
 
-const Savings = () => {
+const SavingsContent = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [search, setSearch] = useState("");
   const [modalSearch, setModalSearch] = useState("");
@@ -62,19 +62,6 @@ const Savings = () => {
   const canProcessTransactions = role === "ADMIN" || role === "TREASURER" || role === "TELLER";
 
   // Show message if user doesn't have access
-  if (!canProcessTransactions) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
-            <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
-            <p className="text-muted-foreground">Only TREASURER and TELLER can access the Savings module.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   const fetchActiveMembers = async () => {
     try {
@@ -801,6 +788,25 @@ const Savings = () => {
       </Card>
     </div>
   );
+};
+
+const Savings = () => {
+  const { role } = useAuth();
+  const canProcessTransactions = role === "ADMIN" || role === "TREASURER" || role === "TELLER";
+  if (!canProcessTransactions) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6 text-center">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+            <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
+            <p className="text-muted-foreground">Only TREASURER and TELLER can access the Savings module.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  return <SavingsContent />;
 };
 
 export default Savings;

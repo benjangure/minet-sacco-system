@@ -18,6 +18,10 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  esbuild: {
+    // Strip debug logging (tokens, payloads) from production bundles; console.error/warn are kept
+    pure: mode === "production" ? ["console.log", "console.debug", "console.info"] : [],
+  },
   define: {
     // Polyfill global for sockjs-client (used by @stomp/stompjs)
     global: 'globalThis',

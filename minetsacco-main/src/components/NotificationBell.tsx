@@ -38,10 +38,11 @@ export const NotificationBell: React.FC = () => {
 
       loadUnreadCount();
       const interval = setInterval(() => {
-        if (!pollingDisabled.current) {
+        // Skip polling while the tab is hidden to save bandwidth and battery
+        if (!pollingDisabled.current && document.visibilityState !== 'hidden') {
           loadUnreadCount();
         }
-      }, 10000);
+      }, 30000);
       return () => clearInterval(interval);
     }
   }, [session, role]);

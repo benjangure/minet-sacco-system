@@ -122,8 +122,38 @@ public class MemberSuspensionService {
      */
     @Transactional
     public MemberSuspension validateSuspension(Long suspensionId, String validationNotes, User validatedBy) {
+        return validateSuspension(suspensionId, validationNotes, validatedBy, true);
+    }
+
+    /**
+     * Approve or reject a pending suspension (maker-checker: the initiator cannot validate).
+     */
+    @Transactional
+    public MemberSuspension validateSuspension(Long suspensionId, String validationNotes, User validatedBy, boolean approve) {
         MemberSuspension suspension = memberSuspensionRepository.findById(suspensionId)
                 .orElseThrow(() -> new RuntimeException("Suspension not found"));
+
+        if (!"PENDING".equals(suspension.getStatus())) {
+            throw new RuntimeException("Suspension has already been processed");
+        }
+        if (suspension.getSuspendedBy() != null && validatedBy != null
+                && suspension.getSuspendedBy().getId().equals(validatedBy.getId())) {
+            throw new RuntimeException("The person who initiated a suspension cannot validate it");
+        }
+
+        if (!approve) {
+            suspension.setValidationNotes(validationNotes);
+            suspension.setValidatedBy(validatedBy);
+            suspension.setValidatedAt(LocalDateTime.now());
+            suspension.setStatus("REJECTED");
+            suspension.setIsActive(false);
+            MemberSuspension rejected = memberSuspensionRepository.save(suspension);
+            auditService.logAction(validatedBy, "SUSPENSION_REJECTED",
+                    "MemberSuspension", suspensionId,
+                    "Suspension rejected: " + validationNotes,
+                    "Treasurer rejected member suspension", "SUCCESS");
+            return rejected;
+        }
 
         // Add validation information and approve suspension
         suspension.setValidationNotes(validationNotes);

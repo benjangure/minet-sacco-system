@@ -57,7 +57,7 @@ public class MemberCredential {
     public MemberCredential(Long memberId, String username, String memberName, String email, boolean hasNationalId, Long createdBy) {
         this.memberId = memberId;
         this.username = username;
-        this.memberName = memberName;
+        this.memberName = com.minet.sacco.util.NameFormatter.toProperCase(memberName);
         this.email = email;
         this.hasNationalId = hasNationalId;
         this.createdBy = createdBy;
@@ -75,7 +75,7 @@ public class MemberCredential {
     public void setUsername(String username) { this.username = username; }
     
     public String getMemberName() { return memberName; }
-    public void setMemberName(String memberName) { this.memberName = memberName; }
+    public void setMemberName(String memberName) { this.memberName = com.minet.sacco.util.NameFormatter.toProperCase(memberName); }
     
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }

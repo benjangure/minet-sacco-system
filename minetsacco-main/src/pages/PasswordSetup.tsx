@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import api from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,16 +14,8 @@ interface LocationState {
   currentPassword: string;
 }
 
-export default function PasswordSetup() {
+function PasswordSetupContent({ state }: { state: LocationState }) {
   const navigate = useNavigate();
-  const location = useLocation();
-  const state = location.state as LocationState;
-
-  // Redirect if no state provided
-  if (!state?.username || !state?.currentPassword) {
-    navigate('/member/login', { replace: true });
-    return null;
-  }
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -225,4 +217,15 @@ export default function PasswordSetup() {
       </div>
     </div>
   );
+}
+
+export default function PasswordSetup() {
+  const location = useLocation();
+  const state = location.state as LocationState | null;
+
+  // Redirect if no state provided
+  if (!state?.username || !state?.currentPassword) {
+    return <Navigate to="/member/login" replace />;
+  }
+  return <PasswordSetupContent state={state} />;
 }

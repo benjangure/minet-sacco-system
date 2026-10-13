@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from "@/contexts/AuthContext";
 import { nativeFetch } from '@/utils/nativeHttp';
 import { useRefresh } from "@/contexts/RefreshContext";
@@ -13,8 +13,10 @@ import {
   Copy,
   Check,
   AlertCircle,
-  Search
+  Search,
+  RefreshCw
 } from 'lucide-react';
+import { formatName } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getApiBaseUrl } from "../config/api";
@@ -39,13 +41,15 @@ export default function MemberCredentials() {
   const [credentials, setCredentials] = useState<MemberCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [syncing, setSyncing] = useState(false);
   const [selectedCredential, setSelectedCredential] = useState<MemberCredential | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const { toast } = useToast();
-  const { session } = useAuth();
+  const { session, role } = useAuth();
+  const canSync = role === 'ADMIN' || role === 'TREASURER';
   const { refreshKey } = useRefresh();
 
   useEffect(() => {
@@ -78,18 +82,7 @@ export default function MemberCredentials() {
 
       if (response.ok) {
         const data = await response.json();
-        let credentialsList = data.data || [];
-        
-        // Apply search filter
-        if (search) {
-          credentialsList = credentialsList.filter((c: MemberCredential) =>
-            c.memberName?.toLowerCase().includes(search.toLowerCase()) ||
-            c.username?.toLowerCase().includes(search.toLowerCase()) ||
-            c.email?.toLowerCase().includes(search.toLowerCase())
-          );
-        }
-        
-        setCredentials(credentialsList);
+        setCredentials(data.data || []);
       } else if (response.status === 401) {
         toast({
           title: "Unauthorized",
@@ -206,8 +199,39 @@ export default function MemberCredentials() {
     textArea.remove();
   };
 
-  const handleSearch = () => {
-    fetchCredentials();
+  const filteredCredentials = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return credentials;
+    return credentials.filter((c) =>
+      c.memberName?.toLowerCase().includes(q) ||
+      c.username?.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q)
+    );
+  }, [credentials, search]);
+
+  const handleSync = async () => {
+    if (!session?.token) return;
+    setSyncing(true);
+    try {
+      const response = await nativeFetch(`${API_BASE_URL}/member-credentials/sync`, {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${session.token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) throw new Error('Sync failed');
+      const data = await response.json();
+      const r = data.data || {};
+      toast({
+        title: "Credentials synchronised",
+        description: `${r.created ?? 0} missing record(s) created, ${r.namesNormalised ?? 0} name(s) corrected.`,
+      });
+      await fetchCredentials();
+    } catch (error) {
+      toast({ title: "Sync failed", description: "Could not synchronise member credentials", variant: "destructive" });
+    }
+    setSyncing(false);
   };
 
   const getStatusBadge = (credential: MemberCredential) => {
@@ -231,9 +255,17 @@ export default function MemberCredentials() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Member Credentials Dashboard</h1>
-        <p className="text-muted-foreground">View and manage member login credentials</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold">Member Credentials Dashboard</h1>
+          <p className="text-muted-foreground">View and manage member login credentials</p>
+        </div>
+        {canSync && (
+          <Button variant="outline" onClick={handleSync} disabled={syncing} className="w-full sm:w-auto">
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing...' : 'Sync missing credentials'}
+          </Button>
+        )}
       </div>
 
       {/* Info Alert */}
@@ -258,7 +290,6 @@ export default function MemberCredentials() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <Button onClick={handleSearch} size="sm">Search</Button>
           </div>
         </CardContent>
       </Card>
@@ -266,7 +297,7 @@ export default function MemberCredentials() {
       {/* Credentials Table */}
       <Card className="border-none shadow-sm">
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/50">
@@ -280,16 +311,16 @@ export default function MemberCredentials() {
                 </tr>
               </thead>
               <tbody>
-                {credentials.length === 0 ? (
+                {filteredCredentials.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-8 text-muted-foreground">
                       No member credentials found
                     </td>
                   </tr>
                 ) : (
-                  credentials.map((credential) => (
+                  filteredCredentials.map((credential) => (
                     <tr key={credential.id} className="border-b hover:bg-muted/50">
-                      <td className="p-3 font-medium">{credential.memberName}</td>
+                      <td className="p-3 font-medium">{formatName(credential.memberName)}</td>
                       <td className="p-3 font-mono text-sm">{credential.username}</td>
                       <td className="p-3">{credential.email || "—"}</td>
                       <td className="p-3">
@@ -318,6 +349,33 @@ export default function MemberCredentials() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y">
+            {filteredCredentials.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">No member credentials found</p>
+            ) : (
+              filteredCredentials.map((credential) => (
+                <div key={credential.id} className="p-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="font-semibold truncate">{formatName(credential.memberName)}</p>
+                    <p className="font-mono text-sm text-muted-foreground">{credential.username}</p>
+                    <p className="text-xs text-muted-foreground truncate">{credential.email || "—"}</p>
+                    <div className="pt-1">{getStatusBadge(credential)}</div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleViewCredential(credential)}
+                    title="View Credentials"
+                    className="text-blue-600 shrink-0"
+                  >
+                    <Eye className="h-5 w-5" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -337,7 +395,7 @@ export default function MemberCredentials() {
               <div className="bg-slate-50 p-4 rounded-lg space-y-2">
                 <div className="text-sm">
                   <p className="text-muted-foreground">Member Name</p>
-                  <p className="font-semibold">{selectedCredential.memberName}</p>
+                  <p className="font-semibold">{formatName(selectedCredential.memberName)}</p>
                 </div>
                 <div className="text-sm">
                   <p className="text-muted-foreground">Email</p>
@@ -382,12 +440,7 @@ export default function MemberCredentials() {
                     <div className="flex gap-2">
                       <Input
                         type={showPassword ? "text" : "password"}
-                        value={
-                          // If password looks like a BCrypt hash, show the default password instead
-                          password.startsWith('$2a$') || password.startsWith('$2b$') 
-                            ? 'Minet@2026' 
-                            : password
-                        }
+                        value={password}
                         readOnly
                         className="font-mono"
                       />
@@ -408,12 +461,7 @@ export default function MemberCredentials() {
                         type="button"
                         size="icon"
                         variant="outline"
-                        onClick={() => copyToClipboard(
-                          password.startsWith('$2a$') || password.startsWith('$2b$') 
-                            ? 'Minet@2026' 
-                            : password,
-                          "password"
-                        )}
+                        onClick={() => copyToClipboard(password, "password")}
                         className="shrink-0"
                       >
                         {copiedField === "password" ? (
@@ -428,7 +476,9 @@ export default function MemberCredentials() {
                   <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription className="text-xs">
-                      Password has been changed by the member and is no longer available for display.
+                      {selectedCredential.passwordChanged
+                        ? "Password has been changed by the member and is no longer available for display."
+                        : "This member already had a login before this record was created, so the original password is not stored. Ask an administrator to reset their password if they cannot sign in."}
                     </AlertDescription>
                   </Alert>
                 )}

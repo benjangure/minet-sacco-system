@@ -23,6 +23,8 @@ public class CorsConfig {
             "http://192.168.*:*",
             "http://10.*:*",
             "https://localhost",        // Capacitor Android WebView (androidScheme: https)
+            "https://sacco.minet.co.ke", // Production web app / PWA
+            "https://*.minet.co.ke",
             "capacitor://localhost",    // Capacitor iOS / older Android
             "ionic://localhost",
             "http://localhost"

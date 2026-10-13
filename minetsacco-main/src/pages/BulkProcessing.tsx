@@ -127,7 +127,7 @@ interface Fund {
   maximumAmount?: number;
 }
 
-export default function BulkProcessing() {
+function BulkProcessingContent() {
   const { session, user } = useAuth();
   const { toast } = useToast();
   const { refreshKey } = useRefresh();
@@ -222,21 +222,6 @@ export default function BulkProcessing() {
     setCompletedCurrentPage(1);
   };
 
-  // Restrict access: only TREASURER and CREDIT_COMMITTEE can access bulk processing
-  if (user?.role !== "TREASURER" && user?.role !== "CREDIT_COMMITTEE") {
-    return (
-      <div className="container mx-auto p-6">
-        <Card className="border-red-200 bg-red-50">
-          <CardHeader>
-            <CardTitle className="text-red-900">Access Denied</CardTitle>
-          </CardHeader>
-          <CardContent className="text-red-800">
-            Only Treasurer and Credit Committee members can access bulk processing.
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   useEffect(() => {
     fetchBatches();
@@ -2499,7 +2484,7 @@ export default function BulkProcessing() {
                   <CardTitle className="text-base">Loan Application Summary</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <div>
                       <p className="text-sm text-gray-600">Member Number</p>
                       <p className="font-medium">{guarantorValidationResult.memberNumber}</p>
@@ -2537,7 +2522,7 @@ export default function BulkProcessing() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <p className="text-sm text-gray-600">Member Name</p>
                         <p className="font-medium">{guarantorValidationResult.memberInfo.memberName}</p>
@@ -2604,7 +2589,7 @@ export default function BulkProcessing() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-gray-600">Guarantor Count</p>
                       <p className="font-medium">{guarantorValidationResult.guarantorCount}</p>
@@ -2631,7 +2616,7 @@ export default function BulkProcessing() {
                         </Badge>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 text-sm">
                         <div>
                           <p className="text-gray-600">Savings Balance</p>
                           <p className="font-medium">{formatCurrency(result.savingsBalance)}</p>
@@ -2720,7 +2705,7 @@ export default function BulkProcessing() {
           {bulkApprovalResult && (
             <div className="space-y-6">
               {/* Summary */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <Card>
                   <CardContent className="pt-6">
                     <div className="text-center">
@@ -2817,7 +2802,7 @@ export default function BulkProcessing() {
           {bulkDisbursementResult && (
             <div className="space-y-6">
               {/* Summary */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Card className="border-green-200 bg-green-50">
                   <CardContent className="pt-6">
                     <div className="text-center">
@@ -2886,4 +2871,24 @@ export default function BulkProcessing() {
       </Dialog>
     </div>
   );
+}
+
+export default function BulkProcessing() {
+  const { user } = useAuth();
+  // Restrict access: only TREASURER and CREDIT_COMMITTEE can access bulk processing
+  if (user?.role !== "TREASURER" && user?.role !== "CREDIT_COMMITTEE") {
+    return (
+      <div className="container mx-auto p-6">
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-900">Access Denied</CardTitle>
+          </CardHeader>
+          <CardContent className="text-red-800">
+            Only Treasurer and Credit Committee members can access bulk processing.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  return <BulkProcessingContent />;
 }

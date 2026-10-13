@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
     allowNavigation: [
-      '*'
+      'sacco.minet.co.ke', '*.minet.co.ke'
     ]
   },
   plugins: {
@@ -24,7 +24,7 @@ const config: CapacitorConfig = {
   android: {
     // allowMixedContent lets the native WebView call http:// backend
     // while still loading the app assets over the internal https scheme
-    allowMixedContent: true,
+    allowMixedContent: false,
     captureInput: true
   }
 };

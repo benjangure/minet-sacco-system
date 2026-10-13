@@ -173,7 +173,7 @@ export default function MemberSuspension() {
     setSuccess('');
 
     try {
-      const response = await api.post(`/members/${reactivateMemberId}/reactivate`, {
+      const response = await api.post(`/members/${reactivateMemberId}/reactivation/initiate`, {
         reason: reactivationReason
       });
       if (response.data.success) {
@@ -222,7 +222,8 @@ export default function MemberSuspension() {
 
     try {
       const response = await api.post(`/members/suspension/${suspensionId}/validate`, {
-        validationNotes: 'Rejected by Treasurer'
+        validationNotes: "Rejected by Treasurer",
+        approved: false
       });
       if (response.data.success) {
         setSuccess('Suspension rejected successfully');
@@ -265,7 +266,8 @@ export default function MemberSuspension() {
 
     try {
       const response = await api.post(`/members/reactivation/${reactivationId}/validate`, {
-        validationNotes: 'Rejected by Treasurer'
+        validationNotes: "Rejected by Treasurer",
+        approved: false
       });
       if (response.data.success) {
         setSuccess('Reactivation rejected successfully');
@@ -435,6 +437,7 @@ export default function MemberSuspension() {
             <h2 className="text-xl font-semibold text-yellow-800">Pending Suspensions (Awaiting Your Approval)</h2>
           </div>
 
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -480,6 +483,7 @@ export default function MemberSuspension() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -490,6 +494,7 @@ export default function MemberSuspension() {
             <h2 className="text-xl font-semibold text-green-800">Pending Reactivations (Awaiting Your Approval)</h2>
           </div>
 
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -535,6 +540,7 @@ export default function MemberSuspension() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -548,6 +554,7 @@ export default function MemberSuspension() {
             No active suspensions
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -587,6 +594,7 @@ export default function MemberSuspension() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -601,6 +609,7 @@ export default function MemberSuspension() {
             No suspensions found
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -637,6 +646,7 @@ export default function MemberSuspension() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

@@ -7,40 +7,43 @@ import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
 import { getPlatformAdapter } from '@/utils/capacitorAxiosAdapter';
 
-// The one true backend URL for this deployment
-// Configurable per build via VITE_API_URL / VITE_NATIVE_BACKEND_URL (.env.production); falls back to the current server
-const SERVER_BACKEND_URL: string = (
-  (Capacitor.isNativePlatform() ? import.meta.env.VITE_NATIVE_BACKEND_URL : undefined) ||
-  import.meta.env.VITE_API_URL ||
-  'http://10.39.60.15:9090'
-).replace(/\/+$/, '');
+// Backend URL resolution
+//  - Native app (APK): VITE_NATIVE_BACKEND_URL (can be overridden in-app via setBackendUrl)
+//  - Web/PWA over HTTPS: same origin ("/api" is reverse-proxied to the backend). An http:// URL
+//    can never be called from an https:// page (mixed content), so it is ignored there.
+//  - Web over plain http / local dev: VITE_API_URL, falling back to the legacy intranet server
+const LEGACY_SERVER_URL = 'http://10.39.60.15:9090';
+
+const cleanUrl = (u?: string): string =>
+  (u || '').trim().replace(/\/+$/, '').replace(/\/api$/, '');
+
+const NATIVE_BACKEND_URL = cleanUrl(import.meta.env.VITE_NATIVE_BACKEND_URL as string | undefined);
+const CONFIGURED_API_URL = cleanUrl(import.meta.env.VITE_API_URL as string | undefined);
+
+const isLocalHost = (host: string): boolean =>
+  host === 'localhost' || host === '127.0.0.1' || host === '::1';
 
 export const getBackendUrl = (): string => {
-  // Native Capacitor app (APK) — always use server backend
-  // Check isNativePlatform first, then fall back to hostname detection
   if (Capacitor.isNativePlatform()) {
     const stored = localStorage.getItem('backendUrl');
-    return stored || SERVER_BACKEND_URL;
+    return cleanUrl(stored || NATIVE_BACKEND_URL || CONFIGURED_API_URL) || LEGACY_SERVER_URL;
   }
 
-  // Capacitor WebView may report hostname as 'localhost' internally but
-  // the user-agent contains 'wv' (WebView). Also catch empty/blank hostnames.
-  const hostname = window.location.hostname;
-  const isWebView = /wv/.test(navigator.userAgent) || 
-                    hostname === '' || 
-                    hostname === 'null';
+  const { hostname, protocol, origin } = window.location;
 
-  if (isWebView) {
-    return SERVER_BACKEND_URL;
+  // Local development
+  if (isLocalHost(hostname)) {
+    return CONFIGURED_API_URL || 'http://localhost:9090';
   }
 
-  // Web app on the production server (non-localhost)
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return SERVER_BACKEND_URL;
+  // Deployed over HTTPS: never call an insecure http:// backend (blocked as mixed content)
+  if (protocol === 'https:') {
+    if (CONFIGURED_API_URL.startsWith('https://')) return CONFIGURED_API_URL;
+    return origin;
   }
 
-  // Local development only
-  return import.meta.env.VITE_API_URL || 'http://localhost:9090';
+  // Deployed over plain http (intranet)
+  return CONFIGURED_API_URL || LEGACY_SERVER_URL;
 };
 
 export const setBackendUrl = (url: string): void => {

@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { SplashScreen } from '@capacitor/splash-screen';
+import { Capacitor } from '@capacitor/core';
 
 // Suppress known benign console warnings
 const originalError = console.error;
@@ -14,52 +15,40 @@ console.error = (...args) => {
   originalError.apply(console, args);
 };
 
+// Production: silence debug logging (request URLs, payloads) in the browser console
+if (import.meta.env.PROD) {
+  const noop = () => {};
+  console.log = noop;
+  console.debug = noop;
+  console.info = noop;
+}
+
 // Show splash immediately
 SplashScreen.show({
   showDuration: 3000,
   autoHide: true,
 });
 
-// Service Worker update handler - forces logo cache refresh
-if ('serviceWorker' in navigator) {
+// Service worker (web/PWA only - the native Android shell bundles its own assets)
+if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
   window.addEventListener('load', () => {
+    const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('/service-worker.js')
       .then(registration => {
-        console.log('Service Worker registered:', registration);
-        
-        // Check for updates every 5 minutes
-        setInterval(() => {
-          registration.update();
-        }, 5 * 60 * 1000);
-        
-        // Handle service worker updates
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New service worker installed - logo cache will be updated
-                console.log('New service worker installed - logo updated');
-                
-                // Optionally show update notification to user
-                if (window.confirm('New version available with updated logo! Reload to see changes?')) {
-                  newWorker.postMessage({ type: 'SKIP_WAITING' });
-                  window.location.reload();
-                }
-              }
-            });
-          }
-        });
-        
-        // Listen for controller change (new service worker activated)
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          console.log('Service worker updated - reloading to show new logo');
-          window.location.reload();
-        });
+        // Check for updates every 15 minutes
+        setInterval(() => registration.update().catch(() => {}), 15 * 60 * 1000);
       })
       .catch(error => {
         console.error('Service Worker registration failed:', error);
       });
+
+    // Reload once when a NEW worker takes over an already-controlled page (not on first install)
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
   });
 }
 

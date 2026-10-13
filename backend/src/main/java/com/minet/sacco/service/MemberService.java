@@ -214,6 +214,8 @@ public class MemberService {
                 user.setUpdatedAt(LocalDateTime.now());
                 userRepository.save(user);
             }
+            // Existing login: still make sure the member shows up in Member Credentials
+            createCredentialTrackingRecord(member, username, null, hasNationalId);
         } else {
             // Create new user account
             isNewUser = true;
@@ -240,9 +242,7 @@ public class MemberService {
             userRepository.save(user);
             
             // Create credential tracking record for individual registration
-            if (isNewUser) {
-                createCredentialTrackingRecord(member, username, temporaryPassword, hasNationalId);
-            }
+            createCredentialTrackingRecord(member, username, temporaryPassword, hasNationalId);
         }
     }
     

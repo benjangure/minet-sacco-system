@@ -22,6 +22,10 @@ import java.util.*;
 @Service
 public class DataMigrationService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private MemberCredentialService memberCredentialService;
+
+
     private static final Logger log = LoggerFactory.getLogger(DataMigrationService.class);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -409,7 +413,7 @@ public class DataMigrationService {
         Member savedMember = memberRepository.save(member);
 
         // Create user account if doesn't exist
-        createOrUpdateMemberUserAccount(savedMember, nationalId);
+        memberCredentialService.ensureLoginAndCredential(savedMember, executedBy != null ? executedBy.getId() : null);
 
         // Update savings account balance
         if (savingsBalanceStr != null && !savingsBalanceStr.isEmpty()) {

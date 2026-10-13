@@ -111,10 +111,10 @@ const LoanRepaymentRecording = () => {
     setLoading(true);
     try {
       const [repaymentRes, scheduleRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/loans/${loanId}/repayments`, {
+        nativeFetch(`${API_BASE_URL}/loans/${loanId}/repayments`, {
           headers: { "Authorization": `Bearer ${session?.token}` },
         }),
-        fetch(`${API_BASE_URL}/loans/${loanId}/schedule`, {
+        nativeFetch(`${API_BASE_URL}/loans/${loanId}/schedule`, {
           headers: { "Authorization": `Bearer ${session?.token}` },
         }),
       ]);
@@ -371,7 +371,7 @@ const LoanRepaymentRecording = () => {
               {/* Bank Details Section */}
               <div className="mt-4 p-3 bg-white rounded border border-blue-200">
                 <p className="text-sm font-semibold text-blue-900 mb-2">Disbursement Bank Details:</p>
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">Bank Name</p>
                     <p className="font-medium">{selectedLoan.member.bankName}</p>

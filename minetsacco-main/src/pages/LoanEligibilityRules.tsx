@@ -31,7 +31,7 @@ interface LoanRules {
   maxLoanToSavingsMultiplier: number;
 }
 
-export default function LoanEligibilityRules() {
+function LoanEligibilityRulesContent() {
   const { session, user } = useAuth();
   const { toast } = useToast();
   const [rules, setRules] = useState<LoanRules | null>(null);
@@ -40,21 +40,6 @@ export default function LoanEligibilityRules() {
 
   const token = session?.token;
 
-  // Restrict access to ADMIN only
-  if (user?.role !== "ADMIN") {
-    return (
-      <div className="container mx-auto p-6">
-        <Card className="border-red-200 bg-red-50">
-          <CardHeader>
-            <CardTitle className="text-red-900">Access Denied</CardTitle>
-          </CardHeader>
-          <CardContent className="text-red-800">
-            Only administrators can manage loan eligibility rules.
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   useEffect(() => {
     fetchRules();
@@ -387,4 +372,24 @@ export default function LoanEligibilityRules() {
       </div>
     </div>
   );
+}
+
+export default function LoanEligibilityRules() {
+  const { user } = useAuth();
+  // Restrict access to ADMIN only
+  if (user?.role !== "ADMIN") {
+    return (
+      <div className="container mx-auto p-6">
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-900">Access Denied</CardTitle>
+          </CardHeader>
+          <CardContent className="text-red-800">
+            Only administrators can manage loan eligibility rules.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  return <LoanEligibilityRulesContent />;
 }

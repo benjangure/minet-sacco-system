@@ -102,8 +102,7 @@ const ROLE_SECTION_TITLE: Record<string, string> = {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function LoanTopUpReviewSection() {
-  const { role } = useAuth();
+function LoanTopUpReviewSectionContent({ role }: { role: string }) {
   const { toast } = useToast();
 
   const [requests, setRequests] = useState<TopUpRequest[]>([]);
@@ -115,9 +114,6 @@ export default function LoanTopUpReviewSection() {
   const [reason, setReason] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  // Only render for roles that participate in the top-up review pipeline
-  const activeRoles = ['LOAN_OFFICER', 'CREDIT_COMMITTEE', 'TREASURER', 'ADMIN'];
-  if (!role || !activeRoles.includes(role)) return null;
 
   const sectionTitle = ROLE_SECTION_TITLE[role] ?? 'Top-Up Requests';
   const actingOnStatuses = ROLE_ACTS_ON[role] ?? [];
@@ -609,4 +605,12 @@ export default function LoanTopUpReviewSection() {
       )}
     </>
   );
+}
+
+export default function LoanTopUpReviewSection() {
+  const { role } = useAuth();
+  // Only render for roles that participate in the top-up review pipeline
+  const activeRoles = ['LOAN_OFFICER', 'CREDIT_COMMITTEE', 'TREASURER', 'ADMIN'];
+  if (!role || !activeRoles.includes(role)) return null;
+  return <LoanTopUpReviewSectionContent role={role} />;
 }

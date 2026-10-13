@@ -1,4 +1,6 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation, Link } from 'react-router-dom';
+import { ShieldAlert } from 'lucide-react';
+import { isRouteAllowed } from '@/config/routeAccess';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface ProtectedRouteProps {
@@ -46,6 +48,7 @@ function resolveMemberToken(): string | null {
 
 export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { session, loading } = useAuth();
+  const location = useLocation();
 
   // Show spinner only while AuthContext is still restoring the session on first load
   if (loading) {
@@ -71,6 +74,26 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
   // Staff / admin routes — rely on AuthContext session
   if (!session) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Role-based screen access (members never use the staff console)
+  const sessionRole = (session as { role?: string }).role;
+  if (sessionRole === 'MEMBER') {
+    return <Navigate to="/member/dashboard" replace />;
+  }
+  if (!isRouteAllowed(location.pathname, sessionRole)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-4">
+          <ShieldAlert className="h-12 w-12 mx-auto text-amber-500" />
+          <h1 className="text-xl font-semibold">Access restricted</h1>
+          <p className="text-muted-foreground">
+            Your role does not have access to this page. If you believe this is a mistake, contact your administrator.
+          </p>
+          <Link to="/dashboard" className="inline-block text-primary underline">Back to dashboard</Link>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

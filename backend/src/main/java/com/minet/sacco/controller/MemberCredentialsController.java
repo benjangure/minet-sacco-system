@@ -18,6 +18,21 @@ public class MemberCredentialsController {
     @Autowired
     private MemberCredentialRepository memberCredentialRepository;
 
+    @Autowired
+    private com.minet.sacco.service.MemberCredentialService memberCredentialService;
+
+    /**
+     * Repair: create missing credential records for members that have none and normalise names.
+     */
+    @PostMapping("/sync")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> syncCredentials() {
+        int renamed = memberCredentialService.normalizeStoredNames();
+        java.util.Map<String, Object> result = memberCredentialService.syncMissingCredentials(null);
+        result.put("namesNormalised", renamed);
+        return ResponseEntity.ok(ApiResponse.success("Member credentials synchronised", result));
+    }
+
     /**
      * Get all member credentials (admin/treasurer/customer support only)
      */

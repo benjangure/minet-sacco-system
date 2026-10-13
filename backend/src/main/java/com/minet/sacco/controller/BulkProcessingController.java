@@ -117,7 +117,7 @@ public class BulkProcessingController {
     }
 
     @GetMapping("/loan-items/approved")
-    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    @PreAuthorize("hasAnyRole('ROLE_TREASURER', 'ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<List<?>>> getApprovedLoanItems() {
         try {
             List<BulkLoanItem> items = bulkProcessingService.getApprovedLoanItems();

@@ -404,7 +404,7 @@ const Loans = () => {
       Promise.all([
         fetchMembers(),
         fetchProducts(),
-        fetch(`${API_BASE_URL}/loan-eligibility-rules`, {
+        nativeFetch(`${API_BASE_URL}/loan-eligibility-rules`, {
           headers: { "Authorization": `Bearer ${session?.token}` },
         }).then(r => r.json()).then(data => {
           if (data?.data?.maxLoanTermMonths) {
@@ -1620,7 +1620,7 @@ const Loans = () => {
                     </AlertDescription>
                   </Alert>
                 )}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Amount (KES) *</Label>
                     <Input 
@@ -2299,7 +2299,7 @@ const Loans = () => {
               {/* Loan Amount Details */}
               <Card className="p-2">
                 <p className="font-semibold text-xs mb-1">Amount Details</p>
-                <div className="grid grid-cols-3 gap-1 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs">
                   <div>
                     <p className="text-xs text-gray-600">Principal</p>
                     <p className="font-bold">{formatCurrency(selectedLoanForDetails.amount)}</p>
@@ -2372,7 +2372,7 @@ const Loans = () => {
                                 </Badge>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-1 text-xs">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs">
                               <div>
                                 <span className="text-gray-600">Before:</span>
                                 <span className="font-medium ml-1">{formatCurrency(topup.outstandingBeforeTopup)}</span>
@@ -2428,7 +2428,7 @@ const Loans = () => {
                     </div>
 
                     {/* Repayment Details Grid */}
-                    <div className="grid grid-cols-5 gap-1 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 text-xs">
                       <div className="bg-white rounded p-1.5 border border-blue-100">
                         <p className="text-gray-600 text-xs">Principal</p>
                         <p className="font-bold text-blue-600">{formatCurrency(selectedLoanForDetails.amount)}</p>
@@ -2817,7 +2817,7 @@ const Loans = () => {
               {/* Loan Summary */}
               <Card className="p-3">
                 <p className="font-semibold text-sm mb-2">Loan Info</p>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div>
                     <p className="text-gray-600">Member</p>
                     <p className="font-medium">{eligibilityValidation.memberNumber}</p>
@@ -2846,7 +2846,7 @@ const Loans = () => {
                       {eligibilityValidation.memberInfo.isEligible ? "✓ ELIGIBLE" : "✗ NOT ELIGIBLE"}
                     </Badge>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <div>
                       <p className="text-gray-600">Name</p>
                       <p className="font-medium">{eligibilityValidation.memberInfo.memberName}</p>
@@ -2893,7 +2893,7 @@ const Loans = () => {
                               {result.isEligible ? "✓ ELIGIBLE" : "✗ NOT ELIGIBLE"}
                             </Badge>
                           </div>
-                          <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 mb-1">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-gray-600 mb-1">
                             {result.savingsBalance !== undefined && (
                               <div>
                                 <span className="text-gray-500">Savings</span>
@@ -3557,7 +3557,7 @@ const Loans = () => {
                           
                           return (
                             <>
-                              <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                 <p className="text-gray-700">Kept guarantors:</p>
                                 <p className="font-semibold text-right">{formatCurrency(keptTotal)}</p>
                                 <p className="text-gray-700">New guarantors:</p>
@@ -3863,7 +3863,7 @@ const Loans = () => {
               {topUpPreview && (
                 <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs space-y-2">
                   <p className="font-semibold text-blue-900">Top-Up Preview</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <span className="text-gray-700">Current Outstanding:</span>
                       <p className="font-semibold">{formatCurrency(topUpPreview.currentOutstanding)}</p>
@@ -4129,7 +4129,7 @@ const Loans = () => {
                 </AlertDescription>
               </Alert>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Principal Amount (KES)</Label>
                   <Input

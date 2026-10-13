@@ -21,6 +21,7 @@ public class User {
 
     @NotBlank
     @Size(max = 255)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     @NotBlank
