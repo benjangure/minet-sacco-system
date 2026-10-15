@@ -42,6 +42,16 @@ export default function MemberCredentials() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [hrOnly, setHrOnly] = useState(false);
+  const [purging, setPurging] = useState(false);
+
+  useEffect(() => {
+    nativeFetch(`${API_BASE_URL}/auth/config`, { method: 'GET' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setHrOnly(!!d?.data?.hrOnly))
+      .catch(() => {});
+  }, []);
   const [selectedCredential, setSelectedCredential] = useState<MemberCredential | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -209,6 +219,74 @@ export default function MemberCredentials() {
     );
   }, [credentials, search]);
 
+  const handleResetPassword = async () => {
+    if (!selectedCredential || !session?.token) return;
+    const name = formatName(selectedCredential.memberName);
+    if (!window.confirm(`Reset the password for ${name}? They will be given a new temporary password and must choose their own at next login.`)) {
+      return;
+    }
+    setResetting(true);
+    try {
+      const response = await nativeFetch(`${API_BASE_URL}/member-credentials/${selectedCredential.id}/reset-password`, {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${session.token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Reset failed');
+      }
+      setPassword(data.data?.password || null);
+      setShowPassword(true);
+      setSelectedCredential({ ...selectedCredential, passwordChanged: false });
+      toast({
+        title: "Password reset",
+        description: "A new temporary password is shown. Share it with the member securely.",
+      });
+      await fetchCredentials();
+    } catch (error: any) {
+      toast({
+        title: "Reset failed",
+        description: error?.message || "Could not reset the password",
+        variant: "destructive",
+      });
+    }
+    setResetting(false);
+  };
+
+  const handlePurgePasswords = async () => {
+    if (!session?.token) return;
+    const typed = window.prompt(
+      'This permanently removes every MEMBER password stored in this system (staff are not affected). ' +
+      'Members will sign in through HR only. This cannot be undone. ' +
+      'Type DELETE MEMBER PASSWORDS to continue.'
+    );
+    if (typed !== 'DELETE MEMBER PASSWORDS') return;
+    setPurging(true);
+    try {
+      const response = await nativeFetch(`${API_BASE_URL}/member-credentials/purge-passwords`, {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${session.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ confirm: 'DELETE MEMBER PASSWORDS' }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.message || 'Request failed');
+      toast({
+        title: 'Member passwords removed',
+        description: `${data.data?.memberLoginsCleared ?? 0} logins and ${data.data?.credentialRecordsCleared ?? 0} dashboard records cleared.`,
+      });
+      await fetchCredentials();
+    } catch (error: any) {
+      toast({ title: 'Not done', description: error?.message || 'Could not remove passwords', variant: 'destructive' });
+    }
+    setPurging(false);
+  };
+
   const handleSync = async () => {
     if (!session?.token) return;
     setSyncing(true);
@@ -260,6 +338,11 @@ export default function MemberCredentials() {
           <h1 className="text-2xl sm:text-3xl font-bold">Member Credentials Dashboard</h1>
           <p className="text-muted-foreground">View and manage member login credentials</p>
         </div>
+        {role === 'ADMIN' && hrOnly && (
+          <Button variant="destructive" onClick={handlePurgePasswords} disabled={purging} className="w-full sm:w-auto">
+            {purging ? 'Removing...' : 'Remove stored member passwords'}
+          </Button>
+        )}
         {canSync && (
           <Button variant="outline" onClick={handleSync} disabled={syncing} className="w-full sm:w-auto">
             <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
@@ -435,7 +518,7 @@ export default function MemberCredentials() {
                 {password ? (
                   <div className="space-y-2">
                     <p className="text-sm font-medium">
-                      {selectedCredential.hasNationalId ? "Password (Use National ID)" : "Temporary Password"}
+                      {selectedCredential.hasNationalId ? "Temporary password (National ID)" : "Temporary password"}
                     </p>
                     <div className="flex gap-2">
                       <Input
@@ -477,8 +560,8 @@ export default function MemberCredentials() {
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription className="text-xs">
                       {selectedCredential.passwordChanged
-                        ? "Password has been changed by the member and is no longer available for display."
-                        : "This member already had a login before this record was created, so the original password is not stored. Ask an administrator to reset their password if they cannot sign in."}
+                        ? "The member has set their own password, so it cannot be shown. Use Reset password if they cannot sign in."
+                        : "The original password for this login is not on record. Use Reset password to issue a new temporary password."}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -499,10 +582,16 @@ export default function MemberCredentials() {
             </div>
           )}
 
-          <div className="flex gap-2">
-            <Button onClick={() => setShowPasswordModal(false)} className="flex-1">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button onClick={() => setShowPasswordModal(false)} variant="outline" className="flex-1">
               Close
             </Button>
+            {!hrOnly && (
+            <Button onClick={handleResetPassword} disabled={resetting} className="flex-1">
+              <RefreshCw className={`h-4 w-4 mr-2 ${resetting ? 'animate-spin' : ''}`} />
+              {resetting ? 'Resetting...' : 'Reset password'}
+            </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

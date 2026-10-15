@@ -23,6 +23,11 @@ public class Member {
     @Column(name = "employee_id", unique = true)
     private String employeeId;
 
+    /** HR system login name, learned on the first HR sign-in. */
+    @Size(max = 100)
+    @Column(name = "hr_username")
+    private String hrUsername;
+
     @NotBlank(message = "Full name is required")
     @Size(max = 150)
     @Column(name = "full_name")
@@ -165,6 +170,9 @@ public class Member {
 
     public String getMemberNumber() { return memberNumber; }
     public void setMemberNumber(String memberNumber) { this.memberNumber = memberNumber; }
+
+    public String getHrUsername() { return hrUsername; }
+    public void setHrUsername(String hrUsername) { this.hrUsername = hrUsername; }
 
     public String getEmployeeId() { return employeeId; }
     public void setEmployeeId(String employeeId) { this.employeeId = employeeId; }

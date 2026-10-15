@@ -281,14 +281,12 @@ public class MemberService {
                 System.out.println("=== INDIVIDUAL MEMBER REGISTRATION ===");
                 System.out.println("Member: " + member.getFirstName() + " " + member.getLastName());
                 System.out.println("Username: " + username);
-                System.out.println("Initial Password: Use National ID (" + member.getNationalId() + ")");
                 System.out.println("Instructions: Tell member to use their National ID as password");
                 System.out.println("=====================================");
             } else {
                 System.out.println("=== INDIVIDUAL MEMBER REGISTRATION ===");
                 System.out.println("Member: " + member.getFirstName() + " " + member.getLastName());
                 System.out.println("Username: " + username);
-                System.out.println("Temporary Password: " + temporaryPassword);
                 System.out.println("Instructions: Share these credentials with member");
                 System.out.println("=====================================");
             }

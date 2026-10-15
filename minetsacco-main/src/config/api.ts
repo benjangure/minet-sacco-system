@@ -36,9 +36,9 @@ export const getBackendUrl = (): string => {
     return CONFIGURED_API_URL || 'http://localhost:9090';
   }
 
-  // Deployed over HTTPS: never call an insecure http:// backend (blocked as mixed content)
+  // Deployed over HTTPS: the API is reverse-proxied on the same origin. Never call another host
+  // (an old/insecure/unresolvable URL baked into a build would otherwise break every request).
   if (protocol === 'https:') {
-    if (CONFIGURED_API_URL.startsWith('https://')) return CONFIGURED_API_URL;
     return origin;
   }
 
@@ -68,40 +68,32 @@ const api = axios.create({
   adapter: getPlatformAdapter(),
 });
 
-export const getAuthToken = (): string | null => {
-  // Staff session always takes priority over member_session.
-  // A TREASURER or LOAN_OFFICER logging in on native should not pick up a
-  // stale member_session that happens to exist in localStorage.
+const readSessionToken = (key: string): string | null => {
   try {
-    const staffStr = localStorage.getItem('session');
-    if (staffStr) {
-      const staffSession = JSON.parse(staffStr);
-      const role: string = staffSession.role || staffSession.user?.role || '';
-      // If the stored session is a real staff session (not MEMBER), use it.
-      if (role && role !== 'MEMBER' && staffSession.token) {
-        return staffSession.token;
-      }
-    }
-  } catch (_) {}
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.token === 'string' && parsed.token ? parsed.token : null;
+  } catch (_) {
+    return null;
+  }
+};
 
-  // Member session — used when on /member/* path or on native with no staff session
+/**
+ * Pick the bearer token for the current portal.
+ * Staff and member logins can coexist in one browser (e.g. a staff user testing the member
+ * portal); using the wrong one makes every member API call fail with 400/403. So:
+ *  - /member/* routes  -> member session first
+ *  - everything else   -> staff session first
+ */
+export const getAuthToken = (): string | null => {
   const isMemberContext = window.location.pathname.startsWith('/member');
-  // On native, fall through to member_session if no staff session found above
-  const tryMemberSession = isMemberContext || Capacitor.isNativePlatform();
-  if (tryMemberSession) {
-    try {
-      const memberStr = localStorage.getItem('member_session');
-      if (memberStr) {
-        const memberSession = JSON.parse(memberStr);
-        if (memberSession.token && typeof memberSession.token === 'string') {
-          return memberSession.token;
-        }
-      }
-    } catch (_) {}
+
+  if (isMemberContext) {
+    return readSessionToken('member_session') || localStorage.getItem('token') || readSessionToken('session');
   }
 
-  // Fallback: raw 'token' key
-  return localStorage.getItem('token');
+  return readSessionToken('session') || readSessionToken('member_session') || localStorage.getItem('token');
 };
 
 // Update the axios instance baseURL dynamically in case the module loaded

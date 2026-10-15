@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
+@org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
 @RequestMapping("/api/email")
 @CrossOrigin(origins = "*")
 public class EmailTestController {

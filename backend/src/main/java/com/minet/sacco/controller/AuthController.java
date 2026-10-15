@@ -64,8 +64,33 @@ public class AuthController {
     @Autowired
     private AccountLockoutService accountLockoutService;
 
+    @Autowired
+    private com.minet.sacco.service.NotificationService notificationService;
+
+    @Autowired
+    private com.minet.sacco.service.HrAuthService hrAuthService;
+
+    @Autowired
+    private com.minet.sacco.service.HrMemberProvisioningService hrMemberProvisioningService;
+
+    /**
+     * Authentication failures (bad credentials, locked account, wrong portal) are client errors:
+     * return the message with 400 instead of a generic 500.
+     */
+    @org.springframework.web.bind.annotation.ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthFlowException(Exception e) throws Exception {
+        if (e instanceof org.springframework.security.access.AccessDeniedException) {
+            throw e;
+        }
+        String message = e.getMessage() != null ? e.getMessage() : "Request failed";
+        return ResponseEntity.badRequest().body(ApiResponse.error(message));
+    }
+
     @PostMapping("/login")
     public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest, HttpServletRequest request) throws Exception {
+        if (authRequest.getUsername() != null) {
+            authRequest.setUsername(authRequest.getUsername().trim());
+        }
         User user = null;
         String ipAddress = getClientIpAddress(request);
         String userAgent = request.getHeader("User-Agent");
@@ -157,7 +182,24 @@ public class AuthController {
      */
     @PostMapping("/member/login")
     public ResponseEntity<?> memberLogin(@RequestBody AuthRequest authRequest, HttpServletRequest request) throws Exception {
+        if (authRequest.getUsername() != null) {
+            authRequest.setUsername(authRequest.getUsername().trim());
+        }
+        // Members may sign in with their Employee ID (payroll number) OR their HR username:
+        // resolve whichever was typed to the member's Employee ID (their local account name)
+        if (authRequest.getUsername() != null && !authRequest.getUsername().isBlank()) {
+            final String typedLogin = authRequest.getUsername();
+            memberRepository.findByEmployeeId(typedLogin)
+                    .or(() -> memberRepository.findByMemberNumber(typedLogin))
+                    .or(() -> memberRepository.findFirstByHrUsernameIgnoreCase(typedLogin))
+                    .ifPresent(found -> {
+                        if (found.getEmployeeId() != null && !found.getEmployeeId().isBlank()) {
+                            authRequest.setUsername(found.getEmployeeId());
+                        }
+                    });
+        }
         User user = null;
+        String hrDebugSuffix = "";
         String ipAddress = getClientIpAddress(request);
         String userAgent = request.getHeader("User-Agent");
 
@@ -175,10 +217,59 @@ public class AuthController {
                 }
             }
 
-            System.out.println("DEBUG: Member login attempt for: " + authRequest.getUsername());
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(authRequest.getUsername(), authRequest.getPassword())
-            );
+            boolean hrAuthenticated = false;
+            if (hrAuthService.isEnabled()) {
+                // Employee ID typed? Use the HR username we learned for that member, else try the typed value
+                String typed = authRequest.getUsername();
+                java.util.List<String> hrCandidates = new java.util.ArrayList<>();
+                memberRepository.findByEmployeeId(typed)
+                        .or(() -> memberRepository.findByMemberNumber(typed))
+                        .ifPresent(m -> {
+                            if (m.getHrUsername() != null && !m.getHrUsername().isBlank()) {
+                                hrCandidates.add(m.getHrUsername());
+                            }
+                        });
+                if (!hrCandidates.contains(typed)) hrCandidates.add(typed);
+
+                com.minet.sacco.service.HrAuthService.Result hr = null;
+                for (String candidate : hrCandidates) {
+                    hr = hrAuthService.authenticate(candidate, authRequest.getPassword());
+                    if (hr.isSuccess()) break;
+                }
+                if (hr.isSuccess()) {
+                    // Valid HR credentials: create / refresh the member in this system, then sign in
+                    // The member account is keyed by payroll number, not the HR login name
+                    String memberId = com.minet.sacco.service.HrMemberProvisioningService
+                            .memberIdentifier(authRequest.getUsername(), hr);
+                    user = hrMemberProvisioningService.provisionOrSync(
+                            memberId, authRequest.getPassword(), hr);
+                    authRequest.setUsername(user.getUsername());
+                    if (accountLockoutService.isAccountLocked(user)) {
+                        accountLockoutService.unlockAccount(user);
+                    }
+                    hrAuthenticated = true;
+                } else if (hrAuthService.isLocalFallbackAllowed() && hrAuthService.isDebug()) {
+                    hrDebugSuffix = " [HR debug: " + hr.getDiagnostic() + "]";
+                } else if (!hrAuthService.isLocalFallbackAllowed()) {
+                    if (user != null) {
+                        accountLockoutService.recordLoginAttempt(user, authRequest.getUsername(), false, ipAddress, userAgent,
+                                hr.getOutcome() == com.minet.sacco.service.HrAuthService.Outcome.UNAVAILABLE
+                                        ? "HR service unavailable" : "Invalid HR credentials");
+                    }
+                    String debugSuffix = hrAuthService.isDebug() ? " [HR debug: " + hr.getDiagnostic() + "]" : "";
+                    if (hr.getOutcome() == com.minet.sacco.service.HrAuthService.Outcome.UNAVAILABLE) {
+                        throw new Exception("The sign-in service is temporarily unavailable. Please try again shortly." + debugSuffix);
+                    }
+                    throw new Exception("Invalid username or password" + debugSuffix);
+                }
+            }
+
+            if (!hrAuthenticated) {
+                System.out.println("DEBUG: Member login attempt for: " + authRequest.getUsername());
+                authenticationManager.authenticate(
+                        new UsernamePasswordAuthenticationToken(authRequest.getUsername(), authRequest.getPassword())
+                );
+            }
             System.out.println("DEBUG: Member authentication successful");
         } catch (BadCredentialsException e) {
             System.err.println("ERROR: Invalid member credentials for: " + authRequest.getUsername());
@@ -197,7 +288,7 @@ public class AuthController {
                 }
             }
             
-            throw new Exception("Invalid username or password", e);
+            throw new Exception("Invalid username or password" + hrDebugSuffix, e);
         } catch (Exception e) {
             System.err.println("ERROR: Member authentication failed: " + e.getMessage());
             throw e;
@@ -218,8 +309,11 @@ public class AuthController {
                 throw new Exception("Staff users must use the staff login page. Please use the staff login.");
             }
 
+            if (user.getMemberId() == null) {
+                throw new Exception("This login is not linked to a member record. Please contact the SACCO office.");
+            }
             com.minet.sacco.entity.Member member = memberRepository.findById(user.getMemberId())
-                    .orElseThrow(() -> new Exception("Member record not found"));
+                    .orElseThrow(() -> new Exception("Member record not found. Please contact the SACCO office."));
 
             if (member.getStatus() == com.minet.sacco.entity.Member.Status.EXITED) {
                 System.err.println("ERROR: Exited member attempting login: " + authRequest.getUsername());
@@ -322,6 +416,18 @@ public class AuthController {
      * Health check endpoint for APK to verify backend connectivity
      * No authentication required - used by APK settings to test connection
      */
+    /**
+     * Public, non-sensitive sign-in configuration for the front end.
+     */
+    @GetMapping("/config")
+    public ResponseEntity<?> authConfig() {
+        java.util.Map<String, Object> cfg = new java.util.HashMap<>();
+        cfg.put("hrAuthEnabled", hrAuthService.isEnabled());
+        cfg.put("localAuthFallback", hrAuthService.isLocalFallbackAllowed());
+        cfg.put("hrOnly", hrAuthService.isHrOnly());
+        return ResponseEntity.ok(new ApiResponse<>(true, "OK", cfg));
+    }
+
     @GetMapping("/health")
     public ResponseEntity<?> healthCheck() {
         return ResponseEntity.ok(new ApiResponse<>(true, "Backend is healthy", null));
@@ -334,10 +440,15 @@ public class AuthController {
      * Usage: POST /api/auth/admin/reset-member-password
      * Body: { "username": "13121" }
      * 
-     * No authentication required for initial setup
+     * Requires ADMIN, TREASURER or CUSTOMER_SUPPORT.
      */
     @PostMapping("/admin/reset-member-password")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'TREASURER', 'CUSTOMER_SUPPORT')")
     public ResponseEntity<?> resetMemberPassword(@RequestBody java.util.Map<String, String> request) {
+        if (hrAuthService.isHrOnly()) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false,
+                "Member passwords are managed by the HR system and cannot be reset here.", null));
+        }
         try {
             String username = request.get("username");
             if (username == null || username.isBlank()) {
@@ -374,7 +485,7 @@ public class AuthController {
             user.setUpdatedAt(LocalDateTime.now());
             userRepository.save(user);
             
-            System.out.println("✓ Password reset for " + username + " to national ID: " + newPassword);
+            System.out.println("Password reset for member " + username);
             
             var result = new java.util.HashMap<String, Object>();
             result.put("username", username);
@@ -405,6 +516,7 @@ public class AuthController {
      * This should be called once, then the endpoint can be removed or secured
      */
     @PostMapping("/admin/initialize-member-users")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> initializeMemberUsers() {
         try {
             System.out.println("=== Starting Member User Account Initialization ===");
@@ -516,8 +628,8 @@ public class AuthController {
                 );
             }
 
-            // Find user by email
-            User user = userRepository.findByEmail(request.getEmail())
+            // Find user by email or username
+            User user = passwordResetService.findUserByIdentifier(request.getEmail())
                     .orElse(null);
 
             if (user == null || user.getRole() == User.Role.MEMBER) {
@@ -550,6 +662,10 @@ public class AuthController {
      */
     @PostMapping("/password-reset/member/request")
     public ResponseEntity<?> requestMemberPasswordReset(@RequestBody PasswordResetRequestDTO request) {
+        if (hrAuthService.isHrOnly()) {
+            return ResponseEntity.ok(new ApiResponse<>(true,
+                "Member passwords are managed by the HR system. Please use the HR password reset.", null));
+        }
         try {
             if (request.getEmail() == null || request.getEmail().isEmpty()) {
                 return ResponseEntity.badRequest().body(
@@ -557,8 +673,8 @@ public class AuthController {
                 );
             }
 
-            // Find user by email
-            User user = userRepository.findByEmail(request.getEmail())
+            // Find member login by username / member number, or by email
+            User user = passwordResetService.findUserByIdentifier(request.getEmail())
                     .orElse(null);
 
             if (user == null || user.getRole() != User.Role.MEMBER) {
@@ -569,6 +685,21 @@ public class AuthController {
 
             // Generate reset token and send email
             String token = passwordResetService.requestPasswordResetForMember(user.getUsername(), false);
+
+            if (token == null) {
+                // No deliverable email on file - route the request to staff so it is not lost
+                try {
+                    String who = user.getUsername();
+                    notificationService.notifyUsersByRole("CUSTOMER_SUPPORT",
+                            "Password reset requested by member " + who + " (no email on file). Please reset it from Member Credentials.",
+                            "PASSWORD_RESET_REQUEST");
+                    notificationService.notifyUsersByRole("ADMIN",
+                            "Password reset requested by member " + who + " (no email on file). Please reset it from Member Credentials.",
+                            "PASSWORD_RESET_REQUEST");
+                } catch (Exception ex) {
+                    System.err.println("Could not notify staff of reset request: " + ex.getMessage());
+                }
+            }
 
             if (token != null) {
                 return ResponseEntity.ok(new ApiResponse<>(true, 
@@ -640,10 +771,9 @@ public class AuthController {
                 );
             }
 
-            if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
-                return ResponseEntity.badRequest().body(
-                    new ApiResponse<>(false, "Password must be at least 6 characters long", null)
-                );
+            String policyError = PasswordResetService.validateNewPassword(request.getNewPassword());
+            if (policyError != null) {
+                return ResponseEntity.badRequest().body(new ApiResponse<>(false, policyError, null));
             }
 
             // Reset password

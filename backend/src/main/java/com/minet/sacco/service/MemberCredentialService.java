@@ -35,6 +35,7 @@ public class MemberCredentialService {
     @Autowired private MemberCredentialRepository memberCredentialRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private HrAuthService hrAuthService;
 
     /** Username convention: employee id (member number) else member number. */
     public static String usernameFor(Member member) {
@@ -76,12 +77,23 @@ public class MemberCredentialService {
         boolean hasNationalId = member.getNationalId() != null && !member.getNationalId().trim().isEmpty();
         MemberCredential credential = new MemberCredential(
                 member.getId(), username, member.getFullName(), member.getEmail(), hasNationalId, createdBy);
+        boolean changedByMember = false;
         if (plainPasswordIfKnown != null) {
             credential.setPassword(plainPasswordIfKnown);
-        } else if (hasNationalId) {
-            credential.setPassword(member.getNationalId().trim());
+        } else {
+            // A login already exists. Only record a password we can PROVE is current - otherwise the
+            // credentials dashboard would show a password that does not work.
+            Optional<User> login = userRepository.findByUsername(username);
+            if (login.isPresent()) {
+                User u = login.get();
+                if (hasNationalId && passwordEncoder.matches(member.getNationalId().trim(), u.getPassword())) {
+                    credential.setPassword(member.getNationalId().trim());
+                } else {
+                    changedByMember = !u.isFirstLogin();
+                }
+            }
         }
-        credential.setPasswordChanged(false);
+        credential.setPasswordChanged(changedByMember);
         credential.setCreatedAt(LocalDateTime.now());
         return memberCredentialRepository.save(credential);
     }
@@ -122,6 +134,97 @@ public class MemberCredentialService {
         userRepository.save(user);
 
         return ensureCredentialRecord(member, password, createdBy);
+    }
+
+    /**
+     * Admin-assisted reset ("forgot password" when email is unavailable): sets a fresh temporary
+     * password, forces the member to choose their own at next login, clears any lockout and
+     * updates the credentials dashboard record.
+     *
+     * @return the temporary password in plain text (shown once to the administrator)
+     */
+    @Transactional
+    public String resetToTemporaryPassword(Long memberId, Long performedByUserId) {
+        if (hrAuthService.isHrOnly()) {
+            throw new RuntimeException("Member passwords are managed by the HR system and cannot be reset here.");
+        }
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+        String username = usernameFor(member);
+        if (username == null || username.isBlank()) {
+            throw new RuntimeException("Member has no login identifier");
+        }
+
+        boolean hasNationalId = member.getNationalId() != null && !member.getNationalId().trim().isEmpty();
+        String temporary = hasNationalId ? member.getNationalId().trim() : PasswordGenerator.generateTemporaryPassword();
+
+        User user = userRepository.findByUsername(username).orElse(null);
+        if (user == null) {
+            user = new User();
+            user.setUsername(username);
+            user.setEmail(member.getEmail() != null && !member.getEmail().isBlank() ? member.getEmail() : username + "@minet.sacco");
+            user.setRole(User.Role.MEMBER);
+            user.setEnabled(true);
+            user.setCreatedAt(LocalDateTime.now());
+        }
+        user.setMemberId(member.getId());
+        user.setPassword(passwordEncoder.encode(temporary));
+        user.setFirstLogin(true);
+        user.setEnabled(true);
+        user.setAccountLocked(false);
+        user.setLockedUntil(null);
+        user.setFailedLoginAttempts(0);
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        MemberCredential credential = memberCredentialRepository.findByMemberId(member.getId())
+                .orElseGet(() -> new MemberCredential(member.getId(), username, member.getFullName(), member.getEmail(), hasNationalId, performedByUserId));
+        credential.setUsername(username);
+        credential.setHasNationalId(hasNationalId);
+        credential.setPassword(temporary);
+        credential.setPasswordChanged(false);
+        credential.setPasswordChangedAt(null);
+        credential.setEmailSent(false);
+        credential.setEmailSentAt(null);
+        memberCredentialRepository.save(credential);
+        return temporary;
+    }
+
+    /**
+     * Remove every member's locally stored password (login hash and the readable temporary password
+     * on the credentials dashboard). Members then authenticate through HR only. Staff accounts are
+     * never touched. Irreversible; refused unless HR sign-in is the only password source.
+     *
+     * @return number of member logins and credential records cleared
+     */
+    @Transactional
+    public Map<String, Object> purgeLocalMemberPasswords() {
+        if (!hrAuthService.isHrOnly()) {
+            throw new RuntimeException(
+                    "Refused: HR sign-in must be configured (HR_API_URL) with ALLOW_LOCAL_AUTH_FALLBACK=false "
+                            + "before local member passwords can be removed.");
+        }
+        int logins = 0;
+        int records = 0;
+        for (User u : userRepository.findByRole(User.Role.MEMBER)) {
+            // The column is mandatory, so store a random value nobody knows (not a usable password)
+            u.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID() + "-" + java.util.UUID.randomUUID()));
+            u.setFirstLogin(false);
+            u.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(u);
+            logins++;
+        }
+        for (MemberCredential c : memberCredentialRepository.findAll()) {
+            if (c.getPassword() != null) {
+                c.setPassword(null);
+                memberCredentialRepository.save(c);
+                records++;
+            }
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("memberLoginsCleared", logins);
+        result.put("credentialRecordsCleared", records);
+        return result;
     }
 
     /** Repair: create missing credential records for every member that lacks one. */

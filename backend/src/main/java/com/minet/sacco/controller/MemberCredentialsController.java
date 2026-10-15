@@ -54,6 +54,54 @@ public class MemberCredentialsController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @Autowired
+    private com.minet.sacco.repository.UserRepository userRepository;
+
+    /**
+     * Reset a member's password to a fresh temporary ("demo") password.
+     * Use when a member cannot sign in or cannot receive the reset email.
+     */
+    /**
+     * Irreversibly remove all stored member passwords (members then sign in through HR only).
+     * ADMIN only; requires the confirmation text in the body.
+     */
+    @PostMapping("/purge-passwords")
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> purgePasswords(
+            @RequestBody(required = false) java.util.Map<String, String> body) {
+        String confirm = body == null ? null : body.get("confirm");
+        if (!"DELETE MEMBER PASSWORDS".equals(confirm)) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(
+                    "Confirmation text missing. Send {\"confirm\": \"DELETE MEMBER PASSWORDS\"}."));
+        }
+        try {
+            return ResponseEntity.ok(ApiResponse.success("Member passwords removed",
+                    memberCredentialService.purgeLocalMemberPasswords()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_CUSTOMER_SUPPORT')")
+    public ResponseEntity<ApiResponse<PasswordResponse>> resetPassword(
+            @PathVariable(name = "id") Long credentialId,
+            org.springframework.security.core.Authentication authentication) {
+        try {
+            MemberCredential credential = memberCredentialRepository.findById(credentialId)
+                    .orElseThrow(() -> new RuntimeException("Credential not found"));
+            Long performedBy = userRepository.findByUsername(authentication.getName())
+                    .map(com.minet.sacco.entity.User::getId).orElse(null);
+            String temporary = memberCredentialService.resetToTemporaryPassword(credential.getMemberId(), performedBy);
+            PasswordResponse response = new PasswordResponse();
+            response.setPassword(temporary);
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Password reset. The member must set a new password at next login.", response));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     /**
      * Get password for a specific credential (requires authorization)
      * Returns only the temporary password if it hasn't been changed

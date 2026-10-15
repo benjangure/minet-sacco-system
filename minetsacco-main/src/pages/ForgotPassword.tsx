@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Mail, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getApiBaseUrl } from "@/config/api";
+import { nativeFetch } from "@/utils/nativeHttp";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -35,25 +36,16 @@ const ForgotPassword = () => {
       return;
     }
 
-    if (!validateEmail(email)) {
-      setError("Please enter a valid email address");
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid email address",
-        variant: "destructive"
-      });
-      return;
-    }
 
     setLoading(true);
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/password-reset/request`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/auth/password-reset/request`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim() }),
       });
 
       if (!response.ok) {

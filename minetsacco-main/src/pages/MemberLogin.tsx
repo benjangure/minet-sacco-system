@@ -12,6 +12,7 @@ import { AlertCircle, LogIn, Eye, EyeOff, Settings, ChevronDown, ChevronUp, Chec
 import logo from '@/assets/images/logo.png';
 import { BackendConnectionManager } from '@/components/BackendConnectionManager';
 import { getBackendUrl, setBackendUrl } from '@/config/api';
+import { getApiBaseUrl } from '@/config/api';
 
 export default function MemberLogin() {
   const hasCheckedSession = useRef(false);
@@ -30,6 +31,21 @@ export default function MemberLogin() {
   const navigate = useNavigate();
   const location = useLocation();
   const { memberSignIn } = useAuth();
+
+  // When members sign in with HR credentials the form must ask for the HR username and password
+  const [hrAuth, setHrAuth] = useState(false);
+  const [hrOnly, setHrOnly] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    nativeFetch(`${getApiBaseUrl()}/auth/config`, { method: 'GET' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.data?.hrAuthEnabled) setHrAuth(true);
+        if (!cancelled && d?.data?.hrOnly) setHrOnly(true);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     // Prevent infinite loop - only check session once on mount
@@ -328,28 +344,37 @@ export default function MemberLogin() {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="username">Phone Number or Employee ID</Label>
+                  <Label htmlFor="username">Employee ID or HR Username</Label>
                   <Input
                     id="username"
                     type="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoComplete="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g., 0722123456 or EMP001"
+                    placeholder="Your Employee ID or HR username"
                     required
                     disabled={loading}
                     className="h-10"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {hrAuth
+                      ? 'Use your HR password. If this is your first time, use your HR username instead of your Employee ID.'
+                      : 'First sign-in? Your initial password is your National ID.'}
+                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">National ID (Initial Password)</Label>
+                  <Label htmlFor="password">Password</Label>
                   <div className="relative">
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Your National ID"
+                      placeholder="Your password"
                       required
                       disabled={loading}
                       className="h-10 pr-10"
@@ -385,14 +410,20 @@ export default function MemberLogin() {
                   {loading ? 'Logging in...' : 'Login'}
                 </Button>
 
-                <div className="text-center">
-                  <Link 
-                    to="/member/forgot-password" 
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
+                {hrOnly ? (
+                  <p className="text-center text-xs text-muted-foreground">
+                    Your password is the one you use for the HR system. To reset it, use the HR password reset.
+                  </p>
+                ) : (
+                  <div className="text-center">
+                    <Link
+                      to="/member/forgot-password"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                )}
               </form>
             </CardContent>
           </Card>

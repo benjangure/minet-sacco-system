@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { getApiBaseUrl } from "@/config/api";
+import { nativeFetch } from "@/utils/nativeHttp";
 
 interface TokenInfo {
   valid: boolean;
@@ -55,7 +56,7 @@ const ResetPassword = () => {
       }
 
       try {
-        const response = await fetch(`${getApiBaseUrl()}/auth/password-reset/validate-token`, {
+        const response = await nativeFetch(`${getApiBaseUrl()}/auth/password-reset/validate-token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -129,7 +130,7 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/password-reset/reset-password`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/auth/password-reset/reset-password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

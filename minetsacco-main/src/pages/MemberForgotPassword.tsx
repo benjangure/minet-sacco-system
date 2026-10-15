@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Mail, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, UserRound, CheckCircle2, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getApiBaseUrl } from "@/config/api";
+import { nativeFetch } from "@/utils/nativeHttp";
 
 const MemberForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -14,33 +15,33 @@ const MemberForgotPassword = () => {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const { toast } = useToast();
+  const [hrManaged, setHrManaged] = useState(false);
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  // When members sign in with their HR credentials, the password is managed by HR, not here
+  useEffect(() => {
+    let cancelled = false;
+    nativeFetch(`${getApiBaseUrl()}/auth/config`, { method: "GET" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.data?.hrAuthEnabled && d?.data?.localAuthFallback === false) {
+          setHrManaged(true);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    // Validate email
-    if (!email.trim()) {
-      setError("Email address is required");
+    const identifier = email.trim();
+    if (!identifier) {
+      setError("Please enter your member number or email address");
       toast({
         title: "Validation Error",
-        description: "Please enter your email address",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      setError("Please enter a valid email address");
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid email address",
-        variant: "destructive"
+        description: "Please enter your member number or email address",
+        variant: "destructive",
       });
       return;
     }
@@ -48,12 +49,12 @@ const MemberForgotPassword = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/password-reset/member/request`, {
+      const response = await nativeFetch(`${getApiBaseUrl()}/auth/password-reset/member/request`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: identifier }),
       });
 
       if (!response.ok) {
@@ -63,7 +64,7 @@ const MemberForgotPassword = () => {
       setSent(true);
       toast({
         title: "Success",
-        description: "If an account exists with this email, you will receive a password reset link shortly.",
+        description: "If we found your account, a reset link has been sent or the SACCO office has been notified.",
       });
     } catch (err) {
       setError("Failed to process password reset request. Please try again.");
@@ -85,21 +86,39 @@ const MemberForgotPassword = () => {
           <CardTitle className="text-2xl font-bold">Reset Your Password</CardTitle>
           <CardDescription>
             {sent
-              ? "Check your email for reset instructions"
-              : "Enter your email to receive password reset instructions"}
+              ? "Your request has been received"
+              : "Enter your member number or email to reset your password"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!sent ? (
+          {hrManaged ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
+                <p className="font-medium mb-1">Your password is managed by Minet HR</p>
+                <p className="text-xs">
+                  You sign in to the SACCO portal with the same credentials you use for the HR system.
+                  To reset your password, please use the HR system's password reset, or contact the HR / IT help desk.
+                </p>
+              </div>
+              <Link to="/member/login">
+                <Button className="w-full">Return to Member Login</Button>
+              </Link>
+            </div>
+          ) : !sent ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
+                <Label htmlFor="email">Member Number or Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-5 w-5 text-muted-foreground" />
+                  <UserRound className="absolute left-3 top-2.5 h-5 w-5 text-muted-foreground" />
                   <Input
                     id="email"
-                    type="email"
-                    placeholder="your.email@example.com"
+                    type="text"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoComplete="username"
+                    placeholder="e.g. 13012 or your.email@example.com"
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value);
@@ -116,10 +135,10 @@ const MemberForgotPassword = () => {
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
                 <p className="font-medium mb-1">How to reset your password:</p>
                 <ul className="text-xs space-y-1 list-disc list-inside">
-                  <li>Enter the email associated with your account</li>
-                  <li>We'll send you a secure reset link via email</li>
-                  <li>Click the link and create a new password</li>
-                  <li>For security, the link expires in 30 minutes</li>
+                  <li>Enter your member number (or the email on your account)</li>
+                  <li>If a real email is on file, we'll send a secure reset link</li>
+                  <li>If not, the SACCO office is notified and will give you a temporary password</li>
+                  <li>For security, a reset link expires in 30 minutes</li>
                 </ul>
               </div>
 
@@ -156,7 +175,7 @@ const MemberForgotPassword = () => {
               <div className="text-center space-y-2">
                 <p className="font-medium text-green-700">Reset Link Sent</p>
                 <p className="text-sm text-muted-foreground">
-                  If an account exists with that email address, you will receive a password reset link shortly.
+                  If your account has an email address on file, a reset link will arrive shortly. Otherwise the SACCO office has been notified and will contact you with a temporary password.
                 </p>
                 <p className="text-xs text-muted-foreground">
                   The reset link will expire in 30 minutes for security reasons.
@@ -171,7 +190,8 @@ const MemberForgotPassword = () => {
                     <ul className="text-xs space-y-1 list-disc list-inside">
                       <li>Check your spam or junk folder</li>
                       <li>Wait a few minutes for the email</li>
-                      <li>Verify you used the correct email</li>
+                      <li>Verify you used the correct member number or email</li>
+                      <li>Contact the SACCO office if you still cannot sign in</li>
                     </ul>
                   </div>
                 </div>
@@ -186,7 +206,7 @@ const MemberForgotPassword = () => {
                 variant="outline"
                 className="w-full"
               >
-                Try Another Email
+                Try Again
               </Button>
 
               <Link to="/member/login">

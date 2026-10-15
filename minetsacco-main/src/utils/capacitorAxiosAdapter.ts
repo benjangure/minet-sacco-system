@@ -62,15 +62,34 @@ export function buildCapacitorAdapter() {
 
     console.log(`[CapacitorAdapter] ${method} ${url}`);
 
+    const wantsBinary = config.responseType === 'blob' || config.responseType === 'arraybuffer';
+
     const response = await CapacitorHttp.request({
       url,
       method,
       headers,
       data: ['GET', 'HEAD', 'DELETE'].includes(method) ? undefined : parseBody(config.data),
+      // Binary downloads (PDF / Excel) must come back as base64, not as a corrupted string
+      ...(wantsBinary ? { responseType: 'blob' as const } : {}),
     });
 
     const status = response.status;
-    const responseData = response.data;
+    let responseData: any = response.data;
+
+    if (wantsBinary && typeof responseData === 'string') {
+      try {
+        const bin = atob(responseData);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const headersObj = (response.headers || {}) as Record<string, string>;
+        const ctKey = Object.keys(headersObj).find((k) => k.toLowerCase() === 'content-type');
+        responseData = config.responseType === 'arraybuffer'
+          ? bytes.buffer
+          : new Blob([bytes], { type: (ctKey && headersObj[ctKey]) || 'application/octet-stream' });
+      } catch {
+        // leave as returned
+      }
+    }
 
     // Axios settle logic: reject on error status
     const settle = (resolve: Function, reject: Function, res: AxiosResponse) => {

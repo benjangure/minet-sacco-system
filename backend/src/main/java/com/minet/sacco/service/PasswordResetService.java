@@ -40,11 +40,54 @@ public class PasswordResetService {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private com.minet.sacco.repository.MemberCredentialRepository memberCredentialRepository;
+
+    @Autowired
+    private AccountLockoutService accountLockoutService;
+
+    @Autowired
+    private PasswordPolicyService passwordPolicyService;
+
+    @Autowired
+    private NotificationService notificationService;
+
     @Value("${app.password.reset.token.expiration.minutes:30}")
     private long tokenExpirationMinutes;
 
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
+
+    /** True when the address looks like a real mailbox (not the generated member placeholder). */
+    public static boolean isDeliverableEmail(String email) {
+        if (email == null) return false;
+        String e = email.trim().toLowerCase();
+        return e.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$") && !e.endsWith("@minet.sacco");
+    }
+
+    /**
+     * Find a user by username / member number, or by email. Used by "forgot password".
+     */
+    public Optional<User> findUserByIdentifier(String identifier) {
+        if (identifier == null) return Optional.empty();
+        String id = identifier.trim();
+        if (id.isEmpty()) return Optional.empty();
+        Optional<User> byUsername = userRepository.findByUsername(id);
+        if (byUsername.isPresent()) return byUsername;
+        if (id.contains("@")) {
+            return userRepository.findByEmail(id);
+        }
+        return Optional.empty();
+    }
+
+    /** Password rules shared by every reset path. Returns an error message, or null when acceptable. */
+    public static String validateNewPassword(String pwd) {
+        if (pwd == null || pwd.length() < 8) return "Password must be at least 8 characters long";
+        if (!pwd.matches(".*[A-Z].*")) return "Password must contain an uppercase letter";
+        if (!pwd.matches(".*[a-z].*")) return "Password must contain a lowercase letter";
+        if (!pwd.matches(".*\\d.*")) return "Password must contain a number";
+        return null;
+    }
 
     /**
      * Generate a secure random token for password reset
@@ -89,6 +132,11 @@ public class PasswordResetService {
         // Verify user is staff (not member)
         if (user.getRole() == User.Role.MEMBER) {
             logger.warn("Password reset requested for member user via staff endpoint: {}", username);
+            return null;
+        }
+
+        if (!isDeliverableEmail(user.getEmail())) {
+            logger.warn("Staff user {} has no deliverable email; reset link not sent", username);
             return null;
         }
 
@@ -137,6 +185,11 @@ public class PasswordResetService {
         // Verify user is member
         if (user.getRole() != User.Role.MEMBER) {
             logger.warn("Password reset requested for non-member user via member endpoint: {}", username);
+            return null;
+        }
+
+        if (!isDeliverableEmail(user.getEmail())) {
+            logger.warn("Member {} has no deliverable email; reset link not sent", username);
             return null;
         }
 
@@ -235,8 +288,8 @@ public class PasswordResetService {
             return false;
         }
 
-        if (newPassword == null || newPassword.length() < 6) {
-            logger.warn("Password reset attempted with invalid password");
+        if (validateNewPassword(newPassword) != null) {
+            logger.warn("Password reset attempted with a password that does not meet the policy");
             return false;
         }
 
@@ -251,15 +304,43 @@ public class PasswordResetService {
         User user = resetToken.getUser();
 
         try {
-            // Update user password
-            user.setPassword(passwordEncoder.encode(newPassword));
+            // Update user password; the member now owns the password, so first-login setup is complete
+            String encoded = passwordEncoder.encode(newPassword);
+            user.setPassword(encoded);
+            user.setFirstLogin(false);
             user.setUpdatedAt(LocalDateTime.now());
             userRepository.save(user);
+
+            // Clear any lockout caused by failed attempts with the old/demo password
+            try {
+                accountLockoutService.unlockAccount(user);
+            } catch (Exception ex) {
+                logger.warn("Could not clear lockout for {}: {}", user.getUsername(), ex.getMessage());
+            }
+
+            // Keep password history/expiry in step
+            try {
+                passwordPolicyService.recordPasswordChange(user, encoded, user);
+                passwordPolicyService.setPasswordExpiration(user);
+            } catch (Exception ex) {
+                logger.warn("Could not record password history for {}: {}", user.getUsername(), ex.getMessage());
+            }
+
+            // Members: the temporary/demo password shown on the credentials dashboard is no longer valid
+            if (user.getRole() == User.Role.MEMBER && user.getMemberId() != null) {
+                memberCredentialRepository.findByMemberId(user.getMemberId()).ifPresent(c -> {
+                    c.setPasswordChanged(true);
+                    c.setPasswordChangedAt(LocalDateTime.now());
+                    c.setPassword(null);
+                    memberCredentialRepository.save(c);
+                });
+            }
 
             // Mark token as used
             resetToken.setIsUsed(true);
             resetToken.setUsedAt(LocalDateTime.now());
             tokenRepository.save(resetToken);
+            invalidateActiveTokens(user.getId());
 
             // Log activity
             userService.logActivity(user, "PASSWORD_RESET", "Password reset using token");
@@ -324,7 +405,7 @@ public class PasswordResetService {
      * Build password reset link for email
      */
     private String buildResetLink(String token, boolean isMember) {
-        String path = isMember ? "/member/reset-password" : "/staff/reset-password";
+        String path = isMember ? "/member/reset-password" : "/reset-password";
         return frontendUrl + path + "?token=" + token;
     }
 

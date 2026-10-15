@@ -22,8 +22,8 @@ export interface DesktopNotificationOptions {
 class DesktopNotificationService {
   private static instance: DesktopNotificationService;
   private permission: NotificationPermission = 'default';
-  private defaultIcon = '/icon-512x512.png';
-  private defaultBadge = '/icon-192x192.png';
+  private defaultIcon = '/icon-512.png';
+  private defaultBadge = '/icon-192.png';
 
   private constructor() {
     this.initializePermission();

@@ -24,32 +24,15 @@ export interface Notification {
  * 4. Default → staff
  */
 const isActiveMemberSession = (): boolean => {
-  // Staff session takes priority — if it exists and has a non-MEMBER role, this is staff
+  // Portal is determined by the route; falls back to which session exists
+  if (window.location.pathname.startsWith('/member')) return true;
   try {
-    const staffSession = localStorage.getItem('session');
-    if (staffSession) {
-      const parsed = JSON.parse(staffSession);
-      const role: string = parsed.role || parsed.user?.role || '';
-      if (role && role !== 'MEMBER') {
-        return false; // Definitely staff
-      }
-    }
+    if (localStorage.getItem('session')) return false;
+    if (localStorage.getItem('member_session')) return true;
   } catch (_) {}
-
-  // Member session present and no overriding staff role → member
-  try {
-    const memberSession = localStorage.getItem('member_session');
-    if (memberSession) {
-      const parsed = JSON.parse(memberSession);
-      if (parsed.token) return true;
-    }
-  } catch (_) {}
-
-  // URL fallback
-  return window.location.pathname.startsWith('/member');
+  return false;
 };
 
-// Reliable path detection based on active session role
 const getNotificationsPath = (): string =>
   isActiveMemberSession() ? '/member/notifications' : '/notifications';
 

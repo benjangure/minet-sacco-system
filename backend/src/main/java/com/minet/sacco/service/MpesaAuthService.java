@@ -35,7 +35,6 @@ public class MpesaAuthService {
             String consumerSecret = mpesaConfig.getConsumerSecret();
             
             System.out.println("DEBUG: Consumer Key: " + (consumerKey != null ? consumerKey.substring(0, Math.min(10, consumerKey.length())) + "..." : "NULL"));
-            System.out.println("DEBUG: Consumer Secret: " + (consumerSecret != null ? consumerSecret.substring(0, Math.min(10, consumerSecret.length())) + "..." : "NULL"));
             System.out.println("DEBUG: Base URL: " + mpesaConfig.getBaseUrl());
             
             if (consumerKey == null || consumerKey.isEmpty() || consumerSecret == null || consumerSecret.isEmpty()) {

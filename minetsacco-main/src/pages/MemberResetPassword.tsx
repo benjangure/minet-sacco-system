@@ -1,3 +1,4 @@
+import { nativeFetch } from "@/utils/nativeHttp";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ const MemberResetPassword = () => {
   // Password validation rules for members
   const validatePassword = (pwd: string): string[] => {
     const errors: string[] = [];
-    if (pwd.length < 6) errors.push("At least 6 characters");
+    if (pwd.length < 8) errors.push("At least 8 characters");
     if (!/[A-Z]/.test(pwd)) errors.push("At least one uppercase letter");
     if (!/[a-z]/.test(pwd)) errors.push("At least one lowercase letter");
     if (!/\d/.test(pwd)) errors.push("At least one number");
@@ -56,7 +57,7 @@ const MemberResetPassword = () => {
       }
 
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/password-reset/validate-token`, {
+        const response = await nativeFetch(`${API_BASE_URL}/auth/password-reset/validate-token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -130,7 +131,7 @@ const MemberResetPassword = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/password-reset/reset-password`, {
+      const response = await nativeFetch(`${API_BASE_URL}/auth/password-reset/reset-password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -264,9 +265,9 @@ const MemberResetPassword = () => {
               <div className="bg-gray-50 border border-gray-200 rounded-md p-3 space-y-2">
                 <p className="text-xs font-medium text-gray-700">Password Strength:</p>
                 <ul className="text-xs space-y-1">
-                  <li className={`flex items-center gap-2 ${password.length >= 6 ? 'text-green-600' : 'text-red-600'}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${password.length >= 6 ? 'bg-green-600' : 'bg-red-600'}`}></span>
-                    At least 6 characters
+                  <li className={`flex items-center gap-2 ${password.length >= 8 ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${password.length >= 8 ? 'bg-green-600' : 'bg-red-600'}`}></span>
+                    At least 8 characters
                   </li>
                   <li className={`flex items-center gap-2 ${/[A-Z]/.test(password) ? 'text-green-600' : 'text-red-600'}`}>
                     <span className={`h-1.5 w-1.5 rounded-full ${/[A-Z]/.test(password) ? 'bg-green-600' : 'bg-red-600'}`}></span>

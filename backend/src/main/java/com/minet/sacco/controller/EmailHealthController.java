@@ -14,6 +14,7 @@ import java.util.Map;
  * Used for deployment verification, monitoring, and troubleshooting.
  */
 @RestController
+@org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
 @RequestMapping("/api/email/health")
 @CrossOrigin(origins = "*")
 public class EmailHealthController {

@@ -74,9 +74,6 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/debug/**").permitAll()
-                        .requestMatchers("/api/email/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // SockJS handshake uses plain HTTP GET — must be permit-all so the
                         // browser can upgrade without sending a custom Authorization header
                         .requestMatchers("/ws/**").permitAll()

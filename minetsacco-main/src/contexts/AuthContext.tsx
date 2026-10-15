@@ -71,7 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Try to restore a valid session.
     // In a Capacitor WebView, window.location.pathname is unreliable (not /member/*),
     // so we try BOTH keys and use whichever one has a valid, non-expired token.
-    const candidateKeys = ['member_session', 'session'];
+    const onMemberPortal = window.location.pathname.startsWith('/member');
+    const candidateKeys = onMemberPortal ? ['member_session', 'session'] : ['session', 'member_session'];
 
     const isValidSession = (raw: string | null): boolean => {
       if (!raw) return false;
@@ -193,6 +194,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Store under "member_session" for member portal (separate from staff session)
       // AND under "token" (used by MemberSettings.tsx, notificationService.ts,
       // and other member-portal pages that read the raw token directly)
+      // Only one portal session may exist at a time, otherwise the wrong token is sent
+      localStorage.removeItem("session");
       localStorage.setItem("member_session", JSON.stringify(sessionData));
       localStorage.setItem("token", data.token);
 
@@ -260,6 +263,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatar_url: null,
       });
 
+      // Only one portal session may exist at a time, otherwise the wrong token is sent
+      localStorage.removeItem("member_session");
+      localStorage.removeItem("token");
       localStorage.setItem("session", JSON.stringify(sessionData));
 
       return { error: null };

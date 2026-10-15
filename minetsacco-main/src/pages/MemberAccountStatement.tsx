@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useRefresh } from '@/contexts/RefreshContext';
 import api from '@/config/api';
 import { formatCurrency } from '@/lib/utils';
+import { downloadAndOpenFile } from '@/utils/downloadHelper';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download, ArrowLeft } from 'lucide-react';
@@ -61,25 +62,43 @@ export default function MemberAccountStatement() {
     }
   };
 
-  const downloadStatement = () => {
-    const csv = [
-      ['Date', 'Type', 'Description', 'Amount', 'Account Type'],
-      ...transactions.map(t => [
-        new Date(t.transactionDate).toLocaleDateString(),
-        t.transactionType,
-        t.description,
-        t.amount.toString(),
-        t.accountType
-      ])
-    ].map(row => row.join(',')).join('\n');
+  // Money in (credit) / money out (debit) for a transaction type; other types do not move the balance
+  const direction = (type: string): 'in' | 'out' | 'none' => {
+    if (type === 'DEPOSIT' || type === 'LOAN_DISBURSEMENT') return 'in';
+    if (type === 'WITHDRAWAL' || type === 'LOAN_REPAYMENT') return 'out';
+    return 'none';
+  };
 
+  const csvCell = (value: unknown): string => {
+    const text = value === null || value === undefined ? '' : String(value);
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+
+  const downloadStatement = async () => {
+    const rows = [
+      ['Date', 'Type', 'Description', 'Money in (KES)', 'Money out (KES)', 'Account'],
+      ...transactions.map(t => {
+        const dir = direction(t.transactionType);
+        const amount = Number(t.amount || 0).toFixed(2);
+        return [
+          new Date(t.transactionDate).toISOString().slice(0, 10),
+          t.transactionType,
+          t.description || '',
+          dir === 'in' ? amount : '',
+          dir === 'out' ? amount : '',
+          t.accountType,
+        ];
+      }),
+    ];
+    // BOM so Excel opens UTF-8 correctly
+    const csv = '\uFEFF' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `account-statement-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    toast({ title: 'Success', description: 'Statement downloaded' });
+    await downloadAndOpenFile(
+      blob,
+      `account-statement-${new Date().toISOString().split('T')[0]}.csv`,
+      (message) => toast({ title: 'Success', description: message }),
+      (error) => toast({ title: 'Error', description: error, variant: 'destructive' })
+    );
   };
 
   const formatDate = (dateString: string) => {
@@ -148,8 +167,12 @@ export default function MemberAccountStatement() {
                       <td className="py-2 px-2">{formatDate(transaction.transactionDate)}</td>
                       <td className="py-2 px-2">{transaction.transactionType}</td>
                       <td className="py-2 px-2">{transaction.description}</td>
-                      <td className={`py-2 px-2 text-right font-semibold ${transaction.transactionType === 'WITHDRAWAL' ? 'text-red-600' : 'text-green-600'}`}>
-                        {transaction.transactionType === 'WITHDRAWAL' ? '-' : '+'}
+                      <td className={`py-2 px-2 text-right font-semibold ${
+                        direction(transaction.transactionType) === 'out' ? 'text-red-600'
+                          : direction(transaction.transactionType) === 'in' ? 'text-green-600'
+                          : 'text-muted-foreground'}`}>
+                        {direction(transaction.transactionType) === 'out' ? '-'
+                          : direction(transaction.transactionType) === 'in' ? '+' : ''}
                         {formatCurrency(transaction.amount)}
                       </td>
                       <td className="py-2 px-2">{transaction.accountType}</td>

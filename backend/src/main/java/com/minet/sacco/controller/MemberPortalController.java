@@ -1664,6 +1664,9 @@ public class MemberPortalController {
 
     @Autowired
     private com.minet.sacco.service.AuditService auditService;
+
+    @Autowired
+    private com.minet.sacco.service.MemberStatementPdfService memberStatementPdfService;
     @GetMapping("/account-statement")
     public ResponseEntity<?> getAccountStatement(
             @RequestParam(required = false) String startDate,
@@ -1673,12 +1676,15 @@ public class MemberPortalController {
             
             java.time.LocalDate start = startDate != null ? 
                 java.time.LocalDate.parse(startDate) : 
-                java.time.LocalDate.now().minusMonths(3);
+                com.minet.sacco.service.MemberStatementPdfService.ALL_TIME_START;
             
             java.time.LocalDate end = endDate != null ? 
                 java.time.LocalDate.parse(endDate) : 
                 java.time.LocalDate.now();
             
+            if (start.isAfter(end)) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("Start date must be on or before the end date"));
+            }
             // Generate PDF
             byte[] pdfContent = generateAccountStatementPDF(member, start, end);
             
@@ -1693,63 +1699,7 @@ public class MemberPortalController {
     }
 
     private byte[] generateAccountStatementPDF(Member member, java.time.LocalDate start, java.time.LocalDate end) throws Exception {
-        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-        com.itextpdf.kernel.pdf.PdfWriter writer = new com.itextpdf.kernel.pdf.PdfWriter(baos);
-        com.itextpdf.kernel.pdf.PdfDocument pdfDoc = new com.itextpdf.kernel.pdf.PdfDocument(writer);
-        com.itextpdf.layout.Document document = new com.itextpdf.layout.Document(pdfDoc);
-        
-        // Title
-        document.add(new com.itextpdf.layout.element.Paragraph("ACCOUNT STATEMENT")
-            .setFontSize(18)
-            .setBold()
-            .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
-        
-        // Member info
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Member: " + member.getFirstName() + " " + member.getLastName() + " (" + member.getMemberNumber() + ")")
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Period: " + start + " to " + end)
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Generated: " + java.time.LocalDateTime.now())
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(""));
-        
-        // Transactions table
-        com.itextpdf.layout.element.Table table = new com.itextpdf.layout.element.Table(
-            new float[]{2, 2, 2, 2, 2});
-        table.addHeaderCell("Date");
-        table.addHeaderCell("Type");
-        table.addHeaderCell("Account");
-        table.addHeaderCell("Amount");
-        table.addHeaderCell("Balance");
-        
-        java.time.LocalDateTime startDateTime = start.atStartOfDay();
-        java.time.LocalDateTime endDateTime = end.atTime(23, 59, 59);
-        
-        List<Transaction> transactions = transactionRepository
-            .findByAccountMemberIdOrderByTransactionDateDesc(member.getId())
-            .stream()
-            .filter(t -> t.getTransactionDate() != null &&
-                       !t.getTransactionDate().isBefore(startDateTime) &&
-                       !t.getTransactionDate().isAfter(endDateTime))
-            .collect(Collectors.toList());
-        
-        BigDecimal balance = BigDecimal.ZERO;
-        for (Transaction txn : transactions) {
-            table.addCell(txn.getTransactionDate().toLocalDate().toString());
-            table.addCell(txn.getTransactionType().toString());
-            table.addCell(txn.getAccount().getAccountType().toString());
-            table.addCell("KES " + txn.getAmount());
-            balance = balance.add(txn.getAmount());
-            table.addCell("KES " + balance);
-        }
-        
-        document.add(table);
-        document.close();
-        
-        return baos.toByteArray();
+        return memberStatementPdfService.accountStatement(member, start, end);
     }
 
     /**
@@ -1764,12 +1714,15 @@ public class MemberPortalController {
             
             java.time.LocalDate start = startDate != null ? 
                 java.time.LocalDate.parse(startDate) : 
-                java.time.LocalDate.now().minusMonths(12);
+                com.minet.sacco.service.MemberStatementPdfService.ALL_TIME_START;
             
             java.time.LocalDate end = endDate != null ? 
                 java.time.LocalDate.parse(endDate) : 
                 java.time.LocalDate.now();
             
+            if (start.isAfter(end)) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("Start date must be on or before the end date"));
+            }
             // Generate PDF
             byte[] pdfContent = generateLoanStatementPDF(member, start, end);
             
@@ -1784,87 +1737,7 @@ public class MemberPortalController {
     }
 
     private byte[] generateLoanStatementPDF(Member member, java.time.LocalDate start, java.time.LocalDate end) throws Exception {
-        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-        com.itextpdf.kernel.pdf.PdfWriter writer = new com.itextpdf.kernel.pdf.PdfWriter(baos);
-        com.itextpdf.kernel.pdf.PdfDocument pdfDoc = new com.itextpdf.kernel.pdf.PdfDocument(writer);
-        com.itextpdf.layout.Document document = new com.itextpdf.layout.Document(pdfDoc);
-        
-        // Title
-        document.add(new com.itextpdf.layout.element.Paragraph("LOAN STATEMENT")
-            .setFontSize(18)
-            .setBold()
-            .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
-        
-        // Member info
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Member: " + member.getFirstName() + " " + member.getLastName() + " (" + member.getMemberNumber() + ")")
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Period: " + start + " to " + end)
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Generated: " + java.time.LocalDateTime.now())
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(""));
-        
-        // Get member's loans
-        List<Loan> loans = loanRepository.findByMemberId(member.getId());
-        BigDecimal totalOutstanding = BigDecimal.ZERO;
-        
-        for (Loan loan : loans) {
-            document.add(new com.itextpdf.layout.element.Paragraph(
-                "Loan: " + loan.getLoanNumber() + " - " + loan.getLoanProduct().getName())
-                .setBold()
-                .setFontSize(12));
-            
-            com.itextpdf.layout.element.Table loanTable = new com.itextpdf.layout.element.Table(
-                new float[]{3, 2});
-            loanTable.addCell("Amount");
-            loanTable.addCell("KES " + loan.getAmount());
-            loanTable.addCell("Interest Rate");
-            loanTable.addCell(loan.getInterestRate() + "%");
-            loanTable.addCell("Term (Months)");
-            loanTable.addCell(loan.getTermMonths().toString());
-            loanTable.addCell("Monthly Repayment");
-            loanTable.addCell(loan.getMonthlyRepayment() != null ? "KES " + loan.getMonthlyRepayment() : "N/A");
-            loanTable.addCell("Status");
-            loanTable.addCell(loan.getStatus().toString());
-            loanTable.addCell("Outstanding Balance");
-            loanTable.addCell(loan.getOutstandingBalance() != null ? "KES " + loan.getOutstandingBalance() : "N/A");
-            document.add(loanTable);
-            
-            // Repayments
-            List<LoanRepayment> repayments = loanRepaymentRepository.findByLoanIdOrderByPaymentDateDesc(loan.getId());
-            if (!repayments.isEmpty()) {
-                document.add(new com.itextpdf.layout.element.Paragraph("Repayments:").setFontSize(10));
-                com.itextpdf.layout.element.Table repaymentTable = new com.itextpdf.layout.element.Table(
-                    new float[]{2, 2, 2});
-                repaymentTable.addHeaderCell("Date");
-                repaymentTable.addHeaderCell("Amount");
-                repaymentTable.addHeaderCell("Method");
-                
-                for (LoanRepayment repayment : repayments) {
-                    if (repayment.getPaymentDate().toLocalDate().isAfter(start.minusDays(1)) && 
-                        repayment.getPaymentDate().toLocalDate().isBefore(end.plusDays(1))) {
-                        repaymentTable.addCell(repayment.getPaymentDate().toLocalDate().toString());
-                        repaymentTable.addCell("KES " + repayment.getAmount());
-                        repaymentTable.addCell(repayment.getPaymentMethod().toString());
-                    }
-                }
-                document.add(repaymentTable);
-            }
-            
-            totalOutstanding = totalOutstanding.add(loan.getOutstandingBalance() != null ? loan.getOutstandingBalance() : BigDecimal.ZERO);
-            document.add(new com.itextpdf.layout.element.Paragraph(""));
-        }
-        
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Total Outstanding: KES " + totalOutstanding)
-            .setBold()
-            .setFontSize(12));
-        
-        document.close();
-        return baos.toByteArray();
+        return memberStatementPdfService.loanStatement(member, start, end);
     }
 
     /**
@@ -1879,12 +1752,15 @@ public class MemberPortalController {
             
             java.time.LocalDate start = startDate != null ? 
                 java.time.LocalDate.parse(startDate) : 
-                java.time.LocalDate.now().minusMonths(6);
+                com.minet.sacco.service.MemberStatementPdfService.ALL_TIME_START;
             
             java.time.LocalDate end = endDate != null ? 
                 java.time.LocalDate.parse(endDate) : 
                 java.time.LocalDate.now();
             
+            if (start.isAfter(end)) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("Start date must be on or before the end date"));
+            }
             // Generate PDF
             byte[] pdfContent = generateTransactionHistoryPDF(member, start, end);
             
@@ -1899,88 +1775,7 @@ public class MemberPortalController {
     }
 
     private byte[] generateTransactionHistoryPDF(Member member, java.time.LocalDate start, java.time.LocalDate end) throws Exception {
-        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-        com.itextpdf.kernel.pdf.PdfWriter writer = new com.itextpdf.kernel.pdf.PdfWriter(baos);
-        com.itextpdf.kernel.pdf.PdfDocument pdfDoc = new com.itextpdf.kernel.pdf.PdfDocument(writer);
-        com.itextpdf.layout.Document document = new com.itextpdf.layout.Document(pdfDoc);
-        
-        // Title
-        document.add(new com.itextpdf.layout.element.Paragraph("TRANSACTION HISTORY")
-            .setFontSize(18)
-            .setBold()
-            .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
-        
-        // Member info
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Member: " + member.getFirstName() + " " + member.getLastName() + " (" + member.getMemberNumber() + ")")
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Period: " + start + " to " + end)
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(
-            "Generated: " + java.time.LocalDateTime.now())
-            .setFontSize(11));
-        document.add(new com.itextpdf.layout.element.Paragraph(""));
-        
-        java.time.LocalDateTime startDateTime = start.atStartOfDay();
-        java.time.LocalDateTime endDateTime = end.atTime(23, 59, 59);
-        
-        // Get all transactions for member
-        List<Transaction> transactions = transactionRepository
-            .findByAccountMemberIdOrderByTransactionDateDesc(member.getId())
-            .stream()
-            .filter(t -> t.getTransactionDate() != null &&
-                       !t.getTransactionDate().isBefore(startDateTime) &&
-                       !t.getTransactionDate().isAfter(endDateTime))
-            .collect(Collectors.toList());
-        
-        // Transactions table
-        com.itextpdf.layout.element.Table table = new com.itextpdf.layout.element.Table(
-            new float[]{2, 2, 2, 2, 3});
-        table.addHeaderCell("Date");
-        table.addHeaderCell("Type");
-        table.addHeaderCell("Account");
-        table.addHeaderCell("Amount");
-        table.addHeaderCell("Description");
-        
-        BigDecimal totalDeposits = BigDecimal.ZERO;
-        BigDecimal totalWithdrawals = BigDecimal.ZERO;
-        
-        for (Transaction transaction : transactions) {
-            table.addCell(transaction.getTransactionDate().toLocalDate().toString());
-            table.addCell(transaction.getTransactionType().toString());
-            table.addCell(transaction.getAccount().getAccountType().toString());
-            table.addCell("KES " + transaction.getAmount());
-            table.addCell(transaction.getDescription() != null ? transaction.getDescription() : "");
-            
-            if (transaction.getTransactionType() == Transaction.TransactionType.DEPOSIT ||
-                transaction.getTransactionType() == Transaction.TransactionType.LOAN_DISBURSEMENT) {
-                totalDeposits = totalDeposits.add(transaction.getAmount());
-            } else if (transaction.getTransactionType() == Transaction.TransactionType.WITHDRAWAL) {
-                totalWithdrawals = totalWithdrawals.add(transaction.getAmount());
-            }
-        }
-        
-        document.add(table);
-        document.add(new com.itextpdf.layout.element.Paragraph(""));
-        
-        // Summary
-        document.add(new com.itextpdf.layout.element.Paragraph("SUMMARY")
-            .setBold()
-            .setFontSize(12));
-        
-        com.itextpdf.layout.element.Table summaryTable = new com.itextpdf.layout.element.Table(
-            new float[]{3, 2});
-        summaryTable.addCell("Total Deposits");
-        summaryTable.addCell("KES " + totalDeposits);
-        summaryTable.addCell("Total Withdrawals");
-        summaryTable.addCell("KES " + totalWithdrawals);
-        summaryTable.addCell("Net Cash Flow");
-        summaryTable.addCell("KES " + totalDeposits.subtract(totalWithdrawals));
-        document.add(summaryTable);
-        
-        document.close();
-        return baos.toByteArray();
+        return memberStatementPdfService.transactionHistory(member, start, end);
     }
 
     /**

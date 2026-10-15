@@ -26,6 +26,10 @@ public class AccountLockoutService {
     @Autowired
     private UserRepository userRepository;
 
+    /** Internal system: lockout is off unless APP_LOCKOUT_ENABLED=true. Failed attempts are still recorded. */
+    @Value("${app.security.lockout-enabled:false}")
+    private boolean lockoutEnabled;
+
     @Value("${app.security.max-failed-attempts:5}")
     private int maxFailedAttempts;
 
@@ -66,6 +70,12 @@ public class AccountLockoutService {
             return false;
         }
 
+        // Lockout disabled: release any account that was locked earlier
+        if (!lockoutEnabled) {
+            unlockAccount(user);
+            return false;
+        }
+
         // Check if lockout period has expired
         if (user.getLockedUntil() != null && LocalDateTime.now().isAfter(user.getLockedUntil())) {
             // Unlock the account
@@ -81,6 +91,9 @@ public class AccountLockoutService {
      */
     @Transactional
     public boolean shouldLockAccount(User user) {
+        if (!lockoutEnabled) {
+            return false;
+        }
         LocalDateTime attemptWindowStart = LocalDateTime.now().minusMinutes(attemptWindowMinutes);
 
         long failedAttempts = loginAttemptRepository.countFailedAttemptsSince(user.getId(), attemptWindowStart);

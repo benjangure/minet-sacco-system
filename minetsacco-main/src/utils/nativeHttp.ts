@@ -34,38 +34,55 @@ export async function nativeFetch(url: string, options: FetchOptions = {}): Prom
     try {
       console.log('[NativeHttp] Using CapacitorHttp for Android:', url);
       
+      // Always ask the native layer for the raw body (base64). Decoding lazily keeps PDFs / Excel
+      // files intact; asking for text would corrupt any binary payload.
       const response: HttpResponse = await CapacitorHttp.request({
         url: url,
         method: method,
         headers: options.headers || {},
         data: typeof options.body === "string" ? JSON.parse(options.body) : undefined,
+        responseType: 'blob',
       });
 
       console.log('[NativeHttp] CapacitorHttp response status:', response.status);
 
-      // Convert CapacitorHttp response to fetch-like response
+      const headerGet = (name: string): string | null => {
+        const h = (response.headers || {}) as Record<string, string>;
+        const wanted = name.toLowerCase();
+        for (const k of Object.keys(h)) {
+          if (k.toLowerCase() === wanted) return h[k];
+        }
+        return null;
+      };
+
+      // Raw bytes of the body (base64 from the native layer; tolerate plugins that return text/objects)
+      const toBytes = (): Uint8Array => {
+        const data: unknown = response.data;
+        if (data === undefined || data === null) return new Uint8Array(0);
+        if (typeof data === 'string') {
+          try {
+            const bin = atob(data);
+            const out = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+            return out;
+          } catch {
+            return new TextEncoder().encode(data);
+          }
+        }
+        return new TextEncoder().encode(JSON.stringify(data));
+      };
+
+      const toText = (): string => new TextDecoder('utf-8').decode(toBytes());
+
       return {
         ok: response.status >= 200 && response.status < 300,
         status: response.status,
-        json: async () => {
-          if (typeof response.data === 'string') {
-            return JSON.parse(response.data);
-          }
-          return response.data;
-        },
-        text: async () => {
-          if (typeof response.data === 'string') {
-            return response.data;
-          }
-          return JSON.stringify(response.data);
-        },
-        blob: async () => {
-          const data = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-          return new Blob([data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
-        },
+        json: async () => JSON.parse(toText()),
+        text: async () => toText(),
+        blob: async () => new Blob([toBytes()], { type: headerGet('content-type') || 'application/octet-stream' }),
         headers: {
-          get: (name: string) => response.headers?.[name.toLowerCase()] || null
-        }
+          get: (name: string) => headerGet(name),
+        },
       };
     } catch (error) {
       console.error('[NativeHttp] CapacitorHttp error:', error);

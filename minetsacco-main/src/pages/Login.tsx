@@ -83,7 +83,7 @@ const Login = () => {
               <Label htmlFor="usernameOrEmail">Username or Email</Label>
               <Input 
                 id="usernameOrEmail" 
-                type="text" 
+                type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username"
                 value={usernameOrEmail} 
                 onChange={(e) => setUsernameOrEmail(e.target.value)} 
                 placeholder="admin or admin@minet.co.ke" 

@@ -1235,8 +1235,7 @@ public class BulkProcessingService {
                     System.out.println("MEMBER CREDENTIALS - " + member.getFirstName() + " " + member.getLastName() + 
                         " (Username: " + username + ") - Use National ID as password");
                 } else {
-                    System.out.println("TEMP PASSWORD - " + member.getFirstName() + " " + member.getLastName() + 
-                        " (Username: " + username + "): " + password);
+                    System.out.println("Temporary password generated for " + username + " (see Member Credentials)");
                 }
             }
         }
