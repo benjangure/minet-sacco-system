@@ -170,15 +170,15 @@ export default function MemberLogin() {
       } else if (err.response?.data?.message) {
         errorMsg = err.response.data.message;
         // Improve error message for invalid credentials
-        if (errorMsg.includes("Incorrect username or password") || 
-            errorMsg.includes("username or password")) {
+        if ((errorMsg.includes("Incorrect username or password") || 
+            errorMsg.includes("username or password")) && !errorMsg.includes("[HR debug")) {
           errorMsg = "Invalid username or password";
         }
       } else if (err.message) {
         errorMsg = err.message;
         // Improve error message for invalid credentials
-        if (errorMsg.includes("Incorrect username or password") || 
-            errorMsg.includes("username or password")) {
+        if ((errorMsg.includes("Incorrect username or password") || 
+            errorMsg.includes("username or password")) && !errorMsg.includes("[HR debug")) {
           errorMsg = "Invalid username or password";
         }
       }

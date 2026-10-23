@@ -14,6 +14,7 @@ import { FileText, Download, Loader2, Search, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 import { getApiBaseUrl } from "../config/api";
+import { downloadAndOpenFile } from "@/utils/downloadHelper";
 const API_BASE_URL = getApiBaseUrl();
 
 const Reports = () => {
@@ -138,6 +139,43 @@ const Reports = () => {
       toast({ title: "Error", description: "Failed to load report", variant: "destructive" });
     } finally {
       setMcModalLoading(false);
+    }
+  };
+
+  const [fullReportLoading, setFullReportLoading] = useState(false);
+
+  // One workbook with every member's savings, shares, loans and guarantors
+  const handleDownloadFullReport = async () => {
+    try {
+      setFullReportLoading(true);
+      const response = await nativeFetch(`${API_BASE_URL}/reports/members-full/export/excel`, {
+        headers: { Authorization: `Bearer ${session?.token}` },
+      });
+      if (!response.ok) {
+        let message = "Could not generate the report";
+        try {
+          const body = await response.json();
+          if (body?.message) message = body.message;
+        } catch { /* keep default */ }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) throw new Error("The report came back empty. Please try again.");
+      const xlsx = new Blob([blob], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      await downloadAndOpenFile(
+        xlsx,
+        `members_loans_savings_${new Date().toISOString().split("T")[0]}.xlsx`,
+        (message) => toast({ title: "Report ready", description: message }),
+        (error) => toast({ title: "Error", description: error, variant: "destructive" })
+      );
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Export failed",
+        variant: "destructive",
+      });
+    } finally {
+      setFullReportLoading(false);
     }
   };
 
@@ -382,6 +420,27 @@ const Reports = () => {
             <h1 className="text-3xl font-bold text-foreground">Financial Reports</h1>
             <p className="text-muted-foreground">Generate and export financial reports with filters</p>
           </div>
+
+          {canViewFinancialReports && (
+            <Card className="border-primary/30">
+              <CardContent className="pt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-semibold">Full Loans &amp; Savings Report - All Members</p>
+                  <p className="text-sm text-muted-foreground">
+                    One Excel file with every member's savings and shares, all loans (every status) with repayments and
+                    outstanding balances, and the guarantors on each loan.
+                  </p>
+                </div>
+                <Button onClick={handleDownloadFullReport} disabled={fullReportLoading} className="w-full sm:w-auto shrink-0">
+                  {fullReportLoading ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Preparing...</>
+                  ) : (
+                    <><Download className="h-4 w-4 mr-2" />Download Excel</>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

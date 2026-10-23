@@ -297,6 +297,21 @@ public class ReportsController {
         return ResponseEntity.ok(ApiResponse.success("Loan register report generated successfully", report));
     }
 
+    // ===== FULL MEMBERS REPORT: every member's savings, shares and loans in one workbook =====
+    @Autowired
+    private com.minet.sacco.service.MembersFullReportService membersFullReportService;
+
+    @GetMapping("/members-full/export/excel")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_AUDITOR')")
+    public ResponseEntity<byte[]> exportMembersFullReport() throws Exception {
+        byte[] workbook = membersFullReportService.buildWorkbook();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=members_loans_savings_" + LocalDate.now() + ".xlsx")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(workbook);
+    }
+
     @GetMapping("/loan-register/export/excel")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_TREASURER', 'ROLE_LOAN_OFFICER', 'ROLE_AUDITOR')")
     public ResponseEntity<byte[]> exportLoanRegisterExcel(

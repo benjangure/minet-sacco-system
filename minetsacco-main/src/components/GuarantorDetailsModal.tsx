@@ -21,13 +21,16 @@ interface GuarantorDetailsModalProps {
   onClose: () => void;
   guarantors: GuarantorDetail[];
   loanAmount: number;
+  /** Heading; guarantors only ever receive their own entry from the server */
+  title?: string;
 }
 
 export default function GuarantorDetailsModal({
   isOpen,
   onClose,
   guarantors,
-  loanAmount
+  loanAmount,
+  title = 'Loan Guarantors'
 }: GuarantorDetailsModalProps) {
 
 
@@ -55,7 +58,7 @@ export default function GuarantorDetailsModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Loan Guarantors</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">

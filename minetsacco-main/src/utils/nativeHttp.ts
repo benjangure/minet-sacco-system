@@ -77,7 +77,19 @@ export async function nativeFetch(url: string, options: FetchOptions = {}): Prom
       return {
         ok: response.status >= 200 && response.status < 300,
         status: response.status,
-        json: async () => JSON.parse(toText()),
+        json: async () => {
+          const raw = toText();
+          try {
+            return JSON.parse(raw);
+          } catch {
+            if (raw.trim().startsWith('<')) {
+              throw new Error(
+                'The server returned a web page instead of data. The website is not forwarding /api to the backend - please contact IT support.'
+              );
+            }
+            throw new Error('The server returned an unreadable response. Please try again.');
+          }
+        },
         text: async () => toText(),
         blob: async () => new Blob([toBytes()], { type: headerGet('content-type') || 'application/octet-stream' }),
         headers: {
@@ -98,7 +110,19 @@ export async function nativeFetch(url: string, options: FetchOptions = {}): Prom
   return {
     ok: response.ok,
     status: response.status,
-    json: () => response.json(),
+    json: async () => {
+      const raw = await response.clone().text();
+      try {
+        return JSON.parse(raw);
+      } catch {
+        if (raw.trim().startsWith('<')) {
+          throw new Error(
+            'The server returned a web page instead of data. The website is not forwarding /api to the backend - please contact IT support.'
+          );
+        }
+        throw new Error('The server returned an unreadable response. Please try again.');
+      }
+    },
     text: () => response.text(),
     blob: () => response.blob(),
     headers: response.headers

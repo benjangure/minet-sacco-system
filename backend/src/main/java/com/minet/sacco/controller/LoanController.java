@@ -562,12 +562,38 @@ public class LoanController {
     @GetMapping("/{loanId}/guarantors")
     @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_LOAN_OFFICER', 'ROLE_CREDIT_COMMITTEE', 'ROLE_TREASURER', 'ROLE_MEMBER')")
     public ResponseEntity<ApiResponse<List<com.minet.sacco.dto.GuarantorDetailsDTO>>> getGuarantorsForLoan(
-            @PathVariable Long loanId) {
+            @PathVariable Long loanId,
+            Authentication authentication) {
         try {
-            loanRepository.findById(loanId)
+            Loan loanForCheck = loanRepository.findById(loanId)
                     .orElseThrow(() -> new RuntimeException("Loan not found"));
-            
+
+            // Privacy rule for members:
+            //  - the borrower sees ALL guarantors on their loan
+            //  - a guarantor sees the loan but ONLY their own guarantee (never the other guarantors)
+            //  - any other member sees nothing
+            // Staff roles are unrestricted.
+            boolean isMember = authentication != null && authentication.getAuthorities().stream()
+                    .anyMatch(a -> "ROLE_MEMBER".equals(a.getAuthority()));
             List<Guarantor> guarantors = loanService.getGuarantorsForLoan(loanId);
+            if (isMember) {
+                User viewer = userService.getUserByUsername(authentication.getName())
+                        .orElseThrow(() -> new RuntimeException("User not found"));
+                Long viewerMemberId = viewer.getMemberId();
+                boolean isBorrower = viewerMemberId != null && loanForCheck.getMember() != null
+                        && viewerMemberId.equals(loanForCheck.getMember().getId());
+                if (!isBorrower) {
+                    List<Guarantor> own = guarantors.stream()
+                            .filter(g -> viewerMemberId != null && g.getMember() != null
+                                    && viewerMemberId.equals(g.getMember().getId()))
+                            .collect(java.util.stream.Collectors.toList());
+                    if (own.isEmpty()) {
+                        return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                                .body(ApiResponse.error("You are not a borrower or guarantor on this loan"));
+                    }
+                    guarantors = own;
+                }
+            }
             List<com.minet.sacco.dto.GuarantorDetailsDTO> details = new java.util.ArrayList<>();
             
             for (Guarantor g : guarantors) {
@@ -777,6 +803,19 @@ public class LoanController {
         try {
             Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+            // Members (borrowers) may only open this for their own loan; it lists every guarantor
+            boolean memberCaller = authentication != null && authentication.getAuthorities().stream()
+                    .anyMatch(a -> "ROLE_MEMBER".equals(a.getAuthority()));
+            if (memberCaller) {
+                User caller = userService.getUserByUsername(authentication.getName())
+                        .orElseThrow(() -> new RuntimeException("User not found"));
+                if (caller.getMemberId() == null || loan.getMember() == null
+                        || !caller.getMemberId().equals(loan.getMember().getId())) {
+                    return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                            .body(ApiResponse.error("Only the borrower can manage this loan's guarantors"));
+                }
+            }
             
             Map<String, Object> responseData = new HashMap<>();
             

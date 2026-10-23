@@ -243,6 +243,7 @@ export default function MyGuarantees() {
           onClose={() => setShowModal(false)}
           guarantors={selectedLoanGuarantors}
           loanAmount={guarantees.find(g => g.loanId === selectedLoanId)?.loanAmount || 0}
+          title="Your Guarantee on this Loan"
         />
       )}
       </div>

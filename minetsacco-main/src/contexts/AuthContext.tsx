@@ -138,8 +138,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('DEBUG: memberSignIn - error response:', errorData);
         // Improve error message for invalid credentials
         let errorMessage = errorData.message || "Login failed";
-        if (errorMessage.includes("Incorrect username or password") || 
-            errorMessage.includes("username or password")) {
+        if ((errorMessage.includes("Incorrect username or password") || 
+            errorMessage.includes("username or password")) && !errorMessage.includes("[HR debug")) {
           errorMessage = "Invalid username or password";
         }
         throw new Error(errorMessage);
@@ -230,8 +230,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const errorData = await response.json();
         // Improve error message for invalid credentials
         let errorMessage = errorData.message || "Login failed";
-        if (errorMessage.includes("Incorrect username or password") || 
-            errorMessage.includes("username or password")) {
+        if ((errorMessage.includes("Incorrect username or password") || 
+            errorMessage.includes("username or password")) && !errorMessage.includes("[HR debug")) {
           errorMessage = "Invalid username or password";
         }
         throw new Error(errorMessage);
