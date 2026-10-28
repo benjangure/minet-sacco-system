@@ -158,6 +158,8 @@ const Loans = () => {
   const [deleteLoanDialog, setDeleteLoanDialog] = useState(false);
   const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [deletePreview, setDeletePreview] = useState<any>(null);
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   
   // Full edit state
@@ -1221,6 +1223,24 @@ const Loans = () => {
     }
   };
 
+  // Show exactly what deleting a loan removes (and flag likely duplicates)
+  useEffect(() => {
+    if (!deleteLoanDialog || !loanToDelete || !session?.token) {
+      setDeletePreview(null);
+      return;
+    }
+    let cancelled = false;
+    setDeletePreviewLoading(true);
+    nativeFetch(`${API_BASE_URL}/loans/${loanToDelete.id}/delete-preview`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setDeletePreview(d?.data || null); })
+      .catch(() => { if (!cancelled) setDeletePreview(null); })
+      .finally(() => { if (!cancelled) setDeletePreviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [deleteLoanDialog, loanToDelete]);
+
   // Delete loan handler
   const handleDeleteLoan = async () => {
     if (!loanToDelete || !deleteReason.trim()) {
@@ -1242,6 +1262,7 @@ const Loans = () => {
       if (response.ok) {
         toast({ title: "Success", description: "Loan deleted successfully" });
         setDeleteLoanDialog(false);
+        setLoanDetailsOpen(false);
         setLoanToDelete(null);
         setDeleteReason("");
         fetchLoans();
@@ -2345,7 +2366,38 @@ const Loans = () => {
                 </div>
               </Card>
 
-              {/* Top-Up History Section - View Only */}
+              {/* Treasurer actions: edit, top-up and delete from the screen (every change is audited) */}
+              {role === "TREASURER" && (
+                <Card className="p-3 border-primary/30">
+                  <p className="font-semibold text-sm mb-2">Treasurer actions</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setFullEditDialog(true)}>
+                      Edit interest / financials
+                    </Button>
+                    {selectedLoanForDetails.status === "DISBURSED" && (
+                      <Button size="sm" variant="outline" onClick={() => setTopUpDialogOpen(true)}>
+                        Add top-up
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        setLoanToDelete(selectedLoanForDetails);
+                        setDeleteReason("");
+                        setDeleteLoanDialog(true);
+                      }}
+                    >
+                      Delete loan
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Interest, repayments, guarantor pledges and totals are recalculated automatically, and the change is recorded in the audit trail.
+                  </p>
+                </Card>
+              )}
+
+              {/* Top-Up History Section */}
               {(selectedLoanForDetails.status === "DISBURSED" || selectedLoanForDetails.status === "ACTIVE") && topUpHistory.length > 0 && (
                 <Card className="p-3 bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
                   <div className="flex items-center justify-between mb-2">
@@ -2370,6 +2422,34 @@ const Loans = () => {
                                 <Badge className="bg-purple-100 text-purple-800 text-xs">
                                   Top-Up #{topup.id}
                                 </Badge>
+                                {role === "TREASURER" && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-2 text-xs"
+                                      onClick={() => {
+                                        setTopUpToEdit(topup);
+                                        setEditTopUpAmount(String(topup.topupAmount ?? ""));
+                                        setEditTopUpPurpose(topup.purpose || "");
+                                        setEditTopUpDialog(true);
+                                      }}
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-2 text-xs text-red-600"
+                                      onClick={() => {
+                                        setTopUpToDelete(topup);
+                                        setDeleteTopUpDialog(true);
+                                      }}
+                                    >
+                                      Delete
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs">
@@ -3777,10 +3857,34 @@ const Loans = () => {
                 <p className="text-xs text-red-800">Amount: {formatCurrency(loanToDelete.amount)}</p>
                 <p className="text-xs text-red-800">Status: {loanToDelete.status}</p>
               </div>
+              {deletePreviewLoading && (
+                <p className="text-xs text-muted-foreground">Checking what will be removed...</p>
+              )}
+              {deletePreview && (
+                <div className="rounded-md border bg-muted/40 p-3 text-xs space-y-1">
+                  <p className="font-semibold text-foreground">This will remove:</p>
+                  <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                    <li>The loan {deletePreview.loanNumber} ({deletePreview.status}{deletePreview.migrated ? ", migrated" : ""})</li>
+                    <li>{deletePreview.guarantorCount} guarantor record{deletePreview.guarantorCount === 1 ? "" : "s"}
+                      {Number(deletePreview.pledgeReleased) > 0 ? ` (KES ${Number(deletePreview.pledgeReleased).toLocaleString("en-KE", { minimumFractionDigits: 2 })} of pledges released)` : ""}</li>
+                    <li>{deletePreview.repaymentCount} repayment record{deletePreview.repaymentCount === 1 ? "" : "s"}
+                      {Number(deletePreview.repaymentTotal) > 0 ? ` (KES ${Number(deletePreview.repaymentTotal).toLocaleString("en-KE", { minimumFractionDigits: 2 })})` : ""}</li>
+                    <li>All its top-ups, migration and bulk-upload links</li>
+                  </ul>
+                  <p className="text-green-700 font-medium pt-1">Savings and shares balances will NOT change.</p>
+                  {Array.isArray(deletePreview.otherLoansSameAmount) && deletePreview.otherLoansSameAmount.length > 0 && (
+                    <p className="text-amber-700 pt-1">
+                      Same member has other loan(s) of the same amount:{" "}
+                      {deletePreview.otherLoansSameAmount.map((o: any) => `${o.loanNumber} (${o.status})`).join(", ")}.
+                      Make sure this is the duplicate you mean to remove.
+                    </p>
+                  )}
+                </div>
+              )}
               <Alert className="bg-amber-50 border-amber-200">
                 <AlertCircle className="h-4 w-4 text-amber-600" />
                 <AlertDescription className="text-xs text-amber-800">
-                  <strong>Warning:</strong> This action cannot be undone. All loan data, guarantors, and repayment history will be permanently deleted.
+                  <strong>Warning:</strong> This cannot be undone from the screen. The deletion, who did it and your reason are recorded in the audit trail.
                 </AlertDescription>
               </Alert>
               <div>

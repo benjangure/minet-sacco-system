@@ -111,7 +111,7 @@ export default function MemberAccountStatement() {
     });
   };
 
-  if (loading) {
+  if (loading && transactions.length === 0) {
     return (
       <MemberLayout memberName={memberFirstName} onLogout={handleLogout}>
         <div className="space-y-4 max-w-7xl mx-auto px-4 lg:px-0">

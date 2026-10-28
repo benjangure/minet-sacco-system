@@ -7,6 +7,7 @@ import api, { getApiBaseUrl } from '@/config/api';
 import { nativeFetch } from '@/utils/nativeHttp';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Wallet, TrendingUp, Plus, HandshakeIcon, FileText, Send, Upload, Eye, ArrowUp, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -661,7 +662,7 @@ export default function MemberDashboard() {
     });
   };
 
-  if (loading) {
+  if (loading && !dashboard) {
     return (
       <MemberLayout memberName="Member" onLogout={handleLogout} unreadNotifications={0}>
         <div className="space-y-4 w-full max-w-7xl mx-auto">
@@ -953,6 +954,108 @@ export default function MemberDashboard() {
                   </CardContent>
                 </Card>
               </div>
+            </div>
+
+            {/* My Loans summary (full details and actions are under the Loans tab) */}
+            <div>
+              <div className="flex items-center justify-between mb-3 md:mb-4">
+                <h2 className="text-base md:text-lg font-semibold text-foreground">My Loans</h2>
+                {activeLoans.length > 3 && (
+                  <Button variant="ghost" size="sm" onClick={() => setActiveTab('loans')}>View all</Button>
+                )}
+              </div>
+
+              {loansLoading ? (
+                <Card className="border-none shadow-sm">
+                  <CardContent className="py-6 text-center text-sm text-muted-foreground">Loading your loans...</CardContent>
+                </Card>
+              ) : (() => {
+                const homeLoans = activeLoans.filter(l => !['REJECTED', 'WITHDRAWN', 'CANCELLED'].includes(l.status));
+                if (homeLoans.length === 0) {
+                  return (
+                    <Card className="border-none shadow-sm">
+                      <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                        You have no loans yet. Use "Apply for Loan" below to start an application.
+                      </CardContent>
+                    </Card>
+                  );
+                }
+                const live = homeLoans.filter(l => ['DISBURSED', 'ACTIVE'].includes(l.status));
+                const totalOutstanding = live.reduce((sum, l) => sum + (l.outstandingBalance || 0), 0);
+                return (
+                  <div className="space-y-3">
+                    {live.length > 0 && (
+                      <Card className="border-none shadow-sm bg-primary/5">
+                        <CardContent className="py-3 flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Total outstanding on {live.length} active loan{live.length !== 1 ? 's' : ''}</span>
+                          <span className="font-bold text-foreground">{formatCurrency(totalOutstanding)}</span>
+                        </CardContent>
+                      </Card>
+                    )}
+                    {homeLoans.slice(0, 3).map((loan) => {
+                      const isLive = ['DISBURSED', 'ACTIVE'].includes(loan.status);
+                      const paidPct = loan.repaymentPercentage != null
+                        ? Number(loan.repaymentPercentage)
+                        : loan.totalRepayable > 0
+                          ? ((loan.totalRepayable - (loan.outstandingBalance || 0)) / loan.totalRepayable) * 100
+                          : 0;
+                      const pct = Math.max(0, Math.min(100, Math.round(paidPct)));
+                      return (
+                        <Card key={loan.id} className="border-none shadow-sm">
+                          <CardContent className="pt-4 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-foreground">Loan #{loan.loanNumber}</p>
+                                <p className="text-xs text-muted-foreground">Amount: {formatCurrency(loan.amount)}</p>
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                                loan.status === 'REPAID' ? 'bg-gray-200 text-gray-800'
+                                : loan.status === 'DEFAULTED' ? 'bg-red-100 text-red-800'
+                                : isLive || loan.status === 'APPROVED' ? 'bg-green-50 text-green-700'
+                                : 'bg-yellow-50 text-yellow-700'}`}>
+                                {loan.status.replace(/_/g, ' ')}
+                              </span>
+                            </div>
+
+                            {isLive && (
+                              <>
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Outstanding</p>
+                                    <p className="font-semibold">{formatCurrency(loan.outstandingBalance)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Monthly repayment</p>
+                                    <p className="font-semibold">{formatCurrency(loan.monthlyRepayment)}</p>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                    <span>Repaid</span>
+                                    <span>{pct}%</span>
+                                  </div>
+                                  <Progress value={pct} className="h-2" />
+                                </div>
+                              </>
+                            )}
+
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" className="flex-1" onClick={() => setActiveTab('loans')}>
+                                View details
+                              </Button>
+                              {isLive && (loan.outstandingBalance || 0) > 0 && (
+                                <Button size="sm" className="flex-1" onClick={() => setActiveTab('transact')}>
+                                  Make repayment
+                                </Button>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Quick link to Apply for Loan */}

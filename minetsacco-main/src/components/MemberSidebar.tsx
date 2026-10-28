@@ -1,6 +1,9 @@
-import { useState } from 'react';
-import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake, Settings, ChevronLeft, ChevronRight, History } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Menu, X, Home, Send, User, FileText, Bell, LogOut, Handshake, Settings, ChevronLeft, ChevronRight, History, Landmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import api from '@/config/api';
+import { formatCurrency } from '@/lib/utils';
+import { useRefresh } from '@/contexts/RefreshContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/images/logo.png';
 import logoCollapsed from '/Minet-Logo1.png';
@@ -29,6 +32,37 @@ export default function MemberSidebar({
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Loan balance shown at the bottom of the sidebar on every member page
+  const { refreshKey } = useRefresh();
+  const [loanBalance, setLoanBalance] = useState<number | null>(null);
+  const [liveLoanCount, setLiveLoanCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadBalance = async () => {
+      try {
+        const response = await api.get('/member/loans');
+        const loans: any[] = Array.isArray(response.data) ? response.data : [];
+        const live = loans.filter((l) => ['DISBURSED', 'ACTIVE'].includes(l.status));
+        if (!cancelled) {
+          setLiveLoanCount(live.length);
+          setLoanBalance(live.reduce((sum, l) => sum + Number(l.outstandingBalance || 0), 0));
+        }
+      } catch {
+        // Leave the previous value; the sidebar must never break a page
+      }
+    };
+    loadBalance();
+    const timer = setInterval(loadBalance, 5 * 60 * 1000);
+    const onFocus = () => loadBalance();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshKey]);
 
   const sidebarIsOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
   const setSidebarIsOpen = controlledIsOpen !== undefined && onClose ? onClose : setInternalIsOpen;
@@ -111,7 +145,7 @@ export default function MemberSidebar({
       )}
 
       <aside
-        className={`fixed left-0 top-0 h-screen bg-gradient-to-b from-primary to-primary/90 text-white transform transition-all duration-500 ease-in-out z-40 lg:relative lg:translate-x-0 lg:z-0 flex flex-col ${
+        className={`fixed left-0 top-0 h-[100dvh] bg-gradient-to-b from-primary to-primary/90 text-white transform transition-all duration-500 ease-in-out z-40 lg:relative lg:translate-x-0 lg:z-0 flex flex-col ${
           hideMobileToggle ? 'translate-x-0' : (sidebarIsOpen ? 'translate-x-0' : '-translate-x-full')
         } ${isCollapsed ? 'lg:w-16' : 'lg:w-64'} w-64`}
       >
@@ -131,38 +165,38 @@ export default function MemberSidebar({
 
         <div className="flex flex-col h-full overflow-hidden">
           {/* Logo/Header - Fixed height */}
-          <div className={`flex items-center flex-shrink-0 transition-all duration-500 ease-in-out h-20 ${isCollapsed ? 'justify-center px-2' : 'gap-3 px-6'}`}>
+          <div className={`flex items-center flex-shrink-0 transition-all duration-500 ease-in-out h-20 [@media(max-height:780px)]:h-16 [@media(max-height:660px)]:h-12 ${isCollapsed ? 'justify-center px-2' : 'gap-3 px-6'}`}>
             {!isCollapsed ? (
               <>
-                <img src={logo} alt="Minet SACCO" className="h-10 w-auto transition-all duration-500" />
+                <img src={logo} alt="Minet SACCO" className="h-10 [@media(max-height:780px)]:h-8 [@media(max-height:660px)]:h-7 w-auto transition-all duration-500" />
                 <div className="transition-all duration-500 ease-in-out">
                   <h1 className="text-xl font-bold whitespace-nowrap">Minet SACCO</h1>
                   <p className="text-white/80 text-xs whitespace-nowrap">Member Portal</p>
                 </div>
               </>
             ) : (
-              <img src={logoCollapsed} alt="Minet SACCO" className="h-10 w-auto transition-all duration-500" />
+              <img src={logoCollapsed} alt="Minet SACCO" className="h-10 [@media(max-height:780px)]:h-8 [@media(max-height:660px)]:h-7 w-auto transition-all duration-500" />
             )}
           </div>
 
           {/* Member Info */}
           <div className={`transition-all duration-500 ease-in-out overflow-hidden ${
-            isCollapsed ? 'max-h-0 opacity-0 mb-0' : 'max-h-24 opacity-100 mb-6'
+            isCollapsed ? 'max-h-0 opacity-0 mb-0' : `max-h-24 opacity-100 mb-6 [@media(max-height:780px)]:mb-3 [@media(max-height:660px)]:mb-2`
           }`}>
-            <div className="bg-white/10 rounded-lg p-3 mx-6">
-              <p className="text-white/80 text-xs uppercase tracking-wide">Welcome</p>
+            <div className="bg-white/10 rounded-lg p-3 [@media(max-height:780px)]:p-2 mx-6">
+              <p className="text-white/80 text-xs uppercase tracking-wide [@media(max-height:660px)]:hidden">Welcome</p>
               <p className="font-semibold truncate">{memberName}</p>
             </div>
           </div>
 
           {/* Navigation Menu - Scrollable if needed */}
-          <nav className={`space-y-1 flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent transition-all duration-300 ${isCollapsed ? 'px-2' : 'px-6'}`}>
+          <nav className={`space-y-1 [@media(max-height:780px)]:space-y-0.5 flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent transition-all duration-300 ${isCollapsed ? 'px-2' : 'px-6'}`}>
             {menuItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => handleMenuClick(item.id)}
                 className={`w-full flex items-center rounded-lg hover:bg-white/10 transition-all duration-300 ease-in-out hover:scale-105 relative group text-left ${
-                  isCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'
+                  isCollapsed ? `justify-center p-2.5 [@media(max-height:780px)]:p-2` : `gap-3 px-3 py-2.5 [@media(max-height:780px)]:py-1.5 [@media(max-height:660px)]:py-1`
                 }`}
                 title={isCollapsed ? item.label : undefined}
               >
@@ -186,15 +220,44 @@ export default function MemberSidebar({
             ))}
           </nav>
 
+          {/* Loan balance */}
+          {loanBalance !== null && (
+            <button
+              type="button"
+              onClick={() => handleMenuClick('loans')}
+              title={isCollapsed ? `Loan balance: ${formatCurrency(loanBalance)}` : 'View my loans'}
+              className={`flex-shrink-0 mb-3 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-left ${
+                isCollapsed ? 'mx-2 p-2 flex justify-center' : `mx-6 p-3 [@media(max-height:780px)]:p-2 mb-3 [@media(max-height:780px)]:mb-2`
+              }`}
+            >
+              {isCollapsed ? (
+                <Landmark className="h-5 w-5" />
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-white/80 text-xs uppercase tracking-wide">
+                    <Landmark className="h-4 w-4" />
+                    Loan balance
+                  </div>
+                  <p className="font-bold text-lg [@media(max-height:780px)]:text-base mt-1 [@media(max-height:780px)]:mt-0 truncate">{formatCurrency(loanBalance)}</p>
+                  <p className="text-white/70 text-xs [@media(max-height:660px)]:hidden">
+                    {liveLoanCount > 0
+                      ? `${liveLoanCount} active loan${liveLoanCount !== 1 ? 's' : ''}`
+                      : 'No active loans'}
+                  </p>
+                </>
+              )}
+            </button>
+          )}
+
           {/* Logout Button */}
-          <div className={`pt-4 border-t border-white/20 flex-shrink-0 transition-all duration-300 ${isCollapsed ? 'px-2' : 'px-6'}`}>
+          <div className={`pt-4 [@media(max-height:780px)]:pt-2 pb-2 border-t border-white/20 flex-shrink-0 transition-all duration-300 ${isCollapsed ? 'px-2' : 'px-6'}`}>
             <Button
               onClick={() => {
                 onLogout();
                 setSidebarIsOpen(false);
               }}
               variant="ghost"
-              className={`w-full text-white hover:bg-white/10 py-2.5 transition-all duration-300 ease-in-out hover:scale-105 ${
+              className={`w-full text-white hover:bg-white/10 py-2.5 [@media(max-height:780px)]:py-1.5 transition-all duration-300 ease-in-out hover:scale-105 ${
                 isCollapsed ? 'justify-center px-0' : 'justify-start gap-3'
               }`}
               title={isCollapsed ? 'Logout' : undefined}

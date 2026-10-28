@@ -123,14 +123,14 @@ public class LoanController {
             response.put("hasPrevious", loanPage.hasPrevious());
             
             return ResponseEntity.ok()
-                    .cacheControl(org.springframework.http.CacheControl.maxAge(2, java.util.concurrent.TimeUnit.MINUTES))
+                    .cacheControl(org.springframework.http.CacheControl.noStore())
                     .body(ApiResponse.success("Loans retrieved successfully (paginated)", response));
         } else {
-            // Return full list (cached for 3 minutes)
+            // Return full list (never cached: always live data)
             List<Loan> loans = loanService.getAllLoans();
             List<Map<String, Object>> loansWithGuarantors = buildLoanMapsWithBatch(loans);
             return ResponseEntity.ok()
-                    .cacheControl(org.springframework.http.CacheControl.maxAge(3, java.util.concurrent.TimeUnit.MINUTES))
+                    .cacheControl(org.springframework.http.CacheControl.noStore())
                     .body(ApiResponse.success("Loans retrieved successfully", loansWithGuarantors));
         }
     }
@@ -194,7 +194,7 @@ public class LoanController {
         List<Loan> loans = loanService.getLoansByStatus(Loan.Status.valueOf(status));
         List<Map<String, Object>> loansWithDynamicInterest = buildLoanMapsWithBatch(loans);
         return ResponseEntity.ok()
-                .cacheControl(org.springframework.http.CacheControl.maxAge(3, java.util.concurrent.TimeUnit.MINUTES))
+                .cacheControl(org.springframework.http.CacheControl.noStore())
                 .body(ApiResponse.success("Loans retrieved successfully", loansWithDynamicInterest));
     }
 
@@ -1094,6 +1094,19 @@ public class LoanController {
     }
 
     /**
+     * Preview what deleting a loan removes (Treasurer). Read-only.
+     */
+    @GetMapping("/{loanId}/delete-preview")
+    @PreAuthorize("hasRole('ROLE_TREASURER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> previewDeleteLoan(@PathVariable Long loanId) {
+        try {
+            return ResponseEntity.ok(ApiResponse.success("Delete preview", loanService.previewLoanDelete(loanId)));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
      * Delete a loan - Only treasurers can delete loans
      * Handles cleanup of related entities (guarantors, transactions, repayments)
      */
@@ -1101,12 +1114,14 @@ public class LoanController {
     @PreAuthorize("hasRole('ROLE_TREASURER')")
     public ResponseEntity<ApiResponse<String>> deleteLoan(
             @PathVariable Long loanId,
+            @RequestBody(required = false) Map<String, String> body,
             Authentication authentication) {
         try {
             User user = userService.getUserByUsername(authentication.getName())
                     .orElseThrow(() -> new RuntimeException("User not found"));
+            String reason = body != null ? body.get("reason") : null;
             
-            loanService.deleteLoan(loanId, user);
+            loanService.deleteLoan(loanId, user, reason);
             return ResponseEntity.ok(ApiResponse.success("Loan deleted successfully", "Loan has been removed from the system"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));

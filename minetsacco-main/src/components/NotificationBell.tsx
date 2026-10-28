@@ -4,6 +4,17 @@ import { notificationService, Notification } from '../services/notificationServi
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
+/** Some alerts (e.g. new-device login) are stored as HTML; show them as clean text in the bell. */
+const toPlainText = (html: string | undefined | null): string => {
+  if (!html) return '';
+  if (!/<[a-z][\s\S]*>/i.test(html)) return html;
+  const doc = new DOMParser().parseFromString(
+    html.replace(/<\/(p|div|li|ul|ol)>/gi, '$&\n').replace(/<br\s*\/?>/gi, '\n'),
+    'text/html'
+  );
+  return (doc.body.textContent || '').replace(/\n{2,}/g, '\n').trim();
+};
+
 export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -293,10 +304,10 @@ export const NotificationBell: React.FC = () => {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className={`text-sm text-gray-900 ${
+                        <p className={`text-sm text-gray-900 whitespace-pre-line ${
                           isClickable(notification) ? 'font-medium' : ''
                         }`}>
-                          {notification.message}
+                          {toPlainText(notification.message)}
                           {isClickable(notification) && (
                             <span className="text-blue-600 text-xs ml-2">→ View</span>
                           )}

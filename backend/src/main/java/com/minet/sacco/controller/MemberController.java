@@ -70,10 +70,10 @@ public class MemberController {
                     .cacheControl(org.springframework.http.CacheControl.noCache())
                     .body(ApiResponse.success("Members retrieved successfully (paginated)", response));
         } else {
-            // Return full list with 30-second cache for dashboard performance
+            // Return full list (never cached: always live data)
             List<Member> members = memberService.getAllMembers();
             return ResponseEntity.ok()
-                    .cacheControl(org.springframework.http.CacheControl.maxAge(30, java.util.concurrent.TimeUnit.SECONDS))
+                    .cacheControl(org.springframework.http.CacheControl.noStore())
                     .body(ApiResponse.success("Members retrieved successfully", members));
         }
     }

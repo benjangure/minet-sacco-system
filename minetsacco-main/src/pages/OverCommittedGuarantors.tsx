@@ -253,7 +253,7 @@ const OverCommittedGuarantors = () => {
     return "text-yellow-600";
   };
 
-  if (loading) {
+  if (loading && !reportData && !exitedLoanData) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

@@ -63,7 +63,6 @@ public class MemberService {
     // Temporary storage for generated passwords (cleaned up after use)
     private static final Map<Long, String> generatedPasswords = new ConcurrentHashMap<>();
 
-    @Cacheable(value = "members", unless = "#result == null || #result.isEmpty()")
     public List<Member> getAllMembers() {
         return memberRepository.findAll();
     }
@@ -72,12 +71,10 @@ public class MemberService {
         return memberRepository.findAll(pageable);
     }
 
-    @Cacheable(value = "memberById", key = "#id", unless = "#result == null || !#result.isPresent()")
     public Optional<Member> getMemberById(Long id) {
         return memberRepository.findById(id);
     }
 
-    @Cacheable(value = "memberByNumber", key = "#memberNumber", unless = "#result == null || !#result.isPresent()")
     public Optional<Member> getMemberByMemberNumber(String memberNumber) {
         return memberRepository.findByMemberNumber(memberNumber);
     }
@@ -405,7 +402,6 @@ public class MemberService {
         generatedPasswords.put(memberId, password);
     }
 
-    @Cacheable(value = "membersByStatus", key = "#status", unless = "#result == null || #result.isEmpty()")
     public List<Member> getMembersByStatus(Member.Status status) {
         return memberRepository.findByStatus(status);
     }
